@@ -23,7 +23,7 @@
       }
     }
   },
-  "postCreateCommand": "corepack enable && pnpm install",
+  "postCreateCommand": "npm install -g pnpm@9 && pnpm install && pnpm db:generate",
   "forwardPorts": [3001, 5173, 5432],
   "portsAttributes": {
     "3001": { "label": "API" },
