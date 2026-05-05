@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { WeekProvider } from './context/WeekContext';
 import { useFamily } from './hooks/useFamily';
 import LoginPage from './pages/LoginPage';
 import FamilySettingsPage from './pages/FamilySettingsPage';
@@ -34,22 +35,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function HomeRedirect() {
-  const { familyId, hasFamilies } = useFamily();
+  const { hasFamilies } = useFamily();
 
   if (!hasFamilies) {
     return <Navigate to="/family/create" replace />;
   }
 
-  if (familyId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const day = today.getDay();
-    today.setDate(today.getDate() - day);
-    const weekStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    return <Navigate to={`/week/${familyId}/${weekStart}`} replace />;
-  }
-
-  return <LoadingSpinner />;
+  return <Navigate to="/week" replace />;
 }
 
 function AppRoutes() {
@@ -65,7 +57,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/family/settings/:familyId"
+        path="/family/settings"
         element={<ProtectedRoute><Layout><FamilySettingsPage /></Layout></ProtectedRoute>}
       />
       <Route
@@ -77,23 +69,23 @@ function AppRoutes() {
         element={<ProtectedRoute><Layout><JoinFamilyPage /></Layout></ProtectedRoute>}
       />
       <Route
-        path="/meals/:familyId"
+        path="/meals"
         element={<ProtectedRoute><Layout><MealsPage /></Layout></ProtectedRoute>}
       />
       <Route
-        path="/meals/:familyId/new"
+        path="/meals/new"
         element={<ProtectedRoute><Layout><MealFormPage /></Layout></ProtectedRoute>}
       />
       <Route
-        path="/meals/:familyId/:mealId/edit"
+        path="/meals/:mealId/edit"
         element={<ProtectedRoute><Layout><MealFormPage /></Layout></ProtectedRoute>}
       />
       <Route
-        path="/week/:familyId/:weekStart?"
+        path="/week"
         element={<ProtectedRoute><Layout><WeekPlanPage /></Layout></ProtectedRoute>}
       />
       <Route
-        path="/grocery/:familyId/:weekStart"
+        path="/grocery"
         element={<ProtectedRoute><Layout><GroceryListPage /></Layout></ProtectedRoute>}
       />
     </Routes>
@@ -105,8 +97,10 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
-          <ToastContainer />
+          <WeekProvider>
+            <AppRoutes />
+            <ToastContainer />
+          </WeekProvider>
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>

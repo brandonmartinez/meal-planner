@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
+import { useFamily } from '../hooks/useFamily';
 import { INGREDIENT_CATEGORIES } from '@meal-planner/shared';
 
 interface IngredientRow {
@@ -13,7 +14,8 @@ interface IngredientRow {
 const emptyIngredient = (): IngredientRow => ({ name: '', quantity: '', unit: '', category: '' });
 
 export default function MealFormPage() {
-  const { familyId, mealId } = useParams<{ familyId: string; mealId?: string }>();
+  const { mealId } = useParams<{ mealId?: string }>();
+  const { familyId, hasFamilies } = useFamily();
   const navigate = useNavigate();
   const isEdit = Boolean(mealId);
 
@@ -82,13 +84,15 @@ export default function MealFormPage() {
       } else {
         await createMeal(familyId, data);
       }
-      navigate(`/meals/${familyId}`);
+      navigate('/meals');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal');
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
     return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
@@ -190,7 +194,7 @@ export default function MealFormPage() {
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/meals/${familyId}`)}
+            onClick={() => navigate('/meals')}
             className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
           >
             Cancel

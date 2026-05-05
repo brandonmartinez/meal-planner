@@ -1,24 +1,26 @@
-import prisma from '../config/database.js';
-import { DAYS_OF_WEEK } from '@meal-planner/shared';
+import prisma from "../config/database.js";
+import { DAYS_OF_WEEK } from "@meal-planner/shared";
 
-export function getSundayOfWeek(date: Date): Date {
+export function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
   d.setUTCHours(0, 0, 0, 0);
-  const day = d.getUTCDay();
-  d.setUTCDate(d.getUTCDate() - day);
+  const day = d.getUTCDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  // Days to subtract to land on Monday: Sun -> 6, Mon -> 0, Tue -> 1, ...
+  const diff = (day + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diff);
   return d;
 }
 
 function toDateString(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split("T")[0];
 }
 
 export async function getOrCreateWeekPlan(familyId: string, weekStart: Date) {
   const d = new Date(weekStart);
   d.setUTCHours(0, 0, 0, 0);
 
-  if (d.getUTCDay() !== 0) {
-    throw new Error('weekStart must be a Sunday');
+  if (d.getUTCDay() !== 1) {
+    throw new Error("weekStart must be a Monday");
   }
 
   const weekStartStr = toDateString(d);
@@ -27,12 +29,14 @@ export async function getOrCreateWeekPlan(familyId: string, weekStart: Date) {
     where: { familyId, weekStart: d },
     include: {
       days: {
-        orderBy: { date: 'asc' },
+        orderBy: { date: "asc" },
         include: {
           suggestions: {
             include: {
               meal: true,
-              suggestedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+              suggestedBy: {
+                select: { id: true, name: true, email: true, avatarUrl: true },
+              },
             },
           },
         },
@@ -56,12 +60,14 @@ export async function getOrCreateWeekPlan(familyId: string, weekStart: Date) {
     },
     include: {
       days: {
-        orderBy: { date: 'asc' },
+        orderBy: { date: "asc" },
         include: {
           suggestions: {
             include: {
               meal: true,
-              suggestedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+              suggestedBy: {
+                select: { id: true, name: true, email: true, avatarUrl: true },
+              },
             },
           },
         },
@@ -78,12 +84,14 @@ export async function getWeekPlan(familyId: string, weekStart: Date) {
     where: { familyId, weekStart: d },
     include: {
       days: {
-        orderBy: { date: 'asc' },
+        orderBy: { date: "asc" },
         include: {
           suggestions: {
             include: {
               meal: true,
-              suggestedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+              suggestedBy: {
+                select: { id: true, name: true, email: true, avatarUrl: true },
+              },
             },
           },
         },
@@ -92,7 +100,11 @@ export async function getWeekPlan(familyId: string, weekStart: Date) {
   });
 }
 
-export async function addSuggestion(dayPlanId: string, mealId: string, userId: string) {
+export async function addSuggestion(
+  dayPlanId: string,
+  mealId: string,
+  userId: string,
+) {
   return prisma.mealSuggestion.create({
     data: {
       dayPlanId,
@@ -102,7 +114,9 @@ export async function addSuggestion(dayPlanId: string, mealId: string, userId: s
     },
     include: {
       meal: true,
-      suggestedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      suggestedBy: {
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
     },
   });
 }
@@ -113,7 +127,9 @@ export async function approveSuggestion(suggestionId: string) {
     data: { approved: true },
     include: {
       meal: true,
-      suggestedBy: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      suggestedBy: {
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
     },
   });
 }
@@ -124,7 +140,11 @@ export async function removeSuggestion(suggestionId: string) {
   });
 }
 
-export async function getApprovedMealsForRange(familyId: string, startDate: Date, endDate: Date) {
+export async function getApprovedMealsForRange(
+  familyId: string,
+  startDate: Date,
+  endDate: Date,
+) {
   const start = new Date(startDate);
   start.setUTCHours(0, 0, 0, 0);
   const end = new Date(endDate);
@@ -135,7 +155,7 @@ export async function getApprovedMealsForRange(familyId: string, startDate: Date
       date: { gte: start, lte: end },
       weekPlan: { familyId },
     },
-    orderBy: { date: 'asc' },
+    orderBy: { date: "asc" },
     include: {
       suggestions: {
         where: { approved: true },
@@ -144,9 +164,9 @@ export async function getApprovedMealsForRange(familyId: string, startDate: Date
     },
   });
 
-  return dayPlans.map(day => ({
+  return dayPlans.map((day) => ({
     date: toDateString(day.date),
-    meals: day.suggestions.map(s => ({
+    meals: day.suggestions.map((s) => ({
       id: s.meal.id,
       name: s.meal.name,
       description: s.meal.description,

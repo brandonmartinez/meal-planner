@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { listMeals, deleteMeal } from '../api/meals';
 import { useAuth } from '../context/AuthContext';
+import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import type { Meal } from '@meal-planner/shared';
 
 export default function MealsPage() {
-  const { familyId } = useParams<{ familyId: string }>();
+  const { familyId, hasFamilies } = useFamily();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [meals, setMeals] = useState<(Meal & { _count?: { ingredients: number } })[]>([]);
@@ -42,6 +43,8 @@ export default function MealsPage() {
     }
   };
 
+  if (!hasFamilies) return <Navigate to="/family/create" replace />;
+
   if (loading) {
     return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   }
@@ -58,7 +61,7 @@ export default function MealsPage() {
             Import CSV
           </button>
           <button
-            onClick={() => navigate(`/meals/${familyId}/new`)}
+            onClick={() => navigate('/meals/new')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Add Meal
@@ -109,7 +112,7 @@ export default function MealsPage() {
               </p>
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => navigate(`/meals/${familyId}/${meal.id}/edit`)}
+                  onClick={() => navigate(`/meals/${meal.id}/edit`)}
                   className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60"
                 >
                   Edit

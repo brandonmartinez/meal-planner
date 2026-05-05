@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import {
   getFamily,
   getMembers,
@@ -12,9 +12,10 @@ import {
 } from '../api/families.js';
 import type { Family, FamilyMember, ApiKeyInfo, ApiKeyCreated } from '../api/families.js';
 import { useAuth } from '../context/AuthContext.js';
+import { useFamily } from '../hooks/useFamily';
 
 export default function FamilySettingsPage() {
-  const { familyId } = useParams<{ familyId: string }>();
+  const { familyId, hasFamilies } = useFamily();
   const { user } = useAuth();
   const [family, setFamily] = useState<Family | null>(null);
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -101,6 +102,8 @@ export default function FamilySettingsPage() {
       setError(err instanceof Error ? err.message : 'Failed to revoke key');
     }
   };
+
+  if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
     return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;

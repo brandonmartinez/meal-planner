@@ -1,6 +1,6 @@
 export enum Role {
-  PARENT = 'PARENT',
-  CHILD = 'CHILD',
+  PARENT = "PARENT",
+  CHILD = "CHILD",
 }
 
 export interface User {
@@ -44,7 +44,7 @@ export interface MealIngredient {
 
 export interface WeekPlan {
   id: string;
-  weekStart: string; // ISO date string (always a Sunday)
+  weekStart: string; // ISO date string (always a Monday)
   familyId: string;
   days?: DayPlan[];
 }
@@ -96,7 +96,7 @@ export interface ApiKey {
 // API response types
 export interface DisplayMealResponse {
   date: string;
-  meals: Pick<Meal, 'id' | 'name' | 'description' | 'isFreeDayPlaceholder'>[];
+  meals: Pick<Meal, "id" | "name" | "description" | "isFreeDayPlaceholder">[];
 }
 
 export interface AuthUser {
