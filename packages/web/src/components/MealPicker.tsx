@@ -31,20 +31,20 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const regularMeals = meals.filter(m => !m.isFreeDayPlaceholder);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Pick a Meal</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pick a Meal</h2>
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl">✕</button>
         </div>
 
-        <div className="p-4 border-b">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search meals..."
-            className="w-full px-3 py-2 border rounded text-sm"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
         </div>
@@ -60,28 +60,28 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
               {freeDayMeal && (
                 <button
                   onClick={() => onSelect(freeDayMeal.id)}
-                  className="w-full text-left p-3 rounded mb-2 bg-yellow-50 border border-yellow-300 hover:bg-yellow-100"
+                  className="w-full text-left p-3 rounded mb-2 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                 >
-                  <div className="font-medium flex items-center gap-2">
+                  <div className="font-medium flex items-center gap-2 text-gray-900 dark:text-gray-100">
                     🏖️ {FREE_DAY_MEAL_NAME}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">No cooking needed</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No cooking needed</div>
                 </button>
               )}
 
               {regularMeals.length === 0 && !freeDayMeal && (
-                <p className="text-gray-500 text-sm text-center py-4">No meals found</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">No meals found</p>
               )}
 
               {regularMeals.map(meal => (
                 <button
                   key={meal.id}
                   onClick={() => onSelect(meal.id)}
-                  className="w-full text-left p-3 rounded hover:bg-gray-50 border border-transparent hover:border-gray-200"
+                  className="w-full text-left p-3 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
                 >
-                  <div className="font-medium text-sm">{meal.name}</div>
+                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{meal.name}</div>
                   {meal.description && (
-                    <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{meal.description}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
                   )}
                 </button>
               ))}

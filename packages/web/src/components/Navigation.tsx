@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import FamilySelector from './FamilySelector';
+import ThemeToggle from './ThemeToggle';
 
 export default function Navigation() {
   const { user, logout } = useAuth();
@@ -24,18 +25,17 @@ export default function Navigation() {
 
   const navLinks = familyId
     ? [
-        { to: `/week/${familyId}`, label: 'This Week' },
-        { to: `/meals/${familyId}`, label: 'Meals' },
-        { to: `/grocery/${familyId}`, label: 'Grocery' },
-        { to: `/family/settings/${familyId}`, label: 'Family' },
-      ]
+      { to: `/week/${familyId}`, label: 'This Week' },
+      { to: `/meals/${familyId}`, label: 'Meals' },
+      { to: `/grocery/${familyId}`, label: 'Grocery' },
+      { to: `/family/settings/${familyId}`, label: 'Family' },
+    ]
     : [];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-      isActive
-        ? 'bg-blue-100 text-blue-700'
-        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+    `px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
+      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800'
     }`;
 
   const handleLogout = async () => {
@@ -44,11 +44,14 @@ export default function Navigation() {
   };
 
   return (
-    <nav className="bg-white shadow-sm border-b sticky top-0 z-40" aria-label="Main navigation">
+    <nav
+      className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40"
+      aria-label="Main navigation"
+    >
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           {/* Logo */}
-          <Link to="/" className="text-lg font-bold text-gray-900 shrink-0">
+          <Link to="/" className="text-lg font-bold text-gray-900 dark:text-gray-100 shrink-0">
             🍽️ Meal Planner
           </Link>
 
@@ -64,12 +67,13 @@ export default function Navigation() {
           {/* Right side */}
           <div className="hidden md:flex items-center gap-3">
             <FamilySelector />
+            <ThemeToggle />
 
             {/* User dropdown */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-2 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 aria-expanded={dropdownOpen}
                 aria-haspopup="true"
                 aria-label="User menu"
@@ -84,15 +88,15 @@ export default function Navigation() {
               </button>
 
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border py-1 z-50">
-                  <div className="px-4 py-2 border-b">
-                    <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
-                    <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                  <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user?.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
                   </div>
                   {familyId && (
                     <Link
                       to={`/family/settings/${familyId}`}
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
                       onClick={() => setDropdownOpen(false)}
                     >
                       Settings
@@ -100,7 +104,7 @@ export default function Navigation() {
                   )}
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     Logout
                   </button>
@@ -109,27 +113,30 @@ export default function Navigation() {
             </div>
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-expanded={mobileOpen}
-            aria-label="Toggle navigation menu"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              {mobileOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
+          {/* Mobile actions */}
+          <div className="md:hidden flex items-center gap-1">
+            <ThemeToggle />
+            <button
+              className="p-2 rounded-md text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-expanded={mobileOpen}
+              aria-label="Toggle navigation menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {mobileOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden border-t bg-white">
+        <div className="md:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <div className="px-4 py-3 space-y-1">
             {navLinks.map(link => (
               <NavLink
@@ -142,7 +149,7 @@ export default function Navigation() {
               </NavLink>
             ))}
           </div>
-          <div className="border-t px-4 py-3 space-y-2">
+          <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-3 space-y-2">
             <FamilySelector />
             <div className="flex items-center gap-2 py-1">
               {user?.avatarUrl ? (
@@ -152,11 +159,11 @@ export default function Navigation() {
                   {user?.name?.charAt(0).toUpperCase()}
                 </div>
               )}
-              <span className="text-sm text-gray-700">{user?.name}</span>
+              <span className="text-sm text-gray-700 dark:text-gray-200">{user?.name}</span>
             </div>
             <button
               onClick={handleLogout}
-              className="text-sm text-gray-600 hover:text-gray-900"
+              className="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             >
               Logout
             </button>

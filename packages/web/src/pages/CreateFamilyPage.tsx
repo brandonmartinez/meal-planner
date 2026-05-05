@@ -27,18 +27,18 @@ export default function CreateFamilyPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Create a Family</h1>
-        {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Create a Family</h1>
+        {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
         <form onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Family Name</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Family Name</label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. The Smiths"
-            className="w-full px-3 py-2 border rounded mb-4"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded mb-4"
             required
           />
           <button

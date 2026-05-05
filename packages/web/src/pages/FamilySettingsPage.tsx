@@ -107,36 +107,36 @@ export default function FamilySettingsPage() {
   }
 
   if (!family) {
-    return <div className="text-center py-12 text-red-600">Family not found</div>;
+    return <div className="text-center py-12 text-red-600 dark:text-red-400">Family not found</div>;
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-6">{family.name} — Settings</h1>
 
-      {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
+      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {/* Members */}
       <section className="mb-8">
         <h2 className="text-lg font-semibold mb-3">Members</h2>
         <ul className="space-y-2">
           {members.map(m => (
-            <li key={m.id} className="flex items-center justify-between bg-white p-3 rounded shadow-sm">
+            <li key={m.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded shadow-sm border border-transparent dark:border-gray-700">
               <div>
                 <span className="font-medium">{m.user.name}</span>
-                <span className="ml-2 text-sm text-gray-500">({m.role})</span>
+                <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">({m.role})</span>
               </div>
               {isParent && m.user.id !== user?.id && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleRoleChange(m.id, m.role === 'PARENT' ? 'CHILD' : 'PARENT')}
-                    className="text-sm px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                    className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60"
                   >
                     Toggle Role
                   </button>
                   <button
                     onClick={() => handleRemove(m.id)}
-                    className="text-sm px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                    className="text-sm px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
                   >
                     Remove
                   </button>
@@ -160,8 +160,8 @@ export default function FamilySettingsPage() {
             </button>
           </div>
           {inviteLink && (
-            <div className="mt-3 p-3 bg-gray-50 rounded text-sm break-all">
-              <p className="text-green-700 font-medium mb-1">Link copied to clipboard!</p>
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm break-all border border-transparent dark:border-gray-700">
+              <p className="text-green-700 dark:text-green-400 font-medium mb-1">Link copied to clipboard!</p>
               <code>{inviteLink}</code>
             </div>
           )}
@@ -178,7 +178,7 @@ export default function FamilySettingsPage() {
               value={newKeyName}
               onChange={e => setNewKeyName(e.target.value)}
               placeholder="Key name"
-              className="flex-1 px-3 py-2 border rounded"
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
             />
             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
               Create
@@ -186,28 +186,28 @@ export default function FamilySettingsPage() {
           </form>
 
           {createdKey && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-              <p className="font-medium text-yellow-800">Save this key — it won't be shown again:</p>
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded text-sm">
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">Save this key — it won't be shown again:</p>
               <code className="block mt-1 break-all">{createdKey.key}</code>
             </div>
           )}
 
           <ul className="space-y-2">
             {apiKeys.map(k => (
-              <li key={k.id} className="flex items-center justify-between bg-white p-3 rounded shadow-sm">
+              <li key={k.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded shadow-sm border border-transparent dark:border-gray-700">
                 <div>
                   <span className="font-medium">{k.name}</span>
-                  <span className="ml-2 text-xs text-gray-400">Created {new Date(k.createdAt).toLocaleDateString()}</span>
+                  <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">Created {new Date(k.createdAt).toLocaleDateString()}</span>
                 </div>
                 <button
                   onClick={() => handleRevokeKey(k.id)}
-                  className="text-sm px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                  className="text-sm px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
                 >
                   Revoke
                 </button>
               </li>
             ))}
-            {apiKeys.length === 0 && <p className="text-gray-500 text-sm">No API keys yet.</p>}
+            {apiKeys.length === 0 && <p className="text-gray-500 dark:text-gray-400 text-sm">No API keys yet.</p>}
           </ul>
         </section>
       )}

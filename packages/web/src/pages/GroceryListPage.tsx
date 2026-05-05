@@ -145,47 +145,47 @@ export default function GroceryListPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">🛒 Grocery List</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🛒 Grocery List</h1>
         <Link
           to={`/week/${familyId}/${weekStart}`}
-          className="text-sm text-blue-600 hover:text-blue-800 underline"
+          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline"
         >
           ← Back to Week Plan
         </Link>
       </div>
 
-      <p className="text-gray-600 mb-6">{weekStart && formatDateRange(weekStart)}</p>
+      <p className="text-gray-600 dark:text-gray-300 mb-6">{weekStart && formatDateRange(weekStart)}</p>
 
-      {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
+      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {!groceryList ? (
         <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">No grocery list for this week yet.</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">No grocery list for this week yet.</p>
           <button
             onClick={handleGenerate}
             className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
           >
             Generate Grocery List
           </button>
-          <p className="text-sm text-gray-400 mt-2">Creates a list from approved meals for this week</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Creates a list from approved meals for this week</p>
         </div>
       ) : (
         <>
           {/* Progress */}
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-gray-600 dark:text-gray-300">
               {checkedCount} of {items.length} items checked
             </span>
             <button
               onClick={handleRegenerate}
-              className="text-sm px-3 py-1 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
+              className="text-sm px-3 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/60"
             >
               Regenerate
             </button>
           </div>
 
           {/* Progress bar */}
-          <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-6">
             <div
               className="bg-green-500 h-2 rounded-full transition-all"
               style={{ width: items.length > 0 ? `${(checkedCount / items.length) * 100}%` : '0%' }}
@@ -195,29 +195,29 @@ export default function GroceryListPage() {
           {/* Items grouped by category */}
           {sortedCategories.map(category => (
             <div key={category} className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-2 capitalize">
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2 capitalize">
                 {CATEGORY_EMOJIS[category] || '📦'} {category}
               </h2>
               <ul className="space-y-1">
                 {grouped.get(category)!.map(item => (
-                  <li key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white rounded shadow-sm">
+                  <li key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
                     <input
                       type="checkbox"
                       checked={item.checked}
                       onChange={() => handleToggle(item)}
                       className="h-5 w-5 text-green-600 rounded"
                     />
-                    <span className={`flex-1 ${item.checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                    <span className={`flex-1 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
                       {item.name}
                       {item.quantity && (
-                        <span className="text-gray-500 ml-2 text-sm">
+                        <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
                           {item.quantity}{item.unit ? ` ${item.unit}` : ''}
                         </span>
                       )}
                     </span>
                     <button
                       onClick={() => handleRemove(item.id)}
-                      className="text-red-400 hover:text-red-600 text-lg font-bold"
+                      className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
                       title="Remove item"
                     >
                       ×
@@ -229,12 +229,12 @@ export default function GroceryListPage() {
           ))}
 
           {items.length === 0 && (
-            <p className="text-center text-gray-500 py-4">No items in the list. Add some below or regenerate from approved meals.</p>
+            <p className="text-center text-gray-500 dark:text-gray-400 py-4">No items in the list. Add some below or regenerate from approved meals.</p>
           )}
 
           {/* Add custom item */}
-          <div className="mt-8 border-t pt-6">
-            <h3 className="text-md font-semibold text-gray-700 mb-3">Add Custom Item</h3>
+          <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Custom Item</h3>
             <form onSubmit={handleAddItem} className="space-y-3">
               <div className="flex gap-2">
                 <input
@@ -242,7 +242,7 @@ export default function GroceryListPage() {
                   value={newItemName}
                   onChange={e => setNewItemName(e.target.value)}
                   placeholder="Item name *"
-                  className="flex-1 px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
                 <input
@@ -250,21 +250,21 @@ export default function GroceryListPage() {
                   value={newItemQuantity}
                   onChange={e => setNewItemQuantity(e.target.value)}
                   placeholder="Qty"
-                  className="w-20 px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <input
                   type="text"
                   value={newItemUnit}
                   onChange={e => setNewItemUnit(e.target.value)}
                   placeholder="Unit"
-                  className="w-24 px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div className="flex gap-2 items-center">
                 <select
                   value={newItemCategory}
                   onChange={e => setNewItemCategory(e.target.value)}
-                  className="px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {INGREDIENT_CATEGORIES.map(cat => (
                     <option key={cat} value={cat}>{CATEGORY_EMOJIS[cat]} {cat}</option>

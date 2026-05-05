@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { useFamily } from './hooks/useFamily';
 import LoginPage from './pages/LoginPage';
 import FamilySettingsPage from './pages/FamilySettingsPage';
@@ -101,12 +102,14 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppRoutes />
-        <ToastContainer />
-      </ToastProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <AppRoutes />
+          <ToastContainer />
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

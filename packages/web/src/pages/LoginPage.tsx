@@ -21,13 +21,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">🍽️ Meal Planner</h1>
-        <p className="text-gray-600 mb-8">Plan your family meals for the week ahead.</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">🍽️ Meal Planner</h1>
+        <p className="text-gray-600 dark:text-gray-300 mb-8">Plan your family meals for the week ahead.</p>
         <button
           onClick={login}
-          className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-lg px-6 py-3 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-center gap-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg px-6 py-3 text-gray-700 dark:text-gray-100 font-medium hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path

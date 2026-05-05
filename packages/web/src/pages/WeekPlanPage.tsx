@@ -116,41 +116,41 @@ export default function WeekPlanPage() {
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Week Plan</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Week Plan</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigateWeek(-1)}
-            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+            className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
           >
             ← Prev
           </button>
           <button
             onClick={goToday}
-            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm"
+            className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60 text-sm"
           >
             Today
           </button>
           <button
             onClick={() => navigateWeek(1)}
-            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+            className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-sm"
           >
             Next →
           </button>
         </div>
       </div>
 
-      <p className="text-gray-600 text-center mb-6 text-lg">{formatDateRange(weekStart)}</p>
+      <p className="text-gray-600 dark:text-gray-300 text-center mb-6 text-lg">{formatDateRange(weekStart)}</p>
 
       <div className="flex justify-center mb-6">
         <Link
           to={`/grocery/${familyId}/${weekStart}`}
-          className="px-4 py-2 bg-green-100 text-green-800 rounded hover:bg-green-200 text-sm font-medium"
+          className="px-4 py-2 bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60 text-sm font-medium"
         >
           🛒 Grocery List
         </Link>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
+      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {/* Day grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">

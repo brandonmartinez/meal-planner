@@ -35,24 +35,24 @@ export default function JoinFamilyPage() {
 
   if (error && !decoded) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-          <p className="text-red-600">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+          <p className="text-red-600 dark:text-red-400">{error}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Join Family</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Join Family</h1>
         {decoded && (
-          <p className="text-gray-600 mb-6">
+          <p className="text-gray-600 dark:text-gray-300 mb-6">
             You've been invited to join as a <strong>{decoded.role}</strong>.
           </p>
         )}
-        {error && <div className="bg-red-50 text-red-700 p-3 rounded mb-4">{error}</div>}
+        {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
         <button
           onClick={handleJoin}
           disabled={loading}
