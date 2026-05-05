@@ -1,5 +1,9 @@
 import prisma from "../config/database.js";
-import { FREE_DAY_MEAL_NAME, FREE_DAY_DESCRIPTION } from "@meal-planner/shared";
+import {
+  MEAL_PLACEHOLDER_KINDS,
+  MEAL_PLACEHOLDERS,
+  PLACEHOLDER_NAMES_LOWER,
+} from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 
 export async function listMeals(
@@ -79,6 +83,9 @@ export async function updateMeal(
       where: { id: mealId, familyId },
     });
     if (!existing) throw new Error("Meal not found");
+    if (existing.placeholderKind !== null) {
+      throw new Error("Cannot modify placeholder meal");
+    }
 
     // Delete old ingredients and create new ones
     if (data.ingredients !== undefined) {
@@ -106,6 +113,9 @@ export async function deleteMeal(mealId: string, familyId: string) {
   // Verify meal belongs to family
   const meal = await prisma.meal.findFirst({ where: { id: mealId, familyId } });
   if (!meal) throw new Error("Meal not found");
+  if (meal.placeholderKind !== null) {
+    throw new Error("Cannot delete placeholder meal");
+  }
 
   // Check for approved suggestions in future weeks
   const now = new Date();
@@ -151,10 +161,17 @@ export async function importMeals(
   };
 
   for (const data of meals) {
+    if (PLACEHOLDER_NAMES_LOWER.has(data.name.trim().toLowerCase())) {
+      result.errors.push({
+        name: data.name,
+        error: "Name conflicts with a reserved placeholder meal",
+      });
+      continue;
+    }
     try {
       await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const existing = await tx.meal.findFirst({
-          where: { familyId, name: data.name, isFreeDayPlaceholder: false },
+          where: { familyId, name: data.name, placeholderKind: null },
         });
 
         if (existing) {
@@ -202,18 +219,24 @@ export async function importMeals(
   return result;
 }
 
-export async function createFreeDayMeal(familyId: string) {
-  const existing = await prisma.meal.findFirst({
-    where: { familyId, isFreeDayPlaceholder: true },
+export async function ensurePlaceholderMeals(familyId: string) {
+  // Idempotently ensure each placeholder kind exists for this family.
+  // Used for backfilling families that pre-date a new placeholder kind.
+  const existing = await prisma.meal.findMany({
+    where: { familyId, placeholderKind: { not: null } },
+    select: { placeholderKind: true },
   });
-  if (existing) return existing;
+  const existingKinds = new Set(existing.map((m) => m.placeholderKind));
 
-  return prisma.meal.create({
-    data: {
-      name: FREE_DAY_MEAL_NAME,
-      description: FREE_DAY_DESCRIPTION,
-      isFreeDayPlaceholder: true,
-      familyId,
-    },
-  });
+  const toCreate = MEAL_PLACEHOLDER_KINDS.filter(
+    (k) => !existingKinds.has(k),
+  ).map((kind) => ({
+    name: MEAL_PLACEHOLDERS[kind].name,
+    description: MEAL_PLACEHOLDERS[kind].description,
+    placeholderKind: kind,
+    familyId,
+  }));
+
+  if (toCreate.length === 0) return;
+  await prisma.meal.createMany({ data: toCreate, skipDuplicates: true });
 }

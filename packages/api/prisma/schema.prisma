@@ -50,13 +50,24 @@ model Meal {
   name                 String
   description          String?
   imageUrl             String?
-  isFreeDayPlaceholder Boolean          @default(false)
+  placeholderKind      MealPlaceholderKind?
   family               Family           @relation(fields: [familyId], references: [id])
   familyId             String
   ingredients          MealIngredient[]
   suggestions          MealSuggestion[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
+
+  @@unique([familyId, placeholderKind])
+}
+
+enum MealPlaceholderKind {
+  FREE_DAY
+  LEFTOVERS
+  TAKEOUT
+  DINING_OUT
+  TRAVEL
+  SKIP
 }
 
 model MealIngredient {

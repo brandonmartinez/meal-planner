@@ -28,7 +28,7 @@ export interface Meal {
   name: string;
   description?: string;
   imageUrl?: string;
-  isFreeDayPlaceholder: boolean;
+  placeholderKind: import("../constants/index.js").MealPlaceholderKind | null;
   familyId: string;
   ingredients?: MealIngredient[];
 }
@@ -96,7 +96,7 @@ export interface ApiKey {
 // API response types
 export interface DisplayMealResponse {
   date: string;
-  meals: Pick<Meal, "id" | "name" | "description" | "isFreeDayPlaceholder">[];
+  meals: Pick<Meal, "id" | "name" | "description" | "placeholderKind">[];
 }
 
 export interface AuthUser {

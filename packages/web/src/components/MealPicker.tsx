@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listMeals } from '../api/meals';
-import type { Meal } from '@meal-planner/shared';
-import { FREE_DAY_MEAL_NAME } from '@meal-planner/shared';
+import type { Meal, MealPlaceholderKind } from '@meal-planner/shared';
+import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
 interface MealPickerProps {
   familyId: string;
@@ -27,8 +27,15 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
-  const freeDayMeal = meals.find(m => m.isFreeDayPlaceholder);
-  const regularMeals = meals.filter(m => !m.isFreeDayPlaceholder);
+  // Index placeholders by kind so we can render them in canonical order.
+  const placeholderByKind = new Map<MealPlaceholderKind, Meal>();
+  for (const m of meals) {
+    if (m.placeholderKind) placeholderByKind.set(m.placeholderKind, m);
+  }
+  const placeholders = MEAL_PLACEHOLDER_KINDS
+    .map((kind) => placeholderByKind.get(kind))
+    .filter((m): m is Meal => Boolean(m));
+  const regularMeals = meals.filter(m => !m.placeholderKind);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60">
@@ -56,20 +63,30 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
             </div>
           ) : (
             <>
-              {/* Free Day option */}
-              {freeDayMeal && (
-                <button
-                  onClick={() => onSelect(freeDayMeal.id)}
-                  className="w-full text-left p-3 rounded mb-2 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
-                >
-                  <div className="font-medium flex items-center gap-2 text-gray-900 dark:text-gray-100">
-                    🏖️ {FREE_DAY_MEAL_NAME}
+              {placeholders.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Quick options
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No cooking needed</div>
-                </button>
+                  {placeholders.map(meal => {
+                    const meta = MEAL_PLACEHOLDERS[meal.placeholderKind!];
+                    return (
+                      <button
+                        key={meal.id}
+                        onClick={() => onSelect(meal.id)}
+                        className="w-full text-left p-3 rounded mb-1 bg-gray-50 dark:bg-gray-700/40 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <div className="font-medium flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                          <span>{meta.emoji}</span> {meta.name}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{meta.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
 
-              {regularMeals.length === 0 && !freeDayMeal && (
+              {regularMeals.length === 0 && placeholders.length === 0 && (
                 <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">No meals found</p>
               )}
 

@@ -1,5 +1,8 @@
 import jwt, { SignOptions } from "jsonwebtoken";
-import { FREE_DAY_MEAL_NAME, FREE_DAY_DESCRIPTION } from "@meal-planner/shared";
+import {
+  MEAL_PLACEHOLDER_KINDS,
+  MEAL_PLACEHOLDERS,
+} from "@meal-planner/shared";
 import prisma from "../config/database.js";
 import { config } from "../config/index.js";
 
@@ -20,11 +23,11 @@ export async function createFamily(userId: string, name: string) {
         },
       },
       meals: {
-        create: {
-          name: FREE_DAY_MEAL_NAME,
-          description: FREE_DAY_DESCRIPTION,
-          isFreeDayPlaceholder: true,
-        },
+        create: MEAL_PLACEHOLDER_KINDS.map((kind) => ({
+          name: MEAL_PLACEHOLDERS[kind].name,
+          description: MEAL_PLACEHOLDERS[kind].description,
+          placeholderKind: kind,
+        })),
       },
     },
     include: {

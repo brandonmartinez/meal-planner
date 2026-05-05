@@ -30,6 +30,11 @@ export default function MealFormPage() {
     if (!isEdit || !familyId || !mealId) return;
     getMeal(familyId, mealId)
       .then(meal => {
+        if (meal.placeholderKind !== null) {
+          // Placeholder meals are managed via shared metadata and cannot be edited.
+          navigate('/meals', { replace: true });
+          return;
+        }
         setName(meal.name);
         setDescription(meal.description || '');
         if (meal.ingredients?.length) {
@@ -45,7 +50,7 @@ export default function MealFormPage() {
       })
       .catch(() => setError('Failed to load meal'))
       .finally(() => setLoading(false));
-  }, [isEdit, familyId, mealId]);
+  }, [isEdit, familyId, mealId, navigate]);
 
   const handleIngredientChange = (index: number, field: keyof IngredientRow, value: string) => {
     setIngredients(prev => prev.map((ing, i) => (i === index ? { ...ing, [field]: value } : ing)));

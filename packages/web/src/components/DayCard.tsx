@@ -1,5 +1,5 @@
 import type { DayPlan, MealSuggestion } from '@meal-planner/shared';
-import { DAYS_OF_WEEK } from '@meal-planner/shared';
+import { DAYS_OF_WEEK, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
 interface DayCardProps {
   day: DayPlan;
@@ -70,12 +70,14 @@ interface SuggestionChipProps {
 }
 
 function SuggestionChip({ suggestion, isParent, currentUserId, onApprove, onRemove }: SuggestionChipProps) {
-  const isFreeDayPlaceholder = suggestion.meal?.isFreeDayPlaceholder;
+  const placeholderKind = suggestion.meal?.placeholderKind ?? null;
+  const isPlaceholder = placeholderKind !== null;
+  const placeholderEmoji = isPlaceholder ? MEAL_PLACEHOLDERS[placeholderKind].emoji : null;
   const canRemove = isParent || suggestion.userId === currentUserId;
 
   const baseClass = suggestion.approved
     ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100'
-    : isFreeDayPlaceholder
+    : isPlaceholder
       ? 'bg-gray-100 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100';
 
@@ -84,7 +86,7 @@ function SuggestionChip({ suggestion, isParent, currentUserId, onApprove, onRemo
       <div className="flex items-center justify-between gap-1">
         <span className="font-medium truncate flex items-center gap-1">
           {suggestion.approved && <span className="text-green-600 dark:text-green-400">✓</span>}
-          {isFreeDayPlaceholder && <span>🏖️</span>}
+          {placeholderEmoji && <span>{placeholderEmoji}</span>}
           {suggestion.meal?.name || 'Unknown'}
         </span>
         <div className="flex items-center gap-0.5 shrink-0">

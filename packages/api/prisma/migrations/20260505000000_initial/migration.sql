@@ -1,6 +1,9 @@
 -- CreateEnum
 CREATE TYPE "Role" AS ENUM ('PARENT', 'CHILD');
 
+-- CreateEnum
+CREATE TYPE "MealPlaceholderKind" AS ENUM ('FREE_DAY', 'LEFTOVERS', 'TAKEOUT', 'DINING_OUT', 'TRAVEL', 'SKIP');
+
 -- CreateTable
 CREATE TABLE "Family" (
     "id" TEXT NOT NULL,
@@ -40,7 +43,7 @@ CREATE TABLE "Meal" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "imageUrl" TEXT,
-    "isFreeDayPlaceholder" BOOLEAN NOT NULL DEFAULT false,
+    "placeholderKind" "MealPlaceholderKind",
     "familyId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -143,6 +146,9 @@ CREATE UNIQUE INDEX "WeekPlan_familyId_weekStart_key" ON "WeekPlan"("familyId", 
 
 -- CreateIndex
 CREATE UNIQUE INDEX "DayPlan_weekPlanId_date_key" ON "DayPlan"("weekPlanId", "date");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Meal_familyId_placeholderKind_key" ON "Meal"("familyId", "placeholderKind");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ApiKey_key_key" ON "ApiKey"("key");

@@ -160,7 +160,7 @@ export async function getApprovedMealsForRange(
       id: s.meal.id,
       name: s.meal.name,
       description: s.meal.description,
-      isFreeDayPlaceholder: s.meal.isFreeDayPlaceholder,
+      placeholderKind: s.meal.placeholderKind,
     })),
   }));
 }
