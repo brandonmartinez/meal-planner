@@ -1,0 +1,17 @@
+{
+  "name": "meal-planner",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "db:migrate": "pnpm --filter @meal-planner/api run db:migrate",
+    "db:generate": "pnpm --filter @meal-planner/api run db:generate",
+    "db:seed": "pnpm --filter @meal-planner/api run db:seed"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

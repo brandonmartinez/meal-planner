@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Family {
+  id        String         @id @default(uuid())
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  members   FamilyMember[]
+  meals     Meal[]
+  weekPlans WeekPlan[]
+}
+
+model User {
+  id          String           @id @default(uuid())
+  email       String           @unique
+  name        String
+  avatarUrl   String?
+  googleId    String?          @unique
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  memberships FamilyMember[]
+  suggestions MealSuggestion[]
+}
+
+model FamilyMember {
+  id       String @id @default(uuid())
+  role     Role   @default(CHILD)
+  family   Family @relation(fields: [familyId], references: [id])
+  familyId String
+  user     User   @relation(fields: [userId], references: [id])
+  userId   String
+
+  @@unique([familyId, userId])
+}
+
+enum Role {
+  PARENT
+  CHILD
+}
+
+model Meal {
+  id                   String           @id @default(uuid())
+  name                 String
+  description          String?
+  imageUrl             String?
+  isFreeDayPlaceholder Boolean          @default(false)
+  family               Family           @relation(fields: [familyId], references: [id])
+  familyId             String
+  ingredients          MealIngredient[]
+  suggestions          MealSuggestion[]
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+}
+
+model MealIngredient {
+  id       String  @id @default(uuid())
+  name     String
+  quantity String?
+  unit     String?
+  category String?
+  meal     Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId   String
+}
+
+model WeekPlan {
+  id        String    @id @default(uuid())
+  weekStart DateTime
+  family    Family    @relation(fields: [familyId], references: [id])
+  familyId  String
+  days      DayPlan[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([familyId, weekStart])
+}
+
+model DayPlan {
+  id          String           @id @default(uuid())
+  date        DateTime
+  weekPlan    WeekPlan         @relation(fields: [weekPlanId], references: [id], onDelete: Cascade)
+  weekPlanId  String
+  suggestions MealSuggestion[]
+
+  @@unique([weekPlanId, date])
+}
+
+model MealSuggestion {
+  id        String   @id @default(uuid())
+  meal      Meal     @relation(fields: [mealId], references: [id])
+  mealId    String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  dayPlanId String
+  suggestedBy User   @relation(fields: [userId], references: [id])
+  userId    String
+  approved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model GroceryList {
+  id        String        @id @default(uuid())
+  weekStart DateTime
+  familyId  String
+  items     GroceryItem[]
+  createdAt DateTime      @default(now())
+}
+
+model GroceryItem {
+  id            String      @id @default(uuid())
+  name          String
+  quantity      String?
+  unit          String?
+  category      String?
+  checked       Boolean     @default(false)
+  groceryList   GroceryList @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
+  groceryListId String
+}
+
+model ApiKey {
+  id        String    @id @default(uuid())
+  name      String
+  key       String    @unique
+  familyId  String
+  createdBy String
+  expiresAt DateTime?
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+}
