@@ -1,5 +1,22 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
 import { DAYS_OF_WEEK } from "@meal-planner/shared";
+
+const weekPlanInclude = Prisma.validator<Prisma.WeekPlanInclude>()({
+  days: {
+    orderBy: { date: "asc" },
+    include: {
+      suggestions: {
+        include: {
+          meal: true,
+          suggestedBy: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
+    },
+  },
+});
 
 export function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -23,25 +40,9 @@ export async function getOrCreateWeekPlan(familyId: string, weekStart: Date) {
     throw new Error("weekStart must be a Monday");
   }
 
-  const weekStartStr = toDateString(d);
-
   const existing = await prisma.weekPlan.findFirst({
     where: { familyId, weekStart: d },
-    include: {
-      days: {
-        orderBy: { date: "asc" },
-        include: {
-          suggestions: {
-            include: {
-              meal: true,
-              suggestedBy: {
-                select: { id: true, name: true, email: true, avatarUrl: true },
-              },
-            },
-          },
-        },
-      },
-    },
+    include: weekPlanInclude,
   });
 
   if (existing) return existing;
@@ -52,28 +53,31 @@ export async function getOrCreateWeekPlan(familyId: string, weekStart: Date) {
     return { date: dayDate };
   });
 
-  return prisma.weekPlan.create({
-    data: {
-      weekStart: d,
-      familyId,
-      days: { create: days },
-    },
-    include: {
-      days: {
-        orderBy: { date: "asc" },
-        include: {
-          suggestions: {
-            include: {
-              meal: true,
-              suggestedBy: {
-                select: { id: true, name: true, email: true, avatarUrl: true },
-              },
-            },
-          },
-        },
+  try {
+    return await prisma.weekPlan.create({
+      data: {
+        weekStart: d,
+        familyId,
+        days: { create: days },
       },
-    },
-  });
+      include: weekPlanInclude,
+    });
+  } catch (error) {
+    // Handle race condition: another request created the same week plan
+    // concurrently. The @@unique([familyId, weekStart]) constraint triggers
+    // a P2002 error; fall back to fetching the now-existing record.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const raced = await prisma.weekPlan.findFirst({
+        where: { familyId, weekStart: d },
+        include: weekPlanInclude,
+      });
+      if (raced) return raced;
+    }
+    throw error;
+  }
 }
 
 export async function getWeekPlan(familyId: string, weekStart: Date) {
@@ -82,21 +86,7 @@ export async function getWeekPlan(familyId: string, weekStart: Date) {
 
   return prisma.weekPlan.findFirst({
     where: { familyId, weekStart: d },
-    include: {
-      days: {
-        orderBy: { date: "asc" },
-        include: {
-          suggestions: {
-            include: {
-              meal: true,
-              suggestedBy: {
-                select: { id: true, name: true, email: true, avatarUrl: true },
-              },
-            },
-          },
-        },
-      },
-    },
+    include: weekPlanInclude,
   });
 }
 

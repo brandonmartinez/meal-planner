@@ -1,11 +1,12 @@
-import jwt, { SignOptions } from 'jsonwebtoken';
-import prisma from '../config/database.js';
-import { config } from '../config/index.js';
+import jwt, { SignOptions } from "jsonwebtoken";
+import { FREE_DAY_MEAL_NAME, FREE_DAY_DESCRIPTION } from "@meal-planner/shared";
+import prisma from "../config/database.js";
+import { config } from "../config/index.js";
 
 interface InvitePayload {
   familyId: string;
-  role: 'PARENT' | 'CHILD';
-  type: 'family_invite';
+  role: "PARENT" | "CHILD";
+  type: "family_invite";
 }
 
 export async function createFamily(userId: string, name: string) {
@@ -15,12 +16,25 @@ export async function createFamily(userId: string, name: string) {
       members: {
         create: {
           userId,
-          role: 'PARENT',
+          role: "PARENT",
+        },
+      },
+      meals: {
+        create: {
+          name: FREE_DAY_MEAL_NAME,
+          description: FREE_DAY_DESCRIPTION,
+          isFreeDayPlaceholder: true,
         },
       },
     },
     include: {
-      members: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
     },
   });
 }
@@ -29,7 +43,13 @@ export async function getFamilyById(familyId: string) {
   return prisma.family.findUnique({
     where: { id: familyId },
     include: {
-      members: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
     },
   });
 }
@@ -38,22 +58,31 @@ export async function getUserFamilies(userId: string) {
   return prisma.family.findMany({
     where: { members: { some: { userId } } },
     include: {
-      members: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
     },
   });
 }
 
-export function generateInviteToken(familyId: string, role: 'PARENT' | 'CHILD'): string {
-  const payload: InvitePayload = { familyId, role, type: 'family_invite' };
-  const options: SignOptions = { expiresIn: '7d' };
+export function generateInviteToken(
+  familyId: string,
+  role: "PARENT" | "CHILD",
+): string {
+  const payload: InvitePayload = { familyId, role, type: "family_invite" };
+  const options: SignOptions = { expiresIn: "7d" };
   return jwt.sign(payload, config.jwt.secret, options);
 }
 
 export async function joinFamily(userId: string, inviteToken: string) {
   const payload = jwt.verify(inviteToken, config.jwt.secret) as InvitePayload;
 
-  if (payload.type !== 'family_invite') {
-    throw new Error('Invalid invite token');
+  if (payload.type !== "family_invite") {
+    throw new Error("Invalid invite token");
   }
 
   const existing = await prisma.familyMember.findUnique({
@@ -61,7 +90,7 @@ export async function joinFamily(userId: string, inviteToken: string) {
   });
 
   if (existing) {
-    throw new Error('Already a member of this family');
+    throw new Error("Already a member of this family");
   }
 
   return prisma.familyMember.create({
@@ -77,11 +106,17 @@ export async function joinFamily(userId: string, inviteToken: string) {
   });
 }
 
-export async function updateMemberRole(familyId: string, memberId: string, role: 'PARENT' | 'CHILD') {
+export async function updateMemberRole(
+  familyId: string,
+  memberId: string,
+  role: "PARENT" | "CHILD",
+) {
   return prisma.familyMember.update({
     where: { id: memberId, familyId },
     data: { role },
-    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+    include: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
   });
 }
 
@@ -94,6 +129,8 @@ export async function removeMember(familyId: string, memberId: string) {
 export async function getMembers(familyId: string) {
   return prisma.familyMember.findMany({
     where: { familyId },
-    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+    include: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
   });
 }

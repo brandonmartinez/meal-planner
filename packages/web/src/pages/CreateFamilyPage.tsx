@@ -1,14 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createFamily } from '../api/families.js';
 import { useAuth } from '../context/AuthContext';
+import { useFamily } from '../hooks/useFamily';
 
 export default function CreateFamilyPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdFamilyId, setCreatedFamilyId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { refresh } = useAuth();
+  const { families, switchFamily } = useFamily();
+
+  // After createFamily + refresh, the AuthContext re-renders with the new
+  // membership. Wait for it to be observable before navigating, otherwise
+  // HomeRedirect / WeekPlanPage may render with the still-stale user state
+  // and bounce the user back here.
+  useEffect(() => {
+    if (!createdFamilyId) return;
+    if (families.some(f => f.id === createdFamilyId)) {
+      switchFamily(createdFamilyId);
+      navigate('/', { replace: true });
+    }
+  }, [createdFamilyId, families, navigate, switchFamily]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,12 +31,11 @@ export default function CreateFamilyPage() {
     setLoading(true);
     setError('');
     try {
-      await createFamily(name.trim());
+      const family = await createFamily(name.trim());
       await refresh();
-      navigate('/');
+      setCreatedFamilyId(family.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create family');
-    } finally {
       setLoading(false);
     }
   };

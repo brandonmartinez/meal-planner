@@ -8,7 +8,8 @@
     "test": "pnpm -r run test",
     "db:migrate": "pnpm --filter @meal-planner/api run db:migrate",
     "db:generate": "pnpm --filter @meal-planner/api run db:generate",
-    "db:seed": "pnpm --filter @meal-planner/api run db:seed"
+    "db:seed": "pnpm --filter @meal-planner/api run db:seed",
+    "db:reset": "pnpm --filter @meal-planner/api run db:reset"
   },
   "engines": {
     "node": ">=20.0.0"

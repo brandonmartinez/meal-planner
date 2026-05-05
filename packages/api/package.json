@@ -13,7 +13,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force"
   },
   "dependencies": {
     "@meal-planner/shared": "workspace:*",
