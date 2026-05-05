@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { listMeals, deleteMeal } from '../api/meals';
 import { useAuth } from '../context/AuthContext';
+import ImportMealsDialog from '../components/ImportMealsDialog';
 import type { Meal } from '@meal-planner/shared';
 
 export default function MealsPage() {
@@ -12,6 +13,7 @@ export default function MealsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showImport, setShowImport] = useState(false);
 
   const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
   const isParent = currentMembership?.role === 'PARENT';
@@ -48,13 +50,29 @@ export default function MealsPage() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Meal Library</h1>
-        <button
-          onClick={() => navigate(`/meals/${familyId}/new`)}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Add Meal
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+          >
+            Import CSV
+          </button>
+          <button
+            onClick={() => navigate(`/meals/${familyId}/new`)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Add Meal
+          </button>
+        </div>
       </div>
+
+      {showImport && familyId && (
+        <ImportMealsDialog
+          familyId={familyId}
+          onClose={() => setShowImport(false)}
+          onImported={() => loadMeals()}
+        />
+      )}
 
       <input
         type="text"

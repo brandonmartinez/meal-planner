@@ -10,14 +10,19 @@ interface DayCardProps {
   onRemove: (suggestionId: string) => void;
 }
 
+function parseDateOnly(dateStr: string): Date {
+  // Accepts either "YYYY-MM-DD" or full ISO ("YYYY-MM-DDTHH:mm:ss.sssZ").
+  // Always interprets as local midnight so day-of-week/display is stable.
+  const ymd = dateStr.slice(0, 10);
+  return new Date(ymd + 'T00:00:00');
+}
+
 function formatDayDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return parseDateOnly(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function getDayName(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return DAYS_OF_WEEK[d.getDay()];
+  return DAYS_OF_WEEK[parseDateOnly(dateStr).getDay()];
 }
 
 export default function DayCard({ day, isParent, currentUserId, onAddMeal, onApprove, onRemove }: DayCardProps) {

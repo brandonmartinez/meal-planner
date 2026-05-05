@@ -44,3 +44,28 @@ export async function deleteMeal(familyId: string, mealId: string): Promise<void
   });
   if (!res.ok) throw new Error('Failed to delete meal');
 }
+
+export interface ImportMealsResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: { name: string; error: string }[];
+}
+
+export async function importMeals(
+  familyId: string,
+  meals: { name: string; description?: string; ingredients?: Omit<MealIngredient, 'id' | 'mealId'>[] }[],
+  mode: 'skip' | 'replace' = 'skip'
+): Promise<ImportMealsResult> {
+  const res = await fetch(`${BASE}/${familyId}/meals/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ meals, mode }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to import meals');
+  }
+  return res.json();
+}

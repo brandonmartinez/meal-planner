@@ -110,6 +110,68 @@ export async function deleteMeal(mealId: string, familyId: string) {
   await prisma.meal.delete({ where: { id: mealId } });
 }
 
+export async function importMeals(
+  familyId: string,
+  meals: {
+    name: string;
+    description?: string;
+    ingredients?: { name: string; quantity?: string; unit?: string; category?: string }[];
+  }[],
+  options?: { mode?: 'skip' | 'replace' }
+) {
+  const mode = options?.mode ?? 'skip';
+  const result = { created: 0, updated: 0, skipped: 0, errors: [] as { name: string; error: string }[] };
+
+  for (const data of meals) {
+    try {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const existing = await tx.meal.findFirst({
+          where: { familyId, name: data.name, isFreeDayPlaceholder: false },
+        });
+
+        if (existing) {
+          if (mode === 'skip') {
+            result.skipped++;
+            return;
+          }
+          // replace: update description and reset ingredients
+          await tx.mealIngredient.deleteMany({ where: { mealId: existing.id } });
+          await tx.meal.update({
+            where: { id: existing.id },
+            data: {
+              description: data.description,
+              ingredients: data.ingredients?.length
+                ? { create: data.ingredients }
+                : undefined,
+            },
+          });
+          result.updated++;
+          return;
+        }
+
+        await tx.meal.create({
+          data: {
+            name: data.name,
+            description: data.description,
+            familyId,
+            ingredients: data.ingredients?.length
+              ? { create: data.ingredients }
+              : undefined,
+          },
+        });
+        result.created++;
+      });
+    } catch (err) {
+      result.errors.push({
+        name: data.name,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
+
+  return result;
+}
+
 export async function createFreeDayMeal(familyId: string) {
   const existing = await prisma.meal.findFirst({
     where: { familyId, isFreeDayPlaceholder: true },

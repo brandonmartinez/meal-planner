@@ -42,6 +42,29 @@ const updateMealSchema = z.object({
     .optional(),
 });
 
+const importMealsSchema = z.object({
+  mode: z.enum(['skip', 'replace']).optional(),
+  meals: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        ingredients: z
+          .array(
+            z.object({
+              name: z.string().min(1),
+              quantity: z.string().optional(),
+              unit: z.string().optional(),
+              category: z.string().optional(),
+            })
+          )
+          .optional(),
+      })
+    )
+    .min(1)
+    .max(500),
+});
+
 // List meals for a family
 mealsRouter.get('/:familyId/meals', authenticateJWT, requireMembership, async (req: Request, res: Response) => {
   try {
@@ -67,6 +90,22 @@ mealsRouter.post('/:familyId/meals', authenticateJWT, requireMembership, async (
       return;
     }
     res.status(500).json({ error: 'Failed to create meal' });
+  }
+});
+
+// Import meals (bulk)
+mealsRouter.post('/:familyId/meals/import', authenticateJWT, requireMembership, async (req: Request, res: Response) => {
+  try {
+    const data = importMealsSchema.parse(req.body);
+    const familyId = paramStr(req.params.familyId);
+    const result = await mealService.importMeals(familyId, data.meals, { mode: data.mode });
+    res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation failed', details: error.errors });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to import meals' });
   }
 });
 
