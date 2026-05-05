@@ -35,10 +35,13 @@ COPY --from=builder /app/packages/shared/dist ./node_modules/@meal-planner/share
 COPY --from=builder /app/packages/shared/package.json ./node_modules/@meal-planner/shared/package.json
 COPY --from=builder /app/packages/web/dist ./public
 COPY --from=builder /app/packages/api/package.json ./package.json
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
