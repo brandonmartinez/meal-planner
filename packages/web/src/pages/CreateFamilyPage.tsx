@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createFamily } from '../api/families.js';
+import { useAuth } from '../context/AuthContext';
 
 export default function CreateFamilyPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { refresh } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || loading) return;
     setLoading(true);
     setError('');
     try {
       await createFamily(name.trim());
+      await refresh();
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create family');

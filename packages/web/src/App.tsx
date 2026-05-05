@@ -41,10 +41,10 @@ function HomeRedirect() {
 
   if (familyId) {
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(today.setDate(diff));
-    const weekStart = monday.toISOString().split('T')[0];
+    today.setDate(today.getDate() - day);
+    const weekStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     return <Navigate to={`/week/${familyId}/${weekStart}`} replace />;
   }
 
