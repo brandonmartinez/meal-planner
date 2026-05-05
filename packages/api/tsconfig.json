@@ -5,13 +5,23 @@
     "rootDir": "./src",
     "module": "ESNext",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "composite": false,
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "tests/**"
+  ],
   "references": [
-    { "path": "../shared" }
+    {
+      "path": "../shared"
+    }
   ]
 }

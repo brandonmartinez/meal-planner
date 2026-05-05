@@ -36,10 +36,12 @@ jobs:
       - run: pnpm --filter @meal-planner/api run db:generate
       - run: pnpm --filter @meal-planner/api run build
       - run: pnpm --filter @meal-planner/web run build
-      - run: pnpm --filter @meal-planner/api run test --run
+      - run: pnpm --filter @meal-planner/shared run test
+      - run: pnpm --filter @meal-planner/api run test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meal_planner_test
           JWT_SECRET: test-secret
+      - run: pnpm --filter @meal-planner/web run test
 
   build-and-push:
     needs: test
