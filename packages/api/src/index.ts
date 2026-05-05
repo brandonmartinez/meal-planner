@@ -48,7 +48,7 @@ const publicPath = path.resolve(__dirname, '../public');
 
 if (existsSync(webDistPath)) {
   app.use(express.static(webDistPath));
-  app.get('*', (_req, res) => {
+  app.get('{*splat}', (_req, res) => {
     res.sendFile(path.join(webDistPath, 'index.html'));
   });
 } else if (existsSync(publicPath)) {
