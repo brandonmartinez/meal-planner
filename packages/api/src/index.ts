@@ -53,6 +53,9 @@ if (existsSync(webDistPath)) {
   });
 } else if (existsSync(publicPath)) {
   app.use(express.static(publicPath));
+  app.get('{*splat}', (_req, res) => {
+    res.sendFile(path.join(publicPath, 'index.html'));
+  });
 }
 
 // Start server

@@ -21,20 +21,21 @@ RUN pnpm --filter @meal-planner/shared run build
 RUN pnpm --filter @meal-planner/api run db:generate
 RUN pnpm --filter @meal-planner/api run build
 RUN pnpm --filter @meal-planner/web run build
+# Create a self-contained production deploy (resolves pnpm symlinks)
+RUN pnpm --filter @meal-planner/api deploy --prod /app/deploy
+# Generate Prisma client within the deploy directory
+RUN cd /app/deploy && npx prisma generate --schema=./prisma/schema.prisma
 
 # Stage 3: Production
 FROM node:22-alpine AS runner
-RUN corepack enable
 WORKDIR /app
 ENV NODE_ENV=production
 
+COPY --from=builder /app/deploy/node_modules ./node_modules
+COPY --from=builder /app/deploy/package.json ./package.json
 COPY --from=builder /app/packages/api/dist ./dist
 COPY --from=builder /app/packages/api/prisma ./prisma
-COPY --from=builder /app/packages/api/node_modules ./node_modules
-COPY --from=builder /app/packages/shared/dist ./node_modules/@meal-planner/shared/dist
-COPY --from=builder /app/packages/shared/package.json ./node_modules/@meal-planner/shared/package.json
 COPY --from=builder /app/packages/web/dist ./public
-COPY --from=builder /app/packages/api/package.json ./package.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
