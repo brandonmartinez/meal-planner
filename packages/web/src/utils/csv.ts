@@ -3,11 +3,11 @@
 export function parseCSV(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
-  let field = '';
+  let field = "";
   let inQuotes = false;
 
   // Normalize line endings
-  const text = input.replace(/\r\n?/g, '\n');
+  const text = input.replace(/\r\n?/g, "\n");
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -28,14 +28,14 @@ export function parseCSV(input: string): string[][] {
 
     if (ch === '"') {
       inQuotes = true;
-    } else if (ch === ',') {
+    } else if (ch === ",") {
       row.push(field);
-      field = '';
-    } else if (ch === '\n') {
+      field = "";
+    } else if (ch === "\n") {
       row.push(field);
       rows.push(row);
       row = [];
-      field = '';
+      field = "";
     } else {
       field += ch;
     }
@@ -48,13 +48,18 @@ export function parseCSV(input: string): string[][] {
   }
 
   // Drop fully-empty trailing rows
-  return rows.filter(r => r.some(c => c.trim().length > 0));
+  return rows.filter((r) => r.some((c) => c.trim().length > 0));
 }
 
 export interface ParsedImportMeal {
   name: string;
   description?: string;
-  ingredients?: { name: string; quantity?: string; unit?: string; category?: string }[];
+  ingredients?: {
+    name: string;
+    quantity?: string;
+    unit?: string;
+    category?: string;
+  }[];
 }
 
 export interface ParseMealsCSVResult {
@@ -78,42 +83,44 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const rows = parseCSV(input);
   const warnings: string[] = [];
   if (rows.length === 0) {
-    return { meals: [], warnings: ['CSV is empty'] };
+    return { meals: [], warnings: ["CSV is empty"] };
   }
 
-  const header = rows[0].map(h => h.trim().toLowerCase());
+  const header = rows[0].map((h) => h.trim().toLowerCase());
   const aliases: Record<string, string[]> = {
-    meal: ['meal', 'name', 'mealname', 'meal name'],
-    description: ['description', 'desc'],
-    ingredient: ['ingredient', 'ingredientname', 'ingredient name', 'item'],
-    quantity: ['quantity', 'qty', 'amount'],
-    unit: ['unit', 'units'],
-    category: ['category', 'cat'],
+    meal: ["meal", "name", "mealname", "meal name"],
+    description: ["description", "desc"],
+    ingredient: ["ingredient", "ingredientname", "ingredient name", "item"],
+    quantity: ["quantity", "qty", "amount"],
+    unit: ["unit", "units"],
+    category: ["category", "cat"],
   };
 
   const colIndex: Record<string, number> = {};
   for (const [key, options] of Object.entries(aliases)) {
-    colIndex[key] = header.findIndex(h => options.includes(h));
+    colIndex[key] = header.findIndex((h) => options.includes(h));
   }
 
   if (colIndex.meal === -1) {
     return {
       meals: [],
-      warnings: ['CSV is missing a required "meal" column. Expected header: meal,description,ingredient,quantity,unit,category'],
+      warnings: [
+        'CSV is missing a required "meal" column. Expected header: meal,description,ingredient,quantity,unit,category',
+      ],
     };
   }
 
   const get = (row: string[], key: string): string => {
     const idx = colIndex[key];
-    if (idx === -1 || idx >= row.length) return '';
-    return (row[idx] ?? '').trim();
+    if (idx === -1 || idx >= row.length) return "";
+    return (row[idx] ?? "").trim();
   };
 
   const byName = new Map<string, ParsedImportMeal>();
 
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    const name = get(row, 'meal');
+    const name = get(row, "meal");
     if (!name) {
       warnings.push(`Row ${i + 1}: skipped (missing meal name)`);
       continue;
@@ -125,19 +132,21 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       byName.set(name.toLowerCase(), meal);
     }
 
-    const description = get(row, 'description');
+    const description = get(row, "description");
     if (description && !meal.description) {
       meal.description = description;
     }
 
-    const ingredient = get(row, 'ingredient');
+    const ingredient = get(row, "ingredient");
     if (ingredient) {
-      const ing: ParsedImportMeal['ingredients'] extends (infer U)[] | undefined ? U : never = {
+      const ing: ParsedImportMeal["ingredients"] extends (infer U)[] | undefined
+        ? U
+        : never = {
         name: ingredient,
       };
-      const quantity = get(row, 'quantity');
-      const unit = get(row, 'unit');
-      const category = get(row, 'category');
+      const quantity = get(row, "quantity");
+      const unit = get(row, "unit");
+      const category = get(row, "category");
       if (quantity) ing.quantity = quantity;
       if (unit) ing.unit = unit;
       if (category) ing.category = category.toLowerCase();
