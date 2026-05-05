@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Meal Planner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" ry="96" fill="url(#bg)"/>
+  <!-- Plate -->
+  <circle cx="256" cy="256" r="118" fill="#ffffff" opacity="0.18"/>
+  <circle cx="256" cy="256" r="92" fill="#ffffff"/>
+  <circle cx="256" cy="256" r="92" fill="none" stroke="#e5e7eb" stroke-width="6"/>
+  <!-- Fork (left) -->
+  <g fill="#ffffff" stroke="#1e293b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M120 96
+             L120 188
+             Q120 208 138 212
+             L138 416
+             Q138 428 150 428
+             Q162 428 162 416
+             L162 212
+             Q180 208 180 188
+             L180 96
+             Q180 90 174 90
+             Q168 90 168 96
+             L168 172
+             Q168 178 162 178
+             Q156 178 156 172
+             L156 96
+             Q156 90 150 90
+             Q144 90 144 96
+             L144 172
+             Q144 178 138 178
+             Q132 178 132 172
+             L132 96
+             Q132 90 126 90
+             Q120 90 120 96 Z"/>
+  </g>
+  <!-- Knife (right) -->
+  <g fill="#ffffff" stroke="#1e293b" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M392 88
+             Q372 88 360 112
+             Q344 144 344 200
+             Q344 232 360 240
+             L360 416
+             Q360 428 372 428
+             Q384 428 384 416
+             L384 240
+             Q400 236 400 200
+             L400 100
+             Q400 88 392 88 Z"/>
+  </g>
+</svg>
