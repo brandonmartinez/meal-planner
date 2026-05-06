@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -18,6 +19,7 @@ import ToastContainer from './components/Toast';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -28,6 +30,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    // Persist the requested URL so that after the Google OAuth round-trip
+    // (which leaves the SPA entirely) we can resume on the original page.
+    // Critical for invite links like /family/join/:token.
+    const target = `${location.pathname}${location.search}`;
+    if (target && target !== '/' && target.startsWith('/') && !target.startsWith('//')) {
+      try {
+        sessionStorage.setItem('postLoginRedirect', target);
+      } catch {
+        // ignore storage errors (private mode, quota)
+      }
+    }
     return <Navigate to="/login" replace />;
   }
 
@@ -36,6 +49,31 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function HomeRedirect() {
   const { hasFamilies } = useFamily();
+
+  // After Google OAuth, the API redirects back to "/" — not "/login" — so
+  // consume any persisted invite/post-login redirect here as well. Read
+  // once via a state initializer so React 19 StrictMode's double-render
+  // doesn't drop the value before the navigation commits.
+  const [stored] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('postLoginRedirect');
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (stored) {
+      try {
+        sessionStorage.removeItem('postLoginRedirect');
+      } catch {
+        // ignore
+      }
+    }
+  }, [stored]);
+
+  if (stored && stored.startsWith('/') && !stored.startsWith('//')) {
+    return <Navigate to={stored} replace />;
+  }
 
   if (!hasFamilies) {
     return <Navigate to="/family/create" replace />;

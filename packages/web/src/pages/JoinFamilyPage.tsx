@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { joinFamily } from '../api/families.js';
+import { useAuth } from '../context/AuthContext';
+import { useFamily } from '../hooks/useFamily';
 
 export default function JoinFamilyPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const { refresh } = useAuth();
+  const { families, switchFamily } = useFamily();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [decoded, setDecoded] = useState<{ familyId: string; role: string } | null>(null);
+  const [joinedFamilyId, setJoinedFamilyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -19,16 +24,28 @@ export default function JoinFamilyPage() {
     }
   }, [token]);
 
+  // After joinFamily + refresh, the AuthContext re-renders with the new
+  // membership. Wait for it to be observable before navigating, otherwise
+  // HomeRedirect renders with the still-stale user state and bounces the
+  // user to /family/create.
+  useEffect(() => {
+    if (!joinedFamilyId) return;
+    if (families.some(f => f.id === joinedFamilyId)) {
+      switchFamily(joinedFamilyId);
+      navigate('/', { replace: true });
+    }
+  }, [joinedFamilyId, families, navigate, switchFamily]);
+
   const handleJoin = async () => {
     if (!token || !decoded) return;
     setLoading(true);
     setError('');
     try {
       await joinFamily(decoded.familyId, token);
-      navigate('/');
+      await refresh();
+      setJoinedFamilyId(decoded.familyId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join family');
-    } finally {
       setLoading(false);
     }
   };

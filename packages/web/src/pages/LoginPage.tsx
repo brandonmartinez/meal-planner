@@ -8,7 +8,18 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      navigate('/');
+      let target = '/';
+      try {
+        const stored = sessionStorage.getItem('postLoginRedirect');
+        sessionStorage.removeItem('postLoginRedirect');
+        // Only honor safe relative paths (open-redirect protection).
+        if (stored && stored.startsWith('/') && !stored.startsWith('//')) {
+          target = stored;
+        }
+      } catch {
+        // ignore storage errors
+      }
+      navigate(target, { replace: true });
     }
   }, [user, loading, navigate]);
 
