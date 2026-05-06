@@ -1,4 +1,4 @@
-import prisma from '../config/database.js';
+import prisma from "../config/database.js";
 
 export async function generateGroceryList(familyId: string, weekStart: Date) {
   const start = new Date(weekStart);
@@ -24,21 +24,33 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
   });
 
   // Collect all ingredients
-  const ingredientMap = new Map<string, { name: string; quantity: string; unit: string; category: string; sources: Set<string> }>();
+  const ingredientMap = new Map<
+    string,
+    {
+      name: string;
+      quantity: string;
+      unit: string;
+      category: string;
+      sources: Set<string>;
+    }
+  >();
 
   for (const suggestion of suggestions) {
     for (const ing of suggestion.meal.ingredients) {
-      const key = `${ing.name.toLowerCase()}|${(ing.unit || '').toLowerCase()}`;
+      const key = `${ing.name.toLowerCase()}|${(ing.unit || "").toLowerCase()}`;
       const existing = ingredientMap.get(key);
       if (existing) {
-        existing.quantity = mergeQuantities(existing.quantity, ing.quantity || '');
+        existing.quantity = mergeQuantities(
+          existing.quantity,
+          ing.quantity || "",
+        );
         existing.sources.add(suggestion.meal.name);
       } else {
         ingredientMap.set(key, {
           name: ing.name,
-          quantity: ing.quantity || '',
-          unit: ing.unit || '',
-          category: ing.category || 'other',
+          quantity: ing.quantity || "",
+          unit: ing.unit || "",
+          category: ing.category || "other",
           sources: new Set([suggestion.meal.name]),
         });
       }
@@ -54,7 +66,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
   }
 
   // Create new grocery list
-  const items = Array.from(ingredientMap.values()).map(ing => ({
+  const items = Array.from(ingredientMap.values()).map((ing) => ({
     name: ing.name,
     quantity: ing.quantity || null,
     unit: ing.unit || null,
@@ -69,7 +81,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
       items: { create: items },
     },
     include: {
-      items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
+      items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
 
@@ -91,7 +103,7 @@ export async function getGroceryList(listId: string, familyId: string) {
   return prisma.groceryList.findFirst({
     where: { id: listId, familyId },
     include: {
-      items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
+      items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
 }
@@ -103,7 +115,7 @@ export async function getGroceryListByWeek(familyId: string, weekStart: Date) {
   return prisma.groceryList.findFirst({
     where: { familyId, weekStart: start },
     include: {
-      items: { orderBy: [{ category: 'asc' }, { name: 'asc' }] },
+      items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
 }
@@ -115,14 +127,17 @@ export async function toggleItem(itemId: string, checked: boolean) {
   });
 }
 
-export async function addCustomItem(groceryListId: string, data: { name: string; quantity?: string; unit?: string; category?: string }) {
+export async function addCustomItem(
+  groceryListId: string,
+  data: { name: string; quantity?: string; unit?: string; category?: string },
+) {
   return prisma.groceryItem.create({
     data: {
       groceryListId,
       name: data.name,
       quantity: data.quantity || null,
       unit: data.unit || null,
-      category: data.category || 'other',
+      category: data.category || "other",
       checked: false,
     },
   });
