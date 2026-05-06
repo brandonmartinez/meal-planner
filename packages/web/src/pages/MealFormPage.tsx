@@ -143,15 +143,15 @@ export default function MealFormPage() {
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {ingredients.map((ing, index) => (
-              <div key={index} className="flex gap-2 items-center">
+              <div key={index} className="flex flex-wrap gap-2 items-center">
                 <input
                   type="text"
                   value={ing.name}
                   onChange={e => handleIngredientChange(index, 'name', e.target.value)}
                   placeholder="Name"
-                  className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
+                  className="flex-1 min-w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
                 <input
                   type="text"
@@ -170,7 +170,7 @@ export default function MealFormPage() {
                 <select
                   value={ing.category}
                   onChange={e => handleIngredientChange(index, 'category', e.target.value)}
-                  className="w-28 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
+                  className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
                 >
                   <option value="">Category</option>
                   {INGREDIENT_CATEGORIES.map(cat => (
@@ -180,7 +180,8 @@ export default function MealFormPage() {
                 <button
                   type="button"
                   onClick={() => removeIngredient(index)}
-                  className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm px-2"
+                  className="ml-auto text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-base px-3 py-1"
+                  aria-label="Remove ingredient"
                 >
                   ✕
                 </button>
@@ -189,18 +190,18 @@ export default function MealFormPage() {
           </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             type="submit"
             disabled={submitting}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
           >
             {submitting ? 'Saving...' : isEdit ? 'Update Meal' : 'Create Meal'}
           </button>
           <button
             type="button"
             onClick={() => navigate('/meals')}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+            className="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
           >
             Cancel
           </button>

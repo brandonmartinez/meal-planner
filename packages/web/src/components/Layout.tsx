@@ -1,7 +1,16 @@
 import { ReactNode } from 'react';
 import Navigation from './Navigation';
 
+const LAUNCH_YEAR = 2026;
+
+function copyrightYears(currentYear: number): string {
+  return currentYear <= LAUNCH_YEAR
+    ? `© ${LAUNCH_YEAR}`
+    : `© ${LAUNCH_YEAR} – ${currentYear}`;
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
+  const currentYear = new Date().getFullYear();
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       <Navigation />
@@ -9,7 +18,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
       <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-4 text-center text-xs text-gray-400 dark:text-gray-500">
-        Meal Planner © 2024
+        Meal Planner {copyrightYears(currentYear)}
       </footer>
     </div>
   );

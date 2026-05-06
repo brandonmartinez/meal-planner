@@ -119,3 +119,37 @@ weekPlanRouter.delete(
     }
   },
 );
+
+// PATCH /api/families/:familyId/suggestions/:suggestionId/move
+weekPlanRouter.patch(
+  "/:familyId/suggestions/:suggestionId/move",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const suggestionId = paramStr(req.params.suggestionId);
+      const { dayPlanId } = req.body ?? {};
+      if (typeof dayPlanId !== "string" || dayPlanId.length === 0) {
+        res.status(400).json({ error: "dayPlanId is required" });
+        return;
+      }
+      const user = req.user as { id: string };
+      const membership = (req as unknown as { membership?: { role: string } })
+        .membership;
+      const isParent = membership?.role === "PARENT";
+
+      const suggestion = await weekPlanService.moveSuggestion(
+        suggestionId,
+        dayPlanId,
+        { id: user.id, isParent },
+      );
+      res.json(suggestion);
+    } catch (error) {
+      if (error instanceof weekPlanService.MoveSuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to move suggestion" });
+    }
+  },
+);

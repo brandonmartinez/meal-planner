@@ -130,6 +130,76 @@ export async function removeSuggestion(suggestionId: string) {
   });
 }
 
+export class MoveSuggestionError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "MoveSuggestionError";
+  }
+}
+
+export async function moveSuggestion(
+  suggestionId: string,
+  targetDayPlanId: string,
+  actor: { id: string; isParent: boolean },
+) {
+  const suggestion = await prisma.mealSuggestion.findUnique({
+    where: { id: suggestionId },
+    include: { dayPlan: { select: { weekPlanId: true } } },
+  });
+  if (!suggestion) {
+    throw new MoveSuggestionError(404, "Suggestion not found");
+  }
+  if (suggestion.approved) {
+    throw new MoveSuggestionError(400, "Cannot move an approved suggestion");
+  }
+  if (!actor.isParent && suggestion.userId !== actor.id) {
+    throw new MoveSuggestionError(
+      403,
+      "Only the suggester or a parent can move this suggestion",
+    );
+  }
+
+  if (suggestion.dayPlanId === targetDayPlanId) {
+    return prisma.mealSuggestion.findUnique({
+      where: { id: suggestionId },
+      include: {
+        meal: true,
+        suggestedBy: {
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        },
+      },
+    });
+  }
+
+  const targetDay = await prisma.dayPlan.findUnique({
+    where: { id: targetDayPlanId },
+    select: { id: true, weekPlanId: true },
+  });
+  if (!targetDay) {
+    throw new MoveSuggestionError(404, "Target day not found");
+  }
+  if (targetDay.weekPlanId !== suggestion.dayPlan.weekPlanId) {
+    throw new MoveSuggestionError(
+      400,
+      "Target day must be in the same week plan",
+    );
+  }
+
+  return prisma.mealSuggestion.update({
+    where: { id: suggestionId },
+    data: { dayPlanId: targetDayPlanId },
+    include: {
+      meal: true,
+      suggestedBy: {
+        select: { id: true, name: true, email: true, avatarUrl: true },
+      },
+    },
+  });
+}
+
 export async function getApprovedMealsForRange(
   familyId: string,
   startDate: Date,

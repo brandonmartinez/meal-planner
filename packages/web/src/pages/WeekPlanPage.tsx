@@ -1,13 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import {
+    DndContext,
+    PointerSensor,
+    TouchSensor,
+    KeyboardSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import { useWeek } from '../context/WeekContext';
-import { createWeekPlan, addSuggestion, approveSuggestion, removeSuggestion } from '../api/weekPlan';
+import {
+    createWeekPlan,
+    addSuggestion,
+    approveSuggestion,
+    removeSuggestion,
+    moveSuggestion,
+} from '../api/weekPlan';
 import { formatWeekRange } from '../utils/date';
 import DayCard from '../components/DayCard';
 import MealPicker from '../components/MealPicker';
-import type { WeekPlan, DayPlan } from '@meal-planner/shared';
+import type { WeekPlan, DayPlan, MealSuggestion } from '@meal-planner/shared';
 
 export default function WeekPlanPage() {
     const { familyId, hasFamilies } = useFamily();
@@ -69,6 +84,50 @@ export default function WeekPlanPage() {
         }
     };
 
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+        useSensor(KeyboardSensor),
+    );
+
+    const handleDragEnd = async (event: DragEndEvent) => {
+        if (!familyId) return;
+        const { active, over } = event;
+        if (!over) return;
+        const sourceDayId = active.data.current?.dayPlanId as string | undefined;
+        const targetDayId = over.id as string;
+        const suggestionId = active.id as string;
+        if (!sourceDayId || sourceDayId === targetDayId) return;
+
+        // Optimistic update: move the suggestion locally before the network call
+        const snapshot = weekPlan;
+        setWeekPlan(prev => {
+            if (!prev?.days) return prev;
+            let moving: MealSuggestion | undefined;
+            const days = prev.days.map(d => {
+                if (d.id !== sourceDayId) return d;
+                const remaining: MealSuggestion[] = [];
+                for (const s of d.suggestions ?? []) {
+                    if (s.id === suggestionId) moving = { ...s, dayPlanId: targetDayId };
+                    else remaining.push(s);
+                }
+                return { ...d, suggestions: remaining };
+            }).map(d => {
+                if (d.id !== targetDayId || !moving) return d;
+                return { ...d, suggestions: [...(d.suggestions ?? []), moving] };
+            });
+            return { ...prev, days };
+        });
+
+        try {
+            await moveSuggestion(familyId, suggestionId, targetDayId);
+            await loadWeekPlan();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to move suggestion');
+            setWeekPlan(snapshot);
+        }
+    };
+
     if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
     if (loading) {
@@ -97,19 +156,21 @@ export default function WeekPlanPage() {
 
             {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-                {weekPlan?.days?.map((day: DayPlan) => (
-                    <DayCard
-                        key={day.id}
-                        day={day}
-                        isParent={isParent}
-                        currentUserId={user?.id || ''}
-                        onAddMeal={() => setPickerDayPlanId(day.id)}
-                        onApprove={handleApprove}
-                        onRemove={handleRemove}
-                    />
-                ))}
-            </div>
+            <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {weekPlan?.days?.map((day: DayPlan) => (
+                        <DayCard
+                            key={day.id}
+                            day={day}
+                            isParent={isParent}
+                            currentUserId={user?.id || ''}
+                            onAddMeal={() => setPickerDayPlanId(day.id)}
+                            onApprove={handleApprove}
+                            onRemove={handleRemove}
+                        />
+                    ))}
+                </div>
+            </DndContext>
 
             {pickerDayPlanId && familyId && (
                 <MealPicker

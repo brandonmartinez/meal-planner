@@ -9,6 +9,24 @@
   .dark body {
     @apply bg-gray-900 text-gray-100;
   }
+
+  /*
+   * Restore the pre-Tailwind-v4 default of cursor: pointer on interactive
+   * controls. Tailwind v4 changed the base style to cursor: default, which
+   * makes buttons and similar elements feel unresponsive on hover.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 @keyframes slideIn {

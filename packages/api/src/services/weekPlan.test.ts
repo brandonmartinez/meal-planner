@@ -11,6 +11,8 @@ const {
   addSuggestion,
   approveSuggestion,
   removeSuggestion,
+  moveSuggestion,
+  MoveSuggestionError,
   getApprovedMealsForRange,
 } = await import("./weekPlan.js");
 
@@ -154,6 +156,132 @@ describe("suggestions", () => {
     expect(prismaMock.mealSuggestion.delete).toHaveBeenCalledWith({
       where: { id: "s-1" },
     });
+  });
+});
+
+describe("moveSuggestion", () => {
+  const baseSuggestion = {
+    id: "s-1",
+    userId: "user-1",
+    approved: false,
+    dayPlanId: "day-1",
+    dayPlan: { weekPlanId: "wp-1" },
+  };
+
+  it("moves to a new day in the same week when actor is the suggester", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+      id: "day-2",
+      weekPlanId: "wp-1",
+    } as never);
+    prismaMock.mealSuggestion.update.mockResolvedValueOnce({
+      id: "s-1",
+      dayPlanId: "day-2",
+    } as never);
+
+    const result = await moveSuggestion("s-1", "day-2", {
+      id: "user-1",
+      isParent: false,
+    });
+
+    expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1" },
+        data: { dayPlanId: "day-2" },
+      }),
+    );
+    expect(result).toEqual(expect.objectContaining({ dayPlanId: "day-2" }));
+  });
+
+  it("allows a parent to move someone else's suggestion", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+      id: "day-2",
+      weekPlanId: "wp-1",
+    } as never);
+    prismaMock.mealSuggestion.update.mockResolvedValueOnce({} as never);
+
+    await expect(
+      moveSuggestion("s-1", "day-2", { id: "other-user", isParent: true }),
+    ).resolves.toBeDefined();
+  });
+
+  it("forbids non-parent moving someone else's suggestion", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    await expect(
+      moveSuggestion("s-1", "day-2", { id: "other-user", isParent: false }),
+    ).rejects.toMatchObject({
+      name: "MoveSuggestionError",
+      status: 403,
+    });
+    expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects moving an approved suggestion", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce({
+      ...baseSuggestion,
+      approved: true,
+    } as never);
+    await expect(
+      moveSuggestion("s-1", "day-2", { id: "user-1", isParent: true }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects target day in a different week plan", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+      id: "day-2",
+      weekPlanId: "wp-OTHER",
+    } as never);
+    await expect(
+      moveSuggestion("s-1", "day-2", { id: "user-1", isParent: false }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the suggestion is missing", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(null);
+    await expect(
+      moveSuggestion("missing", "day-2", { id: "user-1", isParent: true }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("returns 404 when the target day is missing", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    prismaMock.dayPlan.findUnique.mockResolvedValueOnce(null);
+    await expect(
+      moveSuggestion("s-1", "missing", { id: "user-1", isParent: true }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("is a no-op when the target day matches the current day", async () => {
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+      baseSuggestion as never,
+    );
+    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce({
+      id: "s-1",
+      dayPlanId: "day-1",
+    } as never);
+    const result = await moveSuggestion("s-1", "day-1", {
+      id: "user-1",
+      isParent: false,
+    });
+    expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({ dayPlanId: "day-1" }));
+  });
+
+  it("exports MoveSuggestionError as a class", () => {
+    expect(new MoveSuggestionError(400, "x")).toBeInstanceOf(Error);
   });
 });
 

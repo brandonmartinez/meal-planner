@@ -75,4 +75,37 @@ describe("weekPlan api client", () => {
     await wpApi.removeSuggestion("f-1", "s-1");
     expect(method).toBe("DELETE");
   });
+
+  it("moveSuggestion sends PATCH with dayPlanId", async () => {
+    let method = "";
+    let body: unknown;
+    server.use(
+      http.patch(
+        "/api/families/f-1/suggestions/s-1/move",
+        async ({ request }) => {
+          method = request.method;
+          body = await request.json();
+          return HttpResponse.json({ id: "s-1", dayPlanId: "d-2" });
+        },
+      ),
+    );
+    const result = await wpApi.moveSuggestion("f-1", "s-1", "d-2");
+    expect(method).toBe("PATCH");
+    expect(body).toEqual({ dayPlanId: "d-2" });
+    expect(result).toEqual({ id: "s-1", dayPlanId: "d-2" });
+  });
+
+  it("moveSuggestion surfaces server error message on failure", async () => {
+    server.use(
+      http.patch("/api/families/f-1/suggestions/s-1/move", () =>
+        HttpResponse.json(
+          { error: "Cannot move an approved suggestion" },
+          { status: 400 },
+        ),
+      ),
+    );
+    await expect(wpApi.moveSuggestion("f-1", "s-1", "d-2")).rejects.toThrow(
+      /approved/,
+    );
+  });
 });

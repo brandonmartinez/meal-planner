@@ -232,13 +232,13 @@ export default function GroceryListPage() {
                     <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-6">
                         <h3 className="text-md font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Custom Item</h3>
                         <form onSubmit={handleAddItem} className="space-y-3">
-                            <div className="flex gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-[1fr_5rem_6rem] gap-2">
                                 <input
                                     type="text"
                                     value={newItemName}
                                     onChange={e => setNewItemName(e.target.value)}
                                     placeholder="Item name *"
-                                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     required
                                 />
                                 <input
@@ -246,21 +246,21 @@ export default function GroceryListPage() {
                                     value={newItemQuantity}
                                     onChange={e => setNewItemQuantity(e.target.value)}
                                     placeholder="Qty"
-                                    className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                                 <input
                                     type="text"
                                     value={newItemUnit}
                                     onChange={e => setNewItemUnit(e.target.value)}
                                     placeholder="Unit"
-                                    className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                             </div>
-                            <div className="flex gap-2 items-center">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                                 <select
                                     value={newItemCategory}
                                     onChange={e => setNewItemCategory(e.target.value)}
-                                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 >
                                     {INGREDIENT_CATEGORIES.map(cat => (
                                         <option key={cat} value={cat}>{CATEGORY_EMOJIS[cat]} {cat}</option>
@@ -268,7 +268,7 @@ export default function GroceryListPage() {
                                 </select>
                                 <button
                                     type="submit"
-                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+                                    className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
                                 >
                                     Add
                                 </button>
