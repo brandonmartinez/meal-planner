@@ -129,6 +129,7 @@ model GroceryItem {
   unit          String?
   category      String?
   checked       Boolean     @default(false)
+  sources       String[]    @default([])
   groceryList   GroceryList @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
   groceryListId String
 }

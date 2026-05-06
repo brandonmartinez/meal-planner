@@ -203,7 +203,7 @@ export default function GroceryListPage() {
                                             onChange={() => handleToggle(item)}
                                             className="h-5 w-5 text-green-600 rounded"
                                         />
-                                        <span className={`flex-1 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
+                                        <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
                                             {item.name}
                                             {item.quantity && (
                                                 <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
@@ -211,6 +211,14 @@ export default function GroceryListPage() {
                                                 </span>
                                             )}
                                         </span>
+                                        {item.sources && item.sources.length > 0 && (
+                                            <span
+                                                className="hidden sm:block max-w-[40%] truncate text-xs text-gray-400 dark:text-gray-500 italic"
+                                                title={item.sources.join(', ')}
+                                            >
+                                                {item.sources.join(', ')}
+                                            </span>
+                                        )}
                                         <button
                                             onClick={() => handleRemove(item.id)}
                                             className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"

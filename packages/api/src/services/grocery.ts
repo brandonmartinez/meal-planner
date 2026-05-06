@@ -24,7 +24,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
   });
 
   // Collect all ingredients
-  const ingredientMap = new Map<string, { name: string; quantity: string; unit: string; category: string }>();
+  const ingredientMap = new Map<string, { name: string; quantity: string; unit: string; category: string; sources: Set<string> }>();
 
   for (const suggestion of suggestions) {
     for (const ing of suggestion.meal.ingredients) {
@@ -32,12 +32,14 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
       const existing = ingredientMap.get(key);
       if (existing) {
         existing.quantity = mergeQuantities(existing.quantity, ing.quantity || '');
+        existing.sources.add(suggestion.meal.name);
       } else {
         ingredientMap.set(key, {
           name: ing.name,
           quantity: ing.quantity || '',
           unit: ing.unit || '',
           category: ing.category || 'other',
+          sources: new Set([suggestion.meal.name]),
         });
       }
     }
@@ -57,6 +59,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
     quantity: ing.quantity || null,
     unit: ing.unit || null,
     category: ing.category || null,
+    sources: Array.from(ing.sources).sort(),
   }));
 
   const list = await prisma.groceryList.create({

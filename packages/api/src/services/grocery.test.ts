@@ -109,6 +109,41 @@ describe("generateGroceryList", () => {
     const lemon = arg.data.items.create.find((i) => i.name === "Lemon");
     expect(lemon?.quantity).toBe("a pinch + 2");
   });
+
+  it("tracks the source meal names for each ingredient", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: {
+          name: "Tacos",
+          ingredients: [
+            { name: "Onion", quantity: "1", unit: "", category: "produce" },
+          ],
+        },
+      },
+      {
+        meal: {
+          name: "Soup",
+          ingredients: [
+            { name: "onion", quantity: "2", unit: "", category: "produce" },
+            { name: "Carrot", quantity: "3", unit: "", category: "produce" },
+          ],
+        },
+      },
+    ] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl" } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
+      data: { items: { create: { name: string; sources: string[] }[] } };
+    };
+    const onion = arg.data.items.create.find(
+      (i) => i.name.toLowerCase() === "onion",
+    );
+    const carrot = arg.data.items.create.find((i) => i.name === "Carrot");
+    expect(onion?.sources).toEqual(["Soup", "Tacos"]);
+    expect(carrot?.sources).toEqual(["Soup"]);
+  });
 });
 
 describe("getGroceryList / getGroceryListByWeek", () => {

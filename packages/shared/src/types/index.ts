@@ -80,6 +80,7 @@ export interface GroceryItem {
   unit?: string;
   category?: string;
   checked: boolean;
+  sources?: string[];
   groceryListId: string;
 }
 
