@@ -32,6 +32,7 @@ jobs:
           node-version: 22
           cache: 'pnpm'
       - run: pnpm install
+      - run: pnpm -r run lint
       - run: pnpm --filter @meal-planner/shared run build
       - run: pnpm --filter @meal-planner/api run db:generate
       - run: pnpm --filter @meal-planner/api run build
