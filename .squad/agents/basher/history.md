@@ -15,6 +15,8 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 
 📌 Recent update (2026-06-30T15:08:40-04:00): Infra review filed #21 (devcontainer SSH), #22 (Docker harden), #23 (CI lint), #24 (compose drift), #25 (k8s immutable tags), and #26 (migrations out of startup).
 
+📌 Sprint 1 batch (2026-06-30T17:04:41-04:00): Shipped three infra issues, each on its own worktree + draft PR off main. (1) #32 `squad/32-devcontainer-default` PR #33 — made the devcontainer the default dev/test/run env; added `scripts/dc-exec.sh`, devcontainer-first READMEs, and a `CONTRIBUTING.md` no-host-runs rule (two approved run paths: devcontainer + CI). (2) #23 `squad/23-ci-lint` PR #35 — added repo-wide `pnpm -r run lint` to the CI `test` job, fail-fast before build/test, build order preserved. (3) #13 `squad/13-align-node-version` PR #36 — aligned the Node engine to `>=22`. All three left draft; CI is verification of record.
+
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->

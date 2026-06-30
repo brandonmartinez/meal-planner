@@ -15,6 +15,8 @@ Security / Auth Engineer. Owns the security posture: auth chain (`authenticateJW
 
 📌 Recent update (2026-06-30T15:08:40-04:00): Security review filed #6 (MCP security), #10 (rate limits), #11 (fail-closed secrets), and co-sourced #9 (IDOR) and #21 (SSH).
 
+📌 Sprint 1 batch (2026-06-30T17:04:41-04:00): Two roles this sprint. (1) Authored #11 `squad/11-fail-closed-secrets` PR #34 — production fail-closed guard so the API refuses to boot on missing JWT/OAuth secrets in prod. Left draft; Rusty (Lead) runs the independent security gate since I can't self-gate. (2) Served as the independent security gate on #9 (author was Livingston): APPROVED PR #37 — all six acceptance criteria met, 404-before-mutation family scoping, no bypass paths, no secret/PII logging. Rulings: TOCTOU check-then-act ACCEPTED (no cross-family re-parent path; recommended atomic updateMany/deleteMany as non-blocking defense-in-depth); the tightened suggester-or-parent `removeSuggestion` ruled in-scope (least-privilege).
+
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
