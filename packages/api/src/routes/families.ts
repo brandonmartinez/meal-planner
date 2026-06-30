@@ -5,6 +5,8 @@ import { requireMembership } from "../middleware/membership.js";
 import { inviteJoinLimiter } from "../middleware/rateLimit.js";
 import * as familyService from "../services/family.js";
 import * as apiKeyService from "../services/apiKey.js";
+import * as agentCredentialService from "../services/agentCredential.js";
+import { AGENT_SCOPES } from "../services/agentCredential.js";
 import { isValidTimezone } from "../services/weekPlan.js";
 
 export const familyRouter = Router();
@@ -48,6 +50,22 @@ const updateFamilySchema = z
 
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(100),
+});
+
+// Agent-credential management (parent-facing). Scopes are validated against the
+// three known agent scopes; an unknown scope is a 400, never silently dropped.
+// `expiresAt` is optional and, when present, must be in the future.
+const agentScopeSchema = z.nativeEnum(AGENT_SCOPES);
+
+const createAgentCredentialSchema = z.object({
+  name: z.string().min(1).max(100),
+  scopes: z.array(agentScopeSchema).min(1),
+  expiresAt: z.coerce
+    .date()
+    .refine((d) => d.getTime() > Date.now(), {
+      message: "expiresAt must be in the future",
+    })
+    .nullish(),
 });
 
 function paramStr(val: string | string[] | undefined): string {
@@ -308,6 +326,149 @@ familyRouter.delete(
       res.status(204).send();
     } catch {
       res.status(500).json({ error: "Failed to revoke API key" });
+    }
+  },
+);
+
+// ── Agent-credential management (scoped MCP credentials) ────────────────────
+// Parent-facing surface for provisioning the scoped agent credentials consumed
+// by `/api/agent`. Same auth chain as every other family sub-resource:
+// authenticateJWT → requireMembership → requireRole(PARENT). Non-parents and
+// cross-family callers are rejected by that chain before a handler runs.
+//
+// Secret handling: the raw key is returned exactly once (create + rotate) and
+// is NEVER logged or echoed on reads. List returns metadata only — the service
+// `select` omits the stored hash. Every mutation (create/rotate/revoke) is
+// written to the agent audit trail with actorType "parent".
+
+// Create agent credential — returns the raw key ONCE.
+familyRouter.post(
+  "/:familyId/agent-credentials",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    const familyId = paramStr(req.params.familyId);
+    try {
+      const { name, scopes, expiresAt } = createAgentCredentialSchema.parse(
+        req.body,
+      );
+      const user = req.user as unknown as AuthUser;
+      const credential = await agentCredentialService.createAgentCredential(
+        familyId,
+        user.id,
+        name,
+        scopes,
+        expiresAt ?? null,
+      );
+      await agentCredentialService.recordAgentAudit({
+        actorType: "parent",
+        credentialId: credential.id,
+        familyId,
+        action: "credential:create",
+        outcome: "allowed",
+        targetType: "agentCredential",
+        targetIds: [credential.id],
+      });
+      // `credential.key` is the one-time raw key. This is the only response that
+      // ever carries it.
+      res.status(201).json(credential);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      res.status(500).json({ error: "Failed to create agent credential" });
+    }
+  },
+);
+
+// List agent credentials — metadata only, never hashes or raw keys.
+familyRouter.get(
+  "/:familyId/agent-credentials",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    try {
+      const credentials = await agentCredentialService.listAgentCredentials(
+        paramStr(req.params.familyId),
+      );
+      res.json(credentials);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch agent credentials" });
+    }
+  },
+);
+
+// Rotate agent credential — issues a new raw key ONCE, invalidates the old one.
+familyRouter.post(
+  "/:familyId/agent-credentials/:credentialId/rotate",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    const familyId = paramStr(req.params.familyId);
+    const credentialId = paramStr(req.params.credentialId);
+    try {
+      const rotated = await agentCredentialService.rotateAgentCredential(
+        credentialId,
+        familyId,
+      );
+      if (!rotated) {
+        // Not found, revoked, or belongs to another family — uniform 404, no
+        // existence/ownership leak.
+        res.status(404).json({ error: "Agent credential not found" });
+        return;
+      }
+      await agentCredentialService.recordAgentAudit({
+        actorType: "parent",
+        credentialId: rotated.id,
+        familyId,
+        action: "credential:rotate",
+        outcome: "allowed",
+        targetType: "agentCredential",
+        targetIds: [rotated.id],
+      });
+      res.json(rotated);
+    } catch {
+      res.status(500).json({ error: "Failed to rotate agent credential" });
+    }
+  },
+);
+
+// Revoke agent credential — soft-revoke (stamps revokedAt). Idempotent.
+familyRouter.delete(
+  "/:familyId/agent-credentials/:credentialId",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    const familyId = paramStr(req.params.familyId);
+    const credentialId = paramStr(req.params.credentialId);
+    try {
+      const revoked = await agentCredentialService.revokeAgentCredential(
+        credentialId,
+        familyId,
+      );
+      if (!revoked) {
+        res.status(404).json({ error: "Agent credential not found" });
+        return;
+      }
+      await agentCredentialService.recordAgentAudit({
+        actorType: "parent",
+        credentialId: revoked.id,
+        familyId,
+        action: "credential:revoke",
+        outcome: "allowed",
+        targetType: "agentCredential",
+        targetIds: [revoked.id],
+      });
+      res.json(revoked);
+    } catch {
+      res.status(500).json({ error: "Failed to revoke agent credential" });
     }
   },
 );
