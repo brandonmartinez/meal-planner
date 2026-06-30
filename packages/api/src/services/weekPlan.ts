@@ -565,3 +565,100 @@ export async function getDisplayDays(
 
   return { days, maxUpdatedAt };
 }
+
+/* -------------------------------------------------------------------------- */
+/* MCP-friendly read/schedule surface                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Resolves the family's IANA timezone, falling back to "UTC" when the column
+ * is missing/empty or is not a timezone the runtime's Intl recognizes. Used by
+ * the current-week endpoint so "current" is computed in the family's local
+ * calendar rather than the server's.
+ */
+export async function getFamilyTimezone(familyId: string): Promise<string> {
+  const family = await prisma.family.findUnique({
+    where: { id: familyId },
+    select: { timezone: true },
+  });
+  const tz = family?.timezone;
+  return tz && isValidTimezone(tz) ? tz : "UTC";
+}
+
+/**
+ * Resolves the Monday (UTC-midnight) that starts the *current* week in the
+ * family's timezone. The family-local calendar date is read first, then used
+ * as a UTC anchor for the Monday math — this matches how `weekStart` is stored
+ * (UTC midnight) and stays correct for timezones both ahead of and behind UTC.
+ */
+export async function getCurrentWeekStart(
+  familyId: string,
+): Promise<{ tz: string; monday: Date }> {
+  const tz = await getFamilyTimezone(familyId);
+  const localDate = formatDateInTz(new Date(), tz); // YYYY-MM-DD in family tz
+  const localMidnightUtc = new Date(`${localDate}T00:00:00Z`);
+  return { tz, monday: getMondayOfWeek(localMidnightUtc) };
+}
+
+/**
+ * Returns the current week plan for a family, resolving "current" in the
+ * family's timezone and creating the (empty) week if it does not yet exist so
+ * MCP callers always receive a coherent, fully-formed week.
+ */
+export async function getCurrentWeekPlan(familyId: string) {
+  const { monday } = await getCurrentWeekStart(familyId);
+  return getOrCreateWeekPlan(familyId, monday);
+}
+
+/**
+ * Lists previous week plans in reverse-chronological order with bounded
+ * pagination. `before` (if given) is normalized to its week's Monday and the
+ * result contains only weeks strictly before it; otherwise the family's current
+ * week is used as the exclusive upper bound. `limit` is clamped to 1..52
+ * (default 8) so a single MCP call can never request an unbounded scan.
+ */
+export async function getPreviousWeekPlans(
+  familyId: string,
+  options: { before?: Date; limit?: number } = {},
+) {
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 8), 1), 52);
+  const beforeMonday = options.before
+    ? getMondayOfWeek(options.before)
+    : (await getCurrentWeekStart(familyId)).monday;
+
+  return prisma.weekPlan.findMany({
+    where: { familyId, weekStart: { lt: beforeMonday } },
+    orderBy: { weekStart: "desc" },
+    take: limit,
+    include: weekPlanInclude,
+  });
+}
+
+/**
+ * Schedules a meal onto a calendar `date` without the caller needing to know a
+ * `dayPlanId`. The service resolves (creating if missing) the WeekPlan for the
+ * Monday of `date`'s week, finds the matching DayPlan, then delegates to
+ * {@link addSuggestion} — which enforces that BOTH the day and the meal belong
+ * to `familyId`. A `date` that does not fall on a day in the resolved week
+ * yields a 400 (it should not happen, since the week always spans Mon–Sun).
+ */
+export async function scheduleMealByDate(
+  familyId: string,
+  mealId: string,
+  date: Date,
+  userId: string,
+) {
+  const monday = getMondayOfWeek(date);
+  const week = await getOrCreateWeekPlan(familyId, monday);
+
+  const target = new Date(date);
+  target.setUTCHours(0, 0, 0, 0);
+  const targetLabel = toDateString(target);
+
+  const day = week.days.find((d) => toDateString(d.date) === targetLabel);
+  if (!day) {
+    throw new SuggestionError(400, "Date is not within the resolved week");
+  }
+
+  return addSuggestion(familyId, day.id, mealId, userId);
+}
