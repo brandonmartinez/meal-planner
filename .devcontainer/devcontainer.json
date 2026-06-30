@@ -6,6 +6,10 @@
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
+    },
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest",
+      "gatewayPorts": "no"
     }
   },
   "customizations": {
@@ -24,8 +28,10 @@
     }
   },
   "postCreateCommand": "npm install -g pnpm@9 && pnpm install && pnpm db:generate",
-  "forwardPorts": [3001, 5173, 5432],
+  "postStartCommand": "bash .devcontainer/setup-sshd.sh",
+  "forwardPorts": [2222, 3001, 5173, 5432],
   "portsAttributes": {
+    "2222": { "label": "SSH" },
     "3001": { "label": "API" },
     "5173": { "label": "Frontend" },
     "5432": { "label": "PostgreSQL" }

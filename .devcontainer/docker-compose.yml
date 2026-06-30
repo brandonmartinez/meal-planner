@@ -4,6 +4,8 @@ services:
     volumes:
       - ..:/workspace:cached
     command: sleep infinity
+    ports:
+      - "127.0.0.1:2222:2222"
     depends_on:
       - db
     environment:
