@@ -27,7 +27,7 @@
 
 - **Owner:** Brandon Martinez
 - **Project:** meal-planner — family meal planning app with a public Magic Mirror display
-- **Stack:** pnpm monorepo (Node 20+, pnpm 9) — `packages/api` (Express 5 + Prisma 6 + PostgreSQL), `packages/web` (React 19 + Vite 6 + React Router v7 + Tailwind v4), `packages/shared` (`@meal-planner/shared` types/constants). TypeScript strict, ESM. Docker + k8s + CI (Postgres 16).
+- **Stack:** pnpm monorepo (Node 22+, pnpm 9) — `packages/api` (Express 5 + Prisma 6 + PostgreSQL), `packages/web` (React 19 + Vite 6 + React Router v7 + Tailwind v4), `packages/shared` (`@meal-planner/shared` types/constants). TypeScript strict, ESM. Docker + k8s + CI (Postgres 16).
 - **Cast:** Ocean's Eleven
 - **Created:** 2026-06-30
 
