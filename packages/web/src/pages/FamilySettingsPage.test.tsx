@@ -390,7 +390,7 @@ describe('FamilySettingsPage', () => {
     renderWithProviders(<FamilySettingsPage />);
 
     expect(await screen.findByRole('heading', { name: /agent credentials/i })).toBeInTheDocument();
-    expect(screen.getByText('Planner Bot')).toBeInTheDocument();
+    expect(await screen.findByText('Planner Bot')).toBeInTheDocument();
     expect(screen.getByText('Scheduler')).toBeInTheDocument();
     // Scope labels render as badges (appear in both the create form and the list).
     expect(screen.getAllByText(/read meal plans/i).length).toBeGreaterThan(0);
@@ -568,7 +568,7 @@ describe('FamilySettingsPage', () => {
     renderWithProviders(<FamilySettingsPage />);
 
     expect(await screen.findByText('Old Bot')).toBeInTheDocument();
-    expect(screen.getByText(/revoked/i)).toBeInTheDocument();
+    expect(screen.getByText('Revoked')).toBeInTheDocument();
     // No rotate/revoke actions for an already-revoked credential.
     expect(screen.queryByRole('button', { name: /rotate old bot/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /revoke old bot/i })).not.toBeInTheDocument();
