@@ -18,6 +18,7 @@
  */
 
 import type { Meal } from "./index.js";
+import type { AgentScope } from "../constants/index.js";
 
 /**
  * The actor type recorded when a suggestion is approved. A family member
@@ -75,6 +76,47 @@ export interface CreatedApiKeyDTO {
   name: string;
   createdAt: string;
   key: string;
+}
+
+/** A scoped MCP agent credential as returned by
+ *  `GET /families/:id/agent-credentials` (issue #6). Metadata only — the
+ *  hashed secret is never included, and the raw key is never present on the
+ *  list shape. All `Date` columns serialize as ISO strings; `expiresAt`,
+ *  `lastUsed`, and `revokedAt` are nullable and serialize as `string | null`.
+ *  `scopes` is the set of granted per-operation scopes. */
+export interface AgentCredentialListItemDTO {
+  id: string;
+  name: string;
+  scopes: AgentScope[];
+  /** User.id of the parent who provisioned the credential. */
+  createdBy: string;
+  expiresAt: string | null;
+  lastUsed: string | null;
+  /** Set (ISO string) once the credential is soft-revoked; `null` while live. */
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+/** The response from `POST /families/:id/agent-credentials` (create) and
+ *  `POST /families/:id/agent-credentials/:credentialId/rotate` (rotate). The
+ *  raw `key` is returned exactly once and never again — there is intentionally
+ *  no `lastUsed`/`revokedAt`, which is why this is distinct from
+ *  {@link AgentCredentialListItemDTO}. */
+export interface CreatedAgentCredentialDTO {
+  id: string;
+  name: string;
+  scopes: AgentScope[];
+  /** Raw key — shown to the parent exactly once. Never retrievable again. */
+  key: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+/** The response from `DELETE /families/:id/agent-credentials/:credentialId`
+ *  (soft revoke). Carries only the id and the revocation timestamp. */
+export interface RevokedAgentCredentialDTO {
+  id: string;
+  revokedAt: string | null;
 }
 
 /** A meal as returned by `GET /families/:id/meals`. The list endpoint does not

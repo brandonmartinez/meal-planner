@@ -337,4 +337,240 @@ describe('FamilySettingsPage', () => {
     expect(screen.getByRole('button', { name: /revoke mirror/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /revoke unused/i })).toBeInTheDocument();
   });
+
+  /* ---- Agent credentials (issue #6) --------------------------------------- */
+
+  function agentCred(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'cred-1',
+      name: 'Planner Bot',
+      scopes: ['meal_plan:read', 'meal_plan:schedule'],
+      createdBy: SELF_ID,
+      expiresAt: null,
+      lastUsed: null,
+      revokedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  /** Base handlers a parent needs for the page to load with no API keys. */
+  function parentBase() {
+    return [
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+    ];
+  }
+
+  it('renders agent credentials with scopes and metadata, never a raw key', async () => {
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json([
+          agentCred({
+            id: 'cred-used',
+            name: 'Planner Bot',
+            scopes: ['meal_plan:read', 'meal_plan:approve'],
+            lastUsed: '2026-02-20T00:00:00.000Z',
+            expiresAt: '2026-12-31T00:00:00.000Z',
+          }),
+          agentCred({
+            id: 'cred-fresh',
+            name: 'Scheduler',
+            scopes: ['meal_plan:schedule'],
+            lastUsed: null,
+            expiresAt: null,
+          }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    expect(await screen.findByRole('heading', { name: /agent credentials/i })).toBeInTheDocument();
+    expect(screen.getByText('Planner Bot')).toBeInTheDocument();
+    expect(screen.getByText('Scheduler')).toBeInTheDocument();
+    // Scope labels render as badges (appear in both the create form and the list).
+    expect(screen.getAllByText(/read meal plans/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/approve meals/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/schedule meals/i).length).toBeGreaterThan(0);
+    // Metadata surfaced.
+    expect(screen.getByText(/Last used/i)).toBeInTheDocument();
+    expect(screen.getByText(/Never used/i)).toBeInTheDocument();
+    expect(screen.getByText(/Expires/i)).toBeInTheDocument();
+    expect(screen.getByText(/No expiry/i)).toBeInTheDocument();
+    // Manage actions tied to each credential by name.
+    expect(screen.getByRole('button', { name: /rotate planner bot/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /revoke planner bot/i })).toBeInTheDocument();
+  });
+
+  it('never renders a key even if the list endpoint leaks one (guard)', async () => {
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json([
+          {
+            ...agentCred({ id: 'cred-leak', name: 'Leaky' }),
+            // Defensive: the list shape has no `key`, but if the server ever
+            // leaked one the UI must never render it.
+            key: 'agent-secret-should-not-render',
+          },
+        ]),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    expect(await screen.findByText('Leaky')).toBeInTheDocument();
+    // Masked indicator present; the leaked raw key is never rendered.
+    expect(screen.getAllByText('••••••••').length).toBeGreaterThan(0);
+    expect(screen.queryByText('agent-secret-should-not-render')).not.toBeInTheDocument();
+  });
+
+  it('creates an agent credential and reveals the key exactly once', async () => {
+    let createdBody: { name?: unknown; scopes?: unknown; expiresAt?: unknown } | undefined;
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () => HttpResponse.json([])),
+      http.post('/api/families/:id/agent-credentials', async ({ request }) => {
+        createdBody = (await request.json()) as typeof createdBody;
+        return HttpResponse.json(
+          {
+            id: 'cred-new',
+            name: 'Planner Bot',
+            scopes: ['meal_plan:read'],
+            key: 'agent-raw-key-xyz',
+            expiresAt: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.type(
+      await screen.findByPlaceholderText(/credential name/i),
+      'Planner Bot',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /create credential/i }));
+
+    // The raw key is revealed once with the "only time" messaging.
+    expect(await screen.findByText(/only time it will be shown/i)).toBeInTheDocument();
+    expect(screen.getByText('agent-raw-key-xyz')).toBeInTheDocument();
+    // Default scope (read) was sent.
+    await waitFor(() => expect(createdBody?.name).toBe('Planner Bot'));
+    expect(createdBody?.scopes).toEqual(['meal_plan:read']);
+  });
+
+  it('copies the freshly revealed agent key and confirms', async () => {
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () => HttpResponse.json([])),
+      http.post('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json(
+          {
+            id: 'cred-new',
+            name: 'Planner Bot',
+            scopes: ['meal_plan:read'],
+            key: 'agent-raw-key-xyz',
+            expiresAt: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          { status: 201 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.type(
+      await screen.findByPlaceholderText(/credential name/i),
+      'Planner Bot',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /create credential/i }));
+
+    const copyBtn = await screen.findByRole('button', { name: /copy agent key planner bot/i });
+    await userEvent.click(copyBtn);
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('agent-raw-key-xyz');
+    expect(await screen.findByText(/key copied to clipboard/i)).toBeInTheDocument();
+  });
+
+  it('rotates a credential and reveals the new key once', async () => {
+    let rotated = false;
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json([agentCred({ id: 'cred-1', name: 'Planner Bot' })]),
+      ),
+      http.post('/api/families/:id/agent-credentials/:credentialId/rotate', () => {
+        rotated = true;
+        return HttpResponse.json({
+          id: 'cred-1',
+          name: 'Planner Bot',
+          scopes: ['meal_plan:read', 'meal_plan:schedule'],
+          key: 'rotated-raw-key-789',
+          expiresAt: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        });
+      }),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /rotate planner bot/i }));
+
+    await waitFor(() => expect(rotated).toBe(true));
+    expect(await screen.findByText(/only time it will be shown/i)).toBeInTheDocument();
+    expect(screen.getByText('rotated-raw-key-789')).toBeInTheDocument();
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it('revokes a credential via DELETE after confirmation', async () => {
+    let deletedId: string | undefined;
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json([agentCred({ id: 'cred-1', name: 'Planner Bot' })]),
+      ),
+      http.delete('/api/families/:id/agent-credentials/:credentialId', ({ params }) => {
+        deletedId = params.credentialId as string;
+        return HttpResponse.json({ id: 'cred-1', revokedAt: '2026-03-01T00:00:00.000Z' });
+      }),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /revoke planner bot/i }));
+
+    await waitFor(() => expect(deletedId).toBe('cred-1'));
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it('marks a revoked credential and hides its manage actions', async () => {
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () =>
+        HttpResponse.json([
+          agentCred({
+            id: 'cred-revoked',
+            name: 'Old Bot',
+            revokedAt: '2026-02-01T00:00:00.000Z',
+          }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    expect(await screen.findByText('Old Bot')).toBeInTheDocument();
+    expect(screen.getByText(/revoked/i)).toBeInTheDocument();
+    // No rotate/revoke actions for an already-revoked credential.
+    expect(screen.queryByRole('button', { name: /rotate old bot/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /revoke old bot/i })).not.toBeInTheDocument();
+  });
 });

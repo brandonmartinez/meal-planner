@@ -89,4 +89,90 @@ describe("families api client", () => {
     const res = await familiesApi.createApiKey("f-1", "CI");
     expect(res.key).toBe("raw");
   });
+
+  it("listAgentCredentials GETs metadata", async () => {
+    server.use(
+      http.get("/api/families/f-1/agent-credentials", () =>
+        HttpResponse.json([
+          {
+            id: "c-1",
+            name: "Bot",
+            scopes: ["meal_plan:read"],
+            createdBy: "u-1",
+            expiresAt: null,
+            lastUsed: null,
+            revokedAt: null,
+            createdAt: "",
+          },
+        ]),
+      ),
+    );
+    const res = await familiesApi.listAgentCredentials("f-1");
+    expect(res).toHaveLength(1);
+    expect(res[0].scopes).toEqual(["meal_plan:read"]);
+  });
+
+  it("createAgentCredential POSTs name/scopes/expiresAt and returns the one-time key", async () => {
+    let body: unknown;
+    server.use(
+      http.post("/api/families/f-1/agent-credentials", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          {
+            id: "c-1",
+            name: "Bot",
+            scopes: ["meal_plan:read", "meal_plan:schedule"],
+            key: "raw-agent-key",
+            expiresAt: null,
+            createdAt: "",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const res = await familiesApi.createAgentCredential("f-1", {
+      name: "Bot",
+      scopes: ["meal_plan:read", "meal_plan:schedule"],
+      expiresAt: null,
+    });
+    expect(res.key).toBe("raw-agent-key");
+    expect(body).toEqual({
+      name: "Bot",
+      scopes: ["meal_plan:read", "meal_plan:schedule"],
+      expiresAt: null,
+    });
+  });
+
+  it("rotateAgentCredential POSTs to the rotate path and returns a new key", async () => {
+    let called = false;
+    server.use(
+      http.post(
+        "/api/families/f-1/agent-credentials/c-1/rotate",
+        () => {
+          called = true;
+          return HttpResponse.json({
+            id: "c-1",
+            name: "Bot",
+            scopes: ["meal_plan:read"],
+            key: "rotated-key",
+            expiresAt: null,
+            createdAt: "",
+          });
+        },
+      ),
+    );
+    const res = await familiesApi.rotateAgentCredential("f-1", "c-1");
+    expect(called).toBe(true);
+    expect(res.key).toBe("rotated-key");
+  });
+
+  it("revokeAgentCredential DELETEs and returns the revocation stamp", async () => {
+    server.use(
+      http.delete("/api/families/f-1/agent-credentials/c-1", () =>
+        HttpResponse.json({ id: "c-1", revokedAt: "2026-03-01T00:00:00.000Z" }),
+      ),
+    );
+    const res = await familiesApi.revokeAgentCredential("f-1", "c-1");
+    expect(res.revokedAt).toBe("2026-03-01T00:00:00.000Z");
+  });
 });
