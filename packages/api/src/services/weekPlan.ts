@@ -216,11 +216,63 @@ export async function getWeekPlan(familyId: string, weekStart: Date) {
   });
 }
 
+const suggestionInclude = Prisma.validator<Prisma.MealSuggestionInclude>()({
+  meal: true,
+  suggestedBy: {
+    select: { id: true, name: true, email: true, avatarUrl: true },
+  },
+});
+
+/**
+ * Domain error for suggestion mutations. Carries an HTTP status so routes can
+ * map known failures (not-found / forbidden / bad-input) to the right code
+ * instead of a generic 500. `MoveSuggestionError` extends this so existing
+ * `instanceof MoveSuggestionError` checks keep working.
+ */
+export class SuggestionError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SuggestionError";
+  }
+}
+
+export class MoveSuggestionError extends SuggestionError {
+  constructor(status: number, message: string) {
+    super(status, message);
+    this.name = "MoveSuggestionError";
+  }
+}
+
+/**
+ * Creates a suggestion on a day plan, enforcing that BOTH the target day plan
+ * and the meal belong to `familyId`. A non-owned dayPlanId or mealId yields a
+ * 404 rather than leaking existence or mutating across families.
+ */
 export async function addSuggestion(
+  familyId: string,
   dayPlanId: string,
   mealId: string,
   userId: string,
 ) {
+  const dayPlan = await prisma.dayPlan.findFirst({
+    where: { id: dayPlanId, weekPlan: { familyId } },
+    select: { id: true },
+  });
+  if (!dayPlan) {
+    throw new SuggestionError(404, "Day plan not found");
+  }
+
+  const meal = await prisma.meal.findFirst({
+    where: { id: mealId, familyId },
+    select: { id: true },
+  });
+  if (!meal) {
+    throw new SuggestionError(404, "Meal not found");
+  }
+
   return prisma.mealSuggestion.create({
     data: {
       dayPlanId,
@@ -228,51 +280,77 @@ export async function addSuggestion(
       userId,
       approved: false,
     },
-    include: {
-      meal: true,
-      suggestedBy: {
-        select: { id: true, name: true, email: true, avatarUrl: true },
-      },
-    },
+    include: suggestionInclude,
   });
 }
 
-export async function approveSuggestion(suggestionId: string) {
+/**
+ * Approves a suggestion, enforcing that it belongs to `familyId` via
+ * dayPlan.weekPlan.familyId before mutating. A suggestion owned by another
+ * family yields 404 without flipping `approved`.
+ */
+export async function approveSuggestion(
+  familyId: string,
+  suggestionId: string,
+) {
+  const owned = await prisma.mealSuggestion.findFirst({
+    where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
+    select: { id: true },
+  });
+  if (!owned) {
+    throw new SuggestionError(404, "Suggestion not found");
+  }
+
   return prisma.mealSuggestion.update({
     where: { id: suggestionId },
     data: { approved: true },
-    include: {
-      meal: true,
-      suggestedBy: {
-        select: { id: true, name: true, email: true, avatarUrl: true },
-      },
-    },
+    include: suggestionInclude,
   });
 }
 
-export async function removeSuggestion(suggestionId: string) {
-  return prisma.mealSuggestion.delete({
+/**
+ * Removes a suggestion, enforcing that it belongs to `familyId`. Mirrors the
+ * move authorization model: only the original suggester or a PARENT may remove
+ * it. Cross-family targets yield 404; an unauthorized member yields 403.
+ */
+export async function removeSuggestion(
+  familyId: string,
+  suggestionId: string,
+  actor: { id: string; isParent: boolean },
+) {
+  const suggestion = await prisma.mealSuggestion.findFirst({
+    where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
+    select: { id: true, userId: true },
+  });
+  if (!suggestion) {
+    throw new SuggestionError(404, "Suggestion not found");
+  }
+  if (!actor.isParent && suggestion.userId !== actor.id) {
+    throw new SuggestionError(
+      403,
+      "Only the suggester or a parent can remove this suggestion",
+    );
+  }
+
+  await prisma.mealSuggestion.delete({
     where: { id: suggestionId },
   });
 }
 
-export class MoveSuggestionError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "MoveSuggestionError";
-  }
-}
-
+/**
+ * Moves an unapproved suggestion to another day in the SAME week plan,
+ * enforcing family ownership on both the suggestion and the target day.
+ * Preserves the existing rules: only the suggester or a PARENT may move an
+ * unapproved suggestion, and approved suggestions cannot move.
+ */
 export async function moveSuggestion(
+  familyId: string,
   suggestionId: string,
   targetDayPlanId: string,
   actor: { id: string; isParent: boolean },
 ) {
-  const suggestion = await prisma.mealSuggestion.findUnique({
-    where: { id: suggestionId },
+  const suggestion = await prisma.mealSuggestion.findFirst({
+    where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
     include: { dayPlan: { select: { weekPlanId: true } } },
   });
   if (!suggestion) {
@@ -291,17 +369,12 @@ export async function moveSuggestion(
   if (suggestion.dayPlanId === targetDayPlanId) {
     return prisma.mealSuggestion.findUnique({
       where: { id: suggestionId },
-      include: {
-        meal: true,
-        suggestedBy: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
-        },
-      },
+      include: suggestionInclude,
     });
   }
 
-  const targetDay = await prisma.dayPlan.findUnique({
-    where: { id: targetDayPlanId },
+  const targetDay = await prisma.dayPlan.findFirst({
+    where: { id: targetDayPlanId, weekPlan: { familyId } },
     select: { id: true, weekPlanId: true },
   });
   if (!targetDay) {
@@ -317,12 +390,7 @@ export async function moveSuggestion(
   return prisma.mealSuggestion.update({
     where: { id: suggestionId },
     data: { dayPlanId: targetDayPlanId },
-    include: {
-      meal: true,
-      suggestedBy: {
-        select: { id: true, name: true, email: true, avatarUrl: true },
-      },
-    },
+    include: suggestionInclude,
   });
 }
 

@@ -10,6 +10,7 @@ const {
   toggleItem,
   addCustomItem,
   removeItem,
+  GroceryError,
 } = await import("./grocery.js");
 
 describe("generateGroceryList", () => {
@@ -167,18 +168,41 @@ describe("getGroceryList / getGroceryListByWeek", () => {
 });
 
 describe("item operations", () => {
-  it("toggleItem updates checked", async () => {
+  it("toggleItem updates checked when item belongs to list and family", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({ id: "item-1" } as never);
     prismaMock.groceryItem.update.mockResolvedValue({} as never);
-    await toggleItem("item-1", true);
+    await toggleItem("fam-1", "list-1", "item-1", true);
+    // Ownership predicate spans item -> list -> family.
+    expect(prismaMock.groceryItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "item-1",
+          groceryListId: "list-1",
+          groceryList: { familyId: "fam-1" },
+        },
+      }),
+    );
     expect(prismaMock.groceryItem.update).toHaveBeenCalledWith({
       where: { id: "item-1" },
       data: { checked: true },
     });
   });
 
-  it('addCustomItem defaults category to "other" and checked to false', async () => {
+  it("toggleItem rejects an item outside the family (404, no update)", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue(null);
+    await expect(
+      toggleItem("fam-1", "list-1", "item-OTHER", true),
+    ).rejects.toMatchObject({ name: "GroceryError", status: 404 });
+    expect(prismaMock.groceryItem.update).not.toHaveBeenCalled();
+  });
+
+  it('addCustomItem defaults category to "other" and checked to false when list is in family', async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue({ id: "list-1" } as never);
     prismaMock.groceryItem.create.mockResolvedValue({} as never);
-    await addCustomItem("list-1", { name: "Bananas" });
+    await addCustomItem("fam-1", "list-1", { name: "Bananas" });
+    expect(prismaMock.groceryList.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "list-1", familyId: "fam-1" } }),
+    );
     const arg = prismaMock.groceryItem.create.mock.calls[0][0] as {
       data: {
         category: string;
@@ -195,11 +219,41 @@ describe("item operations", () => {
     });
   });
 
-  it("removeItem deletes by id", async () => {
+  it("addCustomItem rejects a list outside the family (404, no create)", async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    await expect(
+      addCustomItem("fam-1", "list-OTHER", { name: "Bananas" }),
+    ).rejects.toMatchObject({ name: "GroceryError", status: 404 });
+    expect(prismaMock.groceryItem.create).not.toHaveBeenCalled();
+  });
+
+  it("removeItem deletes by id when item belongs to list and family", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({ id: "item-1" } as never);
     prismaMock.groceryItem.delete.mockResolvedValue({} as never);
-    await removeItem("item-1");
+    await removeItem("fam-1", "list-1", "item-1");
+    expect(prismaMock.groceryItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "item-1",
+          groceryListId: "list-1",
+          groceryList: { familyId: "fam-1" },
+        },
+      }),
+    );
     expect(prismaMock.groceryItem.delete).toHaveBeenCalledWith({
       where: { id: "item-1" },
     });
+  });
+
+  it("removeItem rejects an item outside the family (404, no delete)", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue(null);
+    await expect(
+      removeItem("fam-1", "list-1", "item-OTHER"),
+    ).rejects.toMatchObject({ name: "GroceryError", status: 404 });
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+  });
+
+  it("exports GroceryError as a class", () => {
+    expect(new GroceryError(404, "x")).toBeInstanceOf(Error);
   });
 });
