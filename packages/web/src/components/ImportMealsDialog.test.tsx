@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { renderWithProviders, screen, waitFor } from '../test-utils/render';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../tests/msw/server';
 import ImportMealsDialog from './ImportMealsDialog';
@@ -10,8 +11,21 @@ const IMPORT_URL = '/api/families/f-1/meals/import';
 function renderDialog(overrides?: { onClose?: () => void; onImported?: () => void }) {
     const onClose = overrides?.onClose ?? vi.fn();
     const onImported = overrides?.onImported ?? vi.fn();
-    render(<ImportMealsDialog familyId="f-1" onClose={onClose} onImported={onImported} />);
+    renderWithProviders(<ImportMealsDialog familyId="f-1" onClose={onClose} onImported={onImported} />);
     return { onClose, onImported };
+}
+
+/** Harness with a real trigger button so we can assert focus return on close. */
+function ImportHarness() {
+    const [open, setOpen] = useState(false);
+    return (
+        <>
+            <button onClick={() => setOpen(true)}>Open import</button>
+            {open && (
+                <ImportMealsDialog familyId="f-1" onClose={() => setOpen(false)} onImported={() => { }} />
+            )}
+        </>
+    );
 }
 
 describe('ImportMealsDialog', () => {
@@ -27,7 +41,7 @@ describe('ImportMealsDialog', () => {
         const user = userEvent.setup();
         const { onClose } = renderDialog();
 
-        await user.click(screen.getByRole('button', { name: /close/i }));
+        await user.click(screen.getByRole('button', { name: /close import dialog/i }));
         expect(onClose).toHaveBeenCalledTimes(1);
 
         await user.click(screen.getByRole('button', { name: /cancel/i }));
@@ -84,5 +98,50 @@ describe('ImportMealsDialog', () => {
         expect(onImported).not.toHaveBeenCalled();
         // Import action remains available to retry.
         expect(screen.getByRole('button', { name: /import 2 meals/i })).toBeInTheDocument();
+    });
+
+    describe('accessibility', () => {
+        it('exposes dialog semantics labelled by its visible heading', () => {
+            renderDialog();
+
+            const dialog = screen.getByRole('dialog');
+            expect(dialog).toHaveAttribute('aria-modal', 'true');
+            expect(dialog).toHaveAccessibleName('Import Meals from CSV');
+        });
+
+        it('gives the header close button a descriptive accessible name', () => {
+            renderDialog();
+
+            expect(screen.getByRole('button', { name: /close import dialog/i })).toBeInTheDocument();
+        });
+
+        it('moves focus into the dialog when opened', () => {
+            renderDialog();
+
+            const dialog = screen.getByRole('dialog');
+            expect(dialog.contains(document.activeElement)).toBe(true);
+        });
+
+        it('closes when Escape is pressed', async () => {
+            const user = userEvent.setup();
+            const { onClose } = renderDialog();
+
+            await user.keyboard('{Escape}');
+            expect(onClose).toHaveBeenCalledTimes(1);
+        });
+
+        it('returns focus to the trigger when the dialog closes', async () => {
+            const user = userEvent.setup();
+            renderWithProviders(<ImportHarness />);
+
+            const trigger = screen.getByRole('button', { name: /open import/i });
+            await user.click(trigger);
+            await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+            await user.keyboard('{Escape}');
+
+            await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+            expect(trigger).toHaveFocus();
+        });
     });
 });

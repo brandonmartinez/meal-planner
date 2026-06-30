@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useId } from 'react';
 import { importMeals, type ImportMealsResultDTO } from '../api/meals';
 import { parseMealsCSV, type ParsedImportMeal } from '../utils/csv';
+import Modal from './Modal';
 
 interface Props {
     familyId: string;
@@ -40,6 +41,7 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
     const [result, setResult] = useState<ImportMealsResultDTO | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const headingId = useId();
 
     const handleFile = async (file: File) => {
         const text = await file.text();
@@ -83,14 +85,18 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
     const ingredientCount = preview?.reduce((sum, m) => sum + (m.ingredients?.length ?? 0), 0) ?? 0;
 
     return (
-        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <Modal
+            onClose={onClose}
+            labelledBy={headingId}
+            overlayClassName="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4"
+            className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        >
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <h2 className="text-xl font-semibold">Import Meals from CSV</h2>
+                    <h2 id={headingId} className="text-xl font-semibold">Import Meals from CSV</h2>
                     <button
                         onClick={onClose}
                         className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl leading-none"
-                        aria-label="Close"
+                        aria-label="Close import dialog"
                     >
                         ×
                     </button>
@@ -266,7 +272,6 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                         </button>
                     )}
                 </div>
-            </div>
-        </div>
+        </Modal>
     );
 }
