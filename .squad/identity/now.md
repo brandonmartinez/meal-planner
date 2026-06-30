@@ -1,43 +1,31 @@
 ---
-updated_at: 2026-06-30T23:10:00.000Z
-focus_area: Sprint 1 SHIPPED. Sprint 2 SHIPPED. Awaiting Sprint 3 direction.
-active_issues: [6]
+updated_at: 2026-06-30T23:40:00.000Z
+focus_area: Sprint 1+2 SHIPPED. Sprint 3 Wave 1 running. Then Sprint 4. Goal: finish through Sprint 4.
+active_issues: [6, 7, 15, 16, 17, 22, 24, 27, 5, 25, 26]
 ---
 
 # What We're Focused On
 
-## Sprint 1 — ✅ COMPLETE
-All 6 PRs (#33-#38) merged to `main`, issues #9/#11/#12/#13/#23/#32 closed, main CI green. Worktrees/branches cleaned.
+## Running now — Sprint 3 (8 issues: #6 #7 #15 #16 #17 #22 #24 #27)
+Plan: `~/.copilot/session-state/.../plan.md`. Conflict rule: parallel across disjoint files, serialize within shared files (FamilySettingsPage: #17→#6-web→#15; Meals/ImportDialog: #16→#27-web→#15; shared/services: #7→#27-be).
 
-## Sprint 2 — ✅ SHIPPED (Contracts, tests, MCP security model)
-Verification of record = CI. Writes via `brandonmartinez`. Isolated worktree + draft PR per issue. All merged to `main`; main `test` job green on final HEAD (26b0d30).
+### Wave 1 (running)
+- **#7** Livingston — MCP backend endpoints (current/prev week, schedule-by-date, approve-by-family, Zod, DTOs) — `squad/7-mcp-backend-endpoints`
+- **#22** Basher — harden prod Docker image (non-root, frozen lockfile) — `squad/22-harden-docker-image` → security gate
+- **#24** Basher — compose drift — `squad/24-compose-drift`
+- **#16** Linus — accessible modals (MealPicker, ImportMealsDialog) — `squad/16-accessible-modals` → a11y gate
+- **#6-be** Frank — agent-cred mgmt endpoints (closes #50; completes #6) — `squad/6-agent-cred-mgmt` → security gate
 
-### Wave A
-- **#14** Linus — web request<T> consolidation — PR #39 — closed.
-- **#8** Livingston — meal difficulty backend+shared — PR #40.
-- **#10** Frank — scoped rate limits — PR #41 — Rusty gate APPROVE — closed.
+### Wave 2 (queued): #27-be (after #7); #17 then #6-web (FamilySettings chain, after #16)
+### Wave 3 (queued): #27-web (after #27-be+#16); #15 LAST (touches all pages) → a11y gate
+Close on merge: #7 #22 #24 #16 #17 #27 #15; #6(+#50) when mgmt be+web both land.
 
-### Wave B
-- **#8-web** Linus — difficulty UI — PR #44 — **#8 CLOSED** (backend+web complete).
-- **#20** Yen — web component tests — PR #45 — closed. (coordinator fixed an ambiguous `/load example/i` query.)
-- **#18** Yen — API route-handler tests — PR #46 — closed.
-- **#19** Yen — web page tests — PR #48 — closed. (coordinator aligned error-banner MSW bodies with surfaced ApiError message.)
-- **#6** Frank — MCP scoped agent credentials — PR #47 — **Rusty gate APPROVE** — merged. **#6 stays OPEN** (mgmt HTTP endpoints deferred → #50).
+## Then — Sprint 4 (#5 #25 #26)
+- #25 Basher — pin k8s immutable image tags; #26 Basher — migrations out of multi-replica startup (both infra, independent)
+- #5 Rusty/Livingston — `packages/mcp` MCP server (DEPENDS on #7 + #6); stdio v1, HTTP API client, Zod tools, mocked-API tests → Rusty design + Frank security gate
 
-### Integration fix
-- #6's `approveSuggestion` gained an actor arg for the audit trail; coordinator updated #18's route test assertion to the new 3-arg contract before merging #6.
+## Sprint 1+2 — ✅ SHIPPED
+S1: #9/#11/#12/#13/#23/#32. S2: #14/#8/#10/#20/#18/#19/#6(core). All merged, main green, logged.
 
-### Gates run
-- #10 (Rusty→APPROVE), #6 (Rusty→APPROVE). Both Frank-authored security work, independently gated. No lockouts triggered this sprint.
-
-## Follow-ups filed
-- **#42** Basher — CI `prisma migrate deploy` validation (hand-authored migrations unvalidated against a live DB).
-- **#43** Basher/infra — Express `trust proxy` for IP-keyed rate limits behind ingress.
-- **#49** Frank — HMAC/KDF + server-side pepper for credential hashing (hardening).
-- **#50** Frank/Linus — parent-facing agent-credential management endpoints + UI (completes #6's deferred AC).
-- **#51** Frank — make dropped `safeAudit` audit-log writes observable.
-
-## Carry-forward debt
-- #23 CI uses --no-frozen-lockfile; regen+commit pnpm-lock.yaml from devcontainer, revert to frozen.
-- #23 eslint no-explicit-any / no-unused-vars at warn; tighten to error later.
-- #6/#8 migrations are hand-authored (no DB in env); unvalidated until #42 lands.
+## Follow-ups filed (backlog): #42 #43 #49 #50(→ folded into #6) #51
+## Carry-forward debt: #23 lockfile/frozen + eslint warns; hand-authored migrations unvalidated until #42.
