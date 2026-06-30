@@ -6,6 +6,15 @@ import {
 } from "@meal-planner/shared";
 import type { Difficulty } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
+import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
+
+/** Calendar-date label (YYYY-MM-DD) of a stored DayPlan/WeekPlan date. Week and
+ *  day dates are persisted at UTC midnight, so the UTC slice IS the intended
+ *  calendar day — this matches how the rest of the codebase labels those dates
+ *  (see `weekPlan.toDateString`). */
+function dateLabel(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
 
 export async function listMeals(
   familyId: string,
@@ -16,13 +25,81 @@ export async function listMeals(
     where.name = { contains: options.search, mode: "insensitive" };
   }
 
-  return prisma.meal.findMany({
+  const meals = await prisma.meal.findMany({
     where,
     include: {
       _count: { select: { ingredients: true } },
     },
     orderBy: { name: "asc" },
   });
+
+  const recentByMeal = await getRecentlyScheduledMap(familyId);
+
+  return meals.map((meal) => {
+    const last = recentByMeal.get(meal.id);
+    return {
+      ...meal,
+      recentlyScheduled: last !== undefined,
+      lastScheduledOn: last ?? null,
+    };
+  });
+}
+
+/**
+ * Builds a `Map<mealId, lastScheduledOn>` of meals "recently scheduled" for a
+ * family — i.e. meals with at least one **approved** `MealSuggestion` whose
+ * `WeekPlan.weekStart` is the family's current or immediately previous week,
+ * resolved in `Family.timezone` (issue #27).
+ *
+ * Runs in a bounded, constant number of queries regardless of meal count: the
+ * family timezone/current-week resolution, plus ONE windowed suggestion query
+ * (no per-meal lookups). The result maps each qualifying meal to the calendar
+ * date (YYYY-MM-DD) of its most recent approved suggestion in the window.
+ *
+ * Family scoping is enforced on BOTH sides — `meal.familyId` and
+ * `dayPlan.weekPlan.familyId` — so suggestions from another family can never
+ * flag a meal (preserves the #9 IDOR direction).
+ */
+async function getRecentlyScheduledMap(
+  familyId: string,
+): Promise<Map<string, string>> {
+  const { monday: currentWeekStart } = await getCurrentWeekStart(familyId);
+  const previousWeekStart = getMondayOfWeek(
+    new Date(currentWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000),
+  );
+
+  const recentSuggestions = await prisma.mealSuggestion.findMany({
+    where: {
+      approved: true,
+      meal: { familyId },
+      dayPlan: {
+        weekPlan: {
+          familyId,
+          weekStart: { in: [previousWeekStart, currentWeekStart] },
+        },
+      },
+    },
+    select: {
+      mealId: true,
+      dayPlan: { select: { date: true } },
+    },
+  });
+
+  // Reduce to most-recent approved scheduling date per meal.
+  const latest = new Map<string, Date>();
+  for (const s of recentSuggestions) {
+    const scheduledOn = s.dayPlan.date;
+    const existing = latest.get(s.mealId);
+    if (!existing || scheduledOn.getTime() > existing.getTime()) {
+      latest.set(s.mealId, scheduledOn);
+    }
+  }
+
+  const result = new Map<string, string>();
+  for (const [mealId, date] of latest) {
+    result.set(mealId, dateLabel(date));
+  }
+  return result;
 }
 
 export async function getMealById(mealId: string, familyId: string) {
