@@ -16,6 +16,11 @@ import { mealsRouter } from "./routes/meals.js";
 import { weekPlanRouter } from "./routes/weekPlan.js";
 import { groceryRouter } from "./routes/grocery.js";
 import { displayRouter } from "./routes/display.js";
+import {
+  displayLimiter,
+  authLimiter,
+  generalLimiter,
+} from "./middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,13 +60,20 @@ app.use(cookieParser());
 app.use(passport.initialize());
 
 // Routes
+// Health is intentionally left unthrottled so k8s liveness/readiness probes
+// are never rate-limited. Scoped limiters are mounted at the route prefixes so
+// the global middleware order above (Helmet, CORS, Morgan, JSON/cookie
+// parsing, Passport) is preserved.
 app.use("/api/health", healthRouter);
-app.use("/api/auth", authRouter);
+app.use("/api/auth", authLimiter, authRouter);
+app.use("/api/families", generalLimiter);
 app.use("/api/families", familyRouter);
 app.use("/api/families", mealsRouter);
 app.use("/api/families", weekPlanRouter);
 app.use("/api/families", groceryRouter);
-app.use("/api/display", displayRouter);
+// displayLimiter runs BEFORE the router's authenticateApiKey, so floods are
+// rejected before any key lookup or DB fan-out.
+app.use("/api/display", displayLimiter, displayRouter);
 
 // Static file serving for production
 const webDistPath = path.resolve(__dirname, "../../web/dist");
