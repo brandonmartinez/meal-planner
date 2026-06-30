@@ -12,6 +12,7 @@ const {
   approveSuggestion,
   removeSuggestion,
   moveSuggestion,
+  SuggestionError,
   MoveSuggestionError,
   getApprovedMealsForRange,
   getStartOfDayInTz,
@@ -125,9 +126,23 @@ describe("getWeekPlan", () => {
 });
 
 describe("suggestions", () => {
-  it("addSuggestion creates with approved=false", async () => {
+  it("addSuggestion creates with approved=false when day and meal belong to family", async () => {
+    prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);
+    prismaMock.meal.findFirst.mockResolvedValue({ id: "meal-1" } as never);
     prismaMock.mealSuggestion.create.mockResolvedValue({} as never);
-    await addSuggestion("day-1", "meal-1", "user-1");
+
+    await addSuggestion("fam-1", "day-1", "meal-1", "user-1");
+
+    // Day ownership is scoped to the route family via weekPlan.familyId.
+    expect(prismaMock.dayPlan.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "day-1", weekPlan: { familyId: "fam-1" } },
+      }),
+    );
+    // Meal ownership is scoped directly to the route family.
+    expect(prismaMock.meal.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "meal-1", familyId: "fam-1" } }),
+    );
     const arg = prismaMock.mealSuggestion.create.mock.calls[0][0] as {
       data: {
         dayPlanId: string;
@@ -144,9 +159,33 @@ describe("suggestions", () => {
     });
   });
 
-  it("approveSuggestion flips approved to true", async () => {
+  it("addSuggestion rejects a day plan owned by another family (404, no write)", async () => {
+    prismaMock.dayPlan.findFirst.mockResolvedValue(null);
+    await expect(
+      addSuggestion("fam-1", "day-OTHER", "meal-1", "user-1"),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
+    expect(prismaMock.meal.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.mealSuggestion.create).not.toHaveBeenCalled();
+  });
+
+  it("addSuggestion rejects a meal owned by another family (404, no write)", async () => {
+    prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);
+    prismaMock.meal.findFirst.mockResolvedValue(null);
+    await expect(
+      addSuggestion("fam-1", "day-1", "meal-OTHER", "user-1"),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
+    expect(prismaMock.mealSuggestion.create).not.toHaveBeenCalled();
+  });
+
+  it("approveSuggestion flips approved to true when in family", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({ id: "s-1" } as never);
     prismaMock.mealSuggestion.update.mockResolvedValue({} as never);
-    await approveSuggestion("s-1");
+    await approveSuggestion("fam-1", "s-1");
+    expect(prismaMock.mealSuggestion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1", dayPlan: { weekPlan: { familyId: "fam-1" } } },
+      }),
+    );
     expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s-1" },
@@ -155,12 +194,64 @@ describe("suggestions", () => {
     );
   });
 
-  it("removeSuggestion deletes by id", async () => {
+  it("approveSuggestion rejects a suggestion from another family (404, no write)", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue(null);
+    await expect(
+      approveSuggestion("fam-1", "s-OTHER"),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
+    expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
+  });
+
+  it("removeSuggestion deletes by id when in family and actor is suggester", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({
+      id: "s-1",
+      userId: "user-1",
+    } as never);
     prismaMock.mealSuggestion.delete.mockResolvedValue({} as never);
-    await removeSuggestion("s-1");
+    await removeSuggestion("fam-1", "s-1", { id: "user-1", isParent: false });
+    expect(prismaMock.mealSuggestion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1", dayPlan: { weekPlan: { familyId: "fam-1" } } },
+      }),
+    );
     expect(prismaMock.mealSuggestion.delete).toHaveBeenCalledWith({
       where: { id: "s-1" },
     });
+  });
+
+  it("removeSuggestion allows a parent to delete another member's suggestion", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({
+      id: "s-1",
+      userId: "other-user",
+    } as never);
+    prismaMock.mealSuggestion.delete.mockResolvedValue({} as never);
+    await expect(
+      removeSuggestion("fam-1", "s-1", { id: "parent-user", isParent: true }),
+    ).resolves.toBeUndefined();
+    expect(prismaMock.mealSuggestion.delete).toHaveBeenCalled();
+  });
+
+  it("removeSuggestion forbids a non-parent deleting another member's suggestion (403)", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({
+      id: "s-1",
+      userId: "other-user",
+    } as never);
+    await expect(
+      removeSuggestion("fam-1", "s-1", { id: "user-1", isParent: false }),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 403 });
+    expect(prismaMock.mealSuggestion.delete).not.toHaveBeenCalled();
+  });
+
+  it("removeSuggestion rejects a suggestion from another family (404, no delete)", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue(null);
+    await expect(
+      removeSuggestion("fam-1", "s-OTHER", { id: "user-1", isParent: true }),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
+    expect(prismaMock.mealSuggestion.delete).not.toHaveBeenCalled();
+  });
+
+  it("exports SuggestionError as a class", () => {
+    expect(new SuggestionError(404, "x")).toBeInstanceOf(Error);
   });
 });
 
@@ -174,10 +265,10 @@ describe("moveSuggestion", () => {
   };
 
   it("moves to a new day in the same week when actor is the suggester", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
-    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+    prismaMock.dayPlan.findFirst.mockResolvedValueOnce({
       id: "day-2",
       weekPlanId: "wp-1",
     } as never);
@@ -186,11 +277,23 @@ describe("moveSuggestion", () => {
       dayPlanId: "day-2",
     } as never);
 
-    const result = await moveSuggestion("s-1", "day-2", {
+    const result = await moveSuggestion("fam-1", "s-1", "day-2", {
       id: "user-1",
       isParent: false,
     });
 
+    // Suggestion lookup is family-scoped.
+    expect(prismaMock.mealSuggestion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1", dayPlan: { weekPlan: { familyId: "fam-1" } } },
+      }),
+    );
+    // Target day lookup is family-scoped.
+    expect(prismaMock.dayPlan.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "day-2", weekPlan: { familyId: "fam-1" } },
+      }),
+    );
     expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s-1" },
@@ -201,26 +304,32 @@ describe("moveSuggestion", () => {
   });
 
   it("allows a parent to move someone else's suggestion", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
-    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+    prismaMock.dayPlan.findFirst.mockResolvedValueOnce({
       id: "day-2",
       weekPlanId: "wp-1",
     } as never);
     prismaMock.mealSuggestion.update.mockResolvedValueOnce({} as never);
 
     await expect(
-      moveSuggestion("s-1", "day-2", { id: "other-user", isParent: true }),
+      moveSuggestion("fam-1", "s-1", "day-2", {
+        id: "other-user",
+        isParent: true,
+      }),
     ).resolves.toBeDefined();
   });
 
   it("forbids non-parent moving someone else's suggestion", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
     await expect(
-      moveSuggestion("s-1", "day-2", { id: "other-user", isParent: false }),
+      moveSuggestion("fam-1", "s-1", "day-2", {
+        id: "other-user",
+        isParent: false,
+      }),
     ).rejects.toMatchObject({
       name: "MoveSuggestionError",
       status: 403,
@@ -229,55 +338,58 @@ describe("moveSuggestion", () => {
   });
 
   it("rejects moving an approved suggestion", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce({
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce({
       ...baseSuggestion,
       approved: true,
     } as never);
     await expect(
-      moveSuggestion("s-1", "day-2", { id: "user-1", isParent: true }),
+      moveSuggestion("fam-1", "s-1", "day-2", { id: "user-1", isParent: true }),
     ).rejects.toMatchObject({ status: 400 });
   });
 
   it("rejects target day in a different week plan", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
-    prismaMock.dayPlan.findUnique.mockResolvedValueOnce({
+    prismaMock.dayPlan.findFirst.mockResolvedValueOnce({
       id: "day-2",
       weekPlanId: "wp-OTHER",
     } as never);
     await expect(
-      moveSuggestion("s-1", "day-2", { id: "user-1", isParent: false }),
+      moveSuggestion("fam-1", "s-1", "day-2", { id: "user-1", isParent: false }),
     ).rejects.toMatchObject({ status: 400 });
     expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when the suggestion is missing", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(null);
+  it("returns 404 when the suggestion is missing or in another family", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(null);
     await expect(
-      moveSuggestion("missing", "day-2", { id: "user-1", isParent: true }),
+      moveSuggestion("fam-1", "missing", "day-2", {
+        id: "user-1",
+        isParent: true,
+      }),
     ).rejects.toMatchObject({ status: 404 });
   });
 
-  it("returns 404 when the target day is missing", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+  it("returns 404 when the target day is missing or in another family", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
-    prismaMock.dayPlan.findUnique.mockResolvedValueOnce(null);
+    prismaMock.dayPlan.findFirst.mockResolvedValueOnce(null);
     await expect(
-      moveSuggestion("s-1", "missing", { id: "user-1", isParent: true }),
+      moveSuggestion("fam-1", "s-1", "missing", { id: "user-1", isParent: true }),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it("is a no-op when the target day matches the current day", async () => {
-    prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce(
+    prismaMock.mealSuggestion.findFirst.mockResolvedValueOnce(
       baseSuggestion as never,
     );
     prismaMock.mealSuggestion.findUnique.mockResolvedValueOnce({
       id: "s-1",
       dayPlanId: "day-1",
     } as never);
-    const result = await moveSuggestion("s-1", "day-1", {
+    const result = await moveSuggestion("fam-1", "s-1", "day-1", {
       id: "user-1",
       isParent: false,
     });
@@ -285,8 +397,10 @@ describe("moveSuggestion", () => {
     expect(result).toEqual(expect.objectContaining({ dayPlanId: "day-1" }));
   });
 
-  it("exports MoveSuggestionError as a class", () => {
-    expect(new MoveSuggestionError(400, "x")).toBeInstanceOf(Error);
+  it("exports MoveSuggestionError as a class (subclass of SuggestionError)", () => {
+    const err = new MoveSuggestionError(400, "x");
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(SuggestionError);
   });
 });
 

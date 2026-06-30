@@ -120,17 +120,62 @@ export async function getGroceryListByWeek(familyId: string, weekStart: Date) {
   });
 }
 
-export async function toggleItem(itemId: string, checked: boolean) {
+/**
+ * Domain error for grocery mutations. Carries an HTTP status so routes can map
+ * known failures (not-found / bad-input) to the right code instead of a 500.
+ */
+export class GroceryError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GroceryError";
+  }
+}
+
+/**
+ * Toggles an item's `checked` flag, enforcing that the item belongs to
+ * `listId` AND that the list belongs to `familyId`. A non-owned item/list
+ * yields 404 without mutating anything.
+ */
+export async function toggleItem(
+  familyId: string,
+  listId: string,
+  itemId: string,
+  checked: boolean,
+) {
+  const owned = await prisma.groceryItem.findFirst({
+    where: { id: itemId, groceryListId: listId, groceryList: { familyId } },
+    select: { id: true },
+  });
+  if (!owned) {
+    throw new GroceryError(404, "Grocery item not found");
+  }
+
   return prisma.groceryItem.update({
     where: { id: itemId },
     data: { checked },
   });
 }
 
+/**
+ * Adds a custom item to a grocery list, enforcing that the list belongs to
+ * `familyId`. A non-owned list yields 404 without creating the item.
+ */
 export async function addCustomItem(
+  familyId: string,
   groceryListId: string,
   data: { name: string; quantity?: string; unit?: string; category?: string },
 ) {
+  const list = await prisma.groceryList.findFirst({
+    where: { id: groceryListId, familyId },
+    select: { id: true },
+  });
+  if (!list) {
+    throw new GroceryError(404, "Grocery list not found");
+  }
+
   return prisma.groceryItem.create({
     data: {
       groceryListId,
@@ -143,8 +188,25 @@ export async function addCustomItem(
   });
 }
 
-export async function removeItem(itemId: string) {
-  return prisma.groceryItem.delete({
+/**
+ * Removes a grocery item, enforcing that the item belongs to `listId` AND that
+ * the list belongs to `familyId`. A non-owned item/list yields 404 without
+ * deleting anything.
+ */
+export async function removeItem(
+  familyId: string,
+  listId: string,
+  itemId: string,
+) {
+  const owned = await prisma.groceryItem.findFirst({
+    where: { id: itemId, groceryListId: listId, groceryList: { familyId } },
+    select: { id: true },
+  });
+  if (!owned) {
+    throw new GroceryError(404, "Grocery item not found");
+  }
+
+  await prisma.groceryItem.delete({
     where: { id: itemId },
   });
 }

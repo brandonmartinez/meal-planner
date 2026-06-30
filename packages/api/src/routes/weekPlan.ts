@@ -1,12 +1,27 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
 
 export const weekPlanRouter = Router();
 
+const addSuggestionSchema = z.object({
+  mealId: z.string().min(1),
+});
+
+const moveSuggestionSchema = z.object({
+  dayPlanId: z.string().min(1),
+});
+
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
+}
+
+function isParentReq(req: Request): boolean {
+  const membership = (req as unknown as { membership?: { role: string } })
+    .membership;
+  return membership?.role === "PARENT";
 }
 
 // GET /api/families/:familyId/weeks/:weekStart
@@ -66,22 +81,29 @@ weekPlanRouter.post(
   requireMembership,
   async (req: Request, res: Response) => {
     try {
+      const familyId = paramStr(req.params.familyId);
       const dayPlanId = paramStr(req.params.dayPlanId);
-      const { mealId } = req.body;
+      const { mealId } = addSuggestionSchema.parse(req.body);
       const user = req.user as { id: string };
 
-      if (!mealId) {
-        res.status(400).json({ error: "mealId is required" });
-        return;
-      }
-
       const suggestion = await weekPlanService.addSuggestion(
+        familyId,
         dayPlanId,
         mealId,
         user.id,
       );
       res.status(201).json(suggestion);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       res.status(500).json({ error: "Failed to add suggestion" });
     }
   },
@@ -95,10 +117,18 @@ weekPlanRouter.patch(
   requireRole("PARENT"),
   async (req: Request, res: Response) => {
     try {
+      const familyId = paramStr(req.params.familyId);
       const suggestionId = paramStr(req.params.suggestionId);
-      const suggestion = await weekPlanService.approveSuggestion(suggestionId);
+      const suggestion = await weekPlanService.approveSuggestion(
+        familyId,
+        suggestionId,
+      );
       res.json(suggestion);
-    } catch {
+    } catch (error) {
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       res.status(500).json({ error: "Failed to approve suggestion" });
     }
   },
@@ -111,10 +141,20 @@ weekPlanRouter.delete(
   requireMembership,
   async (req: Request, res: Response) => {
     try {
+      const familyId = paramStr(req.params.familyId);
       const suggestionId = paramStr(req.params.suggestionId);
-      await weekPlanService.removeSuggestion(suggestionId);
+      const user = req.user as { id: string };
+
+      await weekPlanService.removeSuggestion(familyId, suggestionId, {
+        id: user.id,
+        isParent: isParentReq(req),
+      });
       res.status(204).send();
-    } catch {
+    } catch (error) {
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
       res.status(500).json({ error: "Failed to remove suggestion" });
     }
   },
@@ -127,24 +167,25 @@ weekPlanRouter.patch(
   requireMembership,
   async (req: Request, res: Response) => {
     try {
+      const familyId = paramStr(req.params.familyId);
       const suggestionId = paramStr(req.params.suggestionId);
-      const { dayPlanId } = req.body ?? {};
-      if (typeof dayPlanId !== "string" || dayPlanId.length === 0) {
-        res.status(400).json({ error: "dayPlanId is required" });
-        return;
-      }
+      const { dayPlanId } = moveSuggestionSchema.parse(req.body ?? {});
       const user = req.user as { id: string };
-      const membership = (req as unknown as { membership?: { role: string } })
-        .membership;
-      const isParent = membership?.role === "PARENT";
 
       const suggestion = await weekPlanService.moveSuggestion(
+        familyId,
         suggestionId,
         dayPlanId,
-        { id: user.id, isParent },
+        { id: user.id, isParent: isParentReq(req) },
       );
       res.json(suggestion);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
       if (error instanceof weekPlanService.MoveSuggestionError) {
         res.status(error.status).json({ error: error.message });
         return;
