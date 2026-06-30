@@ -44,6 +44,27 @@ describe("GET /:familyId/meals (list)", () => {
     });
   });
 
+  it("forwards the recent-scheduling fields in the response body", async () => {
+    vi.mocked(mealService.listMeals).mockResolvedValue([
+      {
+        id: MEAL_ID,
+        name: "Tacos",
+        _count: { ingredients: 2 },
+        recentlyScheduled: true,
+        lastScheduledOn: "2026-06-30",
+      },
+    ] as never);
+    const res = buildFullRes();
+    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    const body = res.body as Array<{
+      recentlyScheduled: boolean;
+      lastScheduledOn: string | null;
+    }>;
+    expect(body[0].recentlyScheduled).toBe(true);
+    expect(body[0].lastScheduledOn).toBe("2026-06-30");
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.listMeals).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
