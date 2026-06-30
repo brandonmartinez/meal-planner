@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
-import { DAYS_OF_WEEK } from "@meal-planner/shared";
+import { DAYS_OF_WEEK, type DayOfWeek } from "@meal-planner/shared";
 
 const weekPlanInclude = Prisma.validator<Prisma.WeekPlanInclude>()({
   days: {
@@ -17,6 +17,132 @@ const weekPlanInclude = Prisma.validator<Prisma.WeekPlanInclude>()({
     },
   },
 });
+
+/**
+ * Returns true if the given IANA timezone identifier is recognized by the
+ * runtime's Intl implementation. Used to validate the optional ?tz query
+ * param and the Family.timezone column.
+ */
+export function isValidTimezone(tz: string): boolean {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const dtfCache = new Map<string, Intl.DateTimeFormat>();
+function dtf(tz: string): Intl.DateTimeFormat {
+  let f = dtfCache.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    dtfCache.set(tz, f);
+  }
+  return f;
+}
+
+interface TzParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+function partsInTz(date: Date, tz: string): TzParts {
+  const parts = dtf(tz).formatToParts(date);
+  const out: Record<string, number> = {};
+  for (const p of parts) {
+    if (p.type === "literal") continue;
+    const n = Number(p.value);
+    if (!Number.isNaN(n)) out[p.type] = n;
+  }
+  // Intl can return hour=24 at midnight in some engines; normalize to 0.
+  if (out.hour === 24) out.hour = 0;
+  return out as unknown as TzParts;
+}
+
+/**
+ * Returns the UTC Date that corresponds to local-midnight (00:00:00.000)
+ * on the calendar day of `date` in the given IANA timezone.
+ *
+ * Works across DST boundaries via a 2-pass refinement: the first pass uses
+ * the offset at `date` to estimate midnight; the second pass re-reads the
+ * offset at that estimate to handle days where `date` and midnight straddle
+ * a DST transition.
+ */
+export function getStartOfDayInTz(date: Date, tz: string): Date {
+  const target = partsInTz(date, tz);
+
+  function midnightFor(anchor: Date): Date {
+    const p = partsInTz(anchor, tz);
+    const asUtcMs = Date.UTC(
+      p.year,
+      p.month - 1,
+      p.day,
+      p.hour,
+      p.minute,
+      p.second,
+    );
+    const anchorSecMs = anchor.getTime() - (anchor.getTime() % 1000);
+    const offsetMs = asUtcMs - anchorSecMs;
+    // Wall-clock midnight on the *target* calendar date, expressed as UTC ms.
+    return new Date(
+      Date.UTC(target.year, target.month - 1, target.day, 0, 0, 0) - offsetMs,
+    );
+  }
+
+  // Pass 1: approximate using offset at `date`.
+  const first = midnightFor(date);
+  // Pass 2: refine using offset at the approximation. On DST-transition
+  // days the offset at midnight may differ from the offset at `date`.
+  const second = midnightFor(first);
+  return second;
+}
+
+/**
+ * Returns the calendar date in `tz` formatted as YYYY-MM-DD.
+ */
+export function formatDateInTz(date: Date, tz: string): string {
+  const p = partsInTz(date, tz);
+  return `${p.year.toString().padStart(4, "0")}-${p.month
+    .toString()
+    .padStart(2, "0")}-${p.day.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Returns the day-of-week name in `tz` (Sunday..Saturday).
+ */
+export function dayOfWeekInTz(date: Date, tz: string): DayOfWeek {
+  // Use a separate formatter to read the weekday directly; this avoids
+  // integer math that would re-derive the local date.
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "long",
+  }).format(date);
+  // wd is "Sunday".."Saturday" — already matches DAYS_OF_WEEK entries.
+  if ((DAYS_OF_WEEK as readonly string[]).includes(wd)) {
+    return wd as DayOfWeek;
+  }
+  // Fallback: derive from formatted date parts.
+  const p = partsInTz(date, tz);
+  const utcDow = new Date(
+    Date.UTC(p.year, p.month - 1, p.day),
+  ).getUTCDay();
+  return DAYS_OF_WEEK[utcDow];
+}
 
 export function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -233,4 +359,131 @@ export async function getApprovedMealsForRange(
       placeholderKind: s.meal.placeholderKind,
     })),
   }));
+}
+
+export interface DisplayDayMeal {
+  id: string;
+  name: string;
+  description: string | null;
+  placeholderKind: string | null;
+  imageUrl: string | null;
+}
+
+export interface DisplayDayResult {
+  /** YYYY-MM-DD in the resolved tz. */
+  date: string;
+  /** Day-of-week label in the resolved tz. */
+  dayOfWeek: DayOfWeek;
+  status: "planned" | "unplanned" | "skipped";
+  meals: DisplayDayMeal[];
+}
+
+export interface DisplayRangeResult {
+  days: DisplayDayResult[];
+  /** Most recent updatedAt across WeekPlan/DayPlan/MealSuggestion/Meal in range. */
+  maxUpdatedAt: Date | null;
+}
+
+/**
+ * Returns approved meals across a date range, expanded into a per-day
+ * display structure that includes:
+ *   - calendar date / day-of-week in the resolved tz
+ *   - per-day status: "planned" | "unplanned" | "skipped"
+ *     ("skipped" iff every approved suggestion is the SKIP placeholder
+ *      AND there is at least one approved suggestion)
+ *   - meal.imageUrl (in addition to existing display fields)
+ *
+ * Days that have no DayPlan record at all are filled in as "unplanned".
+ *
+ * Also returns `maxUpdatedAt`, the latest updatedAt across the
+ * WeekPlan/DayPlan/MealSuggestion(createdAt)/Meal rows that contributed
+ * to the response. Used by the route to compute a strong ETag.
+ */
+export async function getDisplayDays(
+  familyId: string,
+  startDate: Date,
+  endDate: Date,
+  tz: string,
+): Promise<DisplayRangeResult> {
+  const start = new Date(startDate);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setUTCHours(23, 59, 59, 999);
+
+  const dayPlans = await prisma.dayPlan.findMany({
+    where: {
+      date: { gte: start, lte: end },
+      weekPlan: { familyId },
+    },
+    orderBy: { date: "asc" },
+    include: {
+      weekPlan: { select: { updatedAt: true } },
+      suggestions: {
+        where: { approved: true },
+        include: { meal: true },
+      },
+    },
+  });
+
+  // Index existing day plans by their UTC-date label.
+  const byDate = new Map<string, (typeof dayPlans)[number]>();
+  for (const dp of dayPlans) {
+    byDate.set(toDateString(dp.date), dp);
+  }
+
+  // Walk the requested range day-by-day so we can fill gaps as "unplanned".
+  const days: DisplayDayResult[] = [];
+  let maxUpdatedAt: Date | null = null;
+  const cursor = new Date(start);
+  while (cursor.getTime() <= end.getTime()) {
+    const label = toDateString(cursor);
+    const dp = byDate.get(label);
+    const dow = dayOfWeekInTz(
+      new Date(label + "T12:00:00Z"),
+      tz,
+    );
+
+    if (!dp) {
+      days.push({ date: label, dayOfWeek: dow, status: "unplanned", meals: [] });
+    } else {
+      const meals: DisplayDayMeal[] = dp.suggestions.map((s) => ({
+        id: s.meal.id,
+        name: s.meal.name,
+        description: s.meal.description,
+        placeholderKind: s.meal.placeholderKind,
+        imageUrl: s.meal.imageUrl,
+      }));
+
+      let status: DisplayDayResult["status"];
+      if (meals.length === 0) {
+        status = "unplanned";
+      } else if (meals.every((m) => m.placeholderKind === "SKIP")) {
+        status = "skipped";
+      } else {
+        status = "planned";
+      }
+
+      // For back-compat clients that key on `meals: []`, hide entries on
+      // skipped days (the new `status` field carries the signal).
+      const exposedMeals = status === "skipped" ? [] : meals;
+
+      days.push({ date: label, dayOfWeek: dow, status, meals: exposedMeals });
+
+      // Track the freshest mutation across everything that contributed.
+      const candidates: Date[] = [dp.weekPlan.updatedAt];
+      for (const s of dp.suggestions) {
+        candidates.push(s.createdAt);
+        candidates.push(s.meal.updatedAt);
+      }
+      for (const c of candidates) {
+        if (!maxUpdatedAt || c.getTime() > maxUpdatedAt.getTime()) {
+          maxUpdatedAt = c;
+        }
+      }
+    }
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return { days, maxUpdatedAt };
 }

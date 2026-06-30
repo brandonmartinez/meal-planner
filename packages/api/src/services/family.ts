@@ -129,6 +129,25 @@ export async function removeMember(familyId: string, memberId: string) {
   });
 }
 
+export async function updateFamily(
+  familyId: string,
+  data: { name?: string; timezone?: string },
+) {
+  return prisma.family.update({
+    where: { id: familyId },
+    data,
+    include: {
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true },
+          },
+        },
+      },
+    },
+  });
+}
+
 export async function getMembers(familyId: string) {
   return prisma.familyMember.findMany({
     where: { familyId },

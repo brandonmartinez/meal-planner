@@ -25,6 +25,7 @@ export interface FamilyMember {
 export interface Family {
   id: string;
   name: string;
+  timezone: string;
   createdAt: string;
   members: FamilyMember[];
 }
@@ -77,6 +78,16 @@ export function updateMemberRole(familyId: string, memberId: string, role: 'PARE
   return request<FamilyMember>(`${API_BASE}/${familyId}/members/${memberId}`, {
     method: 'PATCH',
     body: JSON.stringify({ role }),
+  });
+}
+
+export function updateFamily(
+  familyId: string,
+  data: { name?: string; timezone?: string },
+) {
+  return request<Family>(`${API_BASE}/${familyId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
   });
 }
 

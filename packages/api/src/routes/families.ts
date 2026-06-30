@@ -4,6 +4,7 @@ import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as familyService from "../services/family.js";
 import * as apiKeyService from "../services/apiKey.js";
+import { isValidTimezone } from "../services/weekPlan.js";
 
 export const familyRouter = Router();
 
@@ -27,6 +28,22 @@ const joinSchema = z.object({
 const updateRoleSchema = z.object({
   role: z.enum(["PARENT", "CHILD"]),
 });
+
+const updateFamilySchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    timezone: z
+      .string()
+      .min(1)
+      .max(64)
+      .refine((v) => isValidTimezone(v), {
+        message: "Unknown IANA timezone",
+      })
+      .optional(),
+  })
+  .refine((v) => v.name !== undefined || v.timezone !== undefined, {
+    message: "At least one field is required",
+  });
 
 const createApiKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -151,6 +168,32 @@ familyRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to join family" });
+    }
+  },
+);
+
+// Update family (name, timezone) — PARENT only
+familyRouter.patch(
+  "/:familyId",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    try {
+      const data = updateFamilySchema.parse(req.body);
+      const family = await familyService.updateFamily(
+        paramStr(req.params.familyId),
+        data,
+      );
+      res.json(family);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      res.status(500).json({ error: "Failed to update family" });
     }
   },
 );

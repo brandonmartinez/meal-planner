@@ -13,6 +13,7 @@ export interface User {
 export interface Family {
   id: string;
   name: string;
+  timezone: string;
 }
 
 export interface FamilyMember {
@@ -95,9 +96,54 @@ export interface ApiKey {
 }
 
 // API response types
-export interface DisplayMealResponse {
-  date: string;
-  meals: Pick<Meal, "id" | "name" | "description" | "placeholderKind">[];
+export type DisplayDayStatus = "planned" | "unplanned" | "skipped";
+
+export interface DisplayMealEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  placeholderKind:
+    | import("../constants/index.js").MealPlaceholderKind
+    | null;
+  /** Emoji glyph for placeholder kinds; null for regular meals. */
+  icon: string | null;
+  imageUrl: string | null;
+}
+
+export interface DisplayDay {
+  date: string; // YYYY-MM-DD in the resolved timezone
+  dayOfWeek: import("../constants/index.js").DayOfWeek;
+  status: DisplayDayStatus;
+  meals: DisplayMealEntry[];
+}
+
+export interface DisplayFamily {
+  id: string;
+  name: string;
+  timezone: string;
+}
+
+export interface DisplayMealsResponse {
+  family: DisplayFamily;
+  meals: DisplayDay[];
+}
+
+/** @deprecated Use DisplayDay instead. Kept for back-compat. */
+export type DisplayMealResponse = DisplayDay;
+
+export type DisplayErrorCode =
+  | "MISSING_API_KEY"
+  | "INVALID_API_KEY"
+  | "INVALID_DATE_RANGE"
+  | "INVALID_TIMEZONE"
+  | "INVALID_QUERY"
+  | "INTERNAL_ERROR";
+
+export interface DisplayErrorResponse {
+  error: {
+    code: DisplayErrorCode;
+    message: string;
+  };
 }
 
 export interface AuthUser {
