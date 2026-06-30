@@ -119,9 +119,11 @@ weekPlanRouter.patch(
     try {
       const familyId = paramStr(req.params.familyId);
       const suggestionId = paramStr(req.params.suggestionId);
+      const user = req.user as { id: string };
       const suggestion = await weekPlanService.approveSuggestion(
         familyId,
         suggestionId,
+        { actorType: "user", actorId: user.id },
       );
       res.json(suggestion);
     } catch (error) {

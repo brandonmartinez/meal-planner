@@ -9,8 +9,11 @@ import {
   displayKeyGenerator,
   displayLimiter,
   authLimiter,
+  agentKeyGenerator,
+  agentLimiter,
   DISPLAY_LIMIT,
   AUTH_LIMIT,
+  AGENT_LIMIT,
 } from "./rateLimit.js";
 
 /**
@@ -165,6 +168,76 @@ describe("auth rate limiter", () => {
       const blocked = await fetch(url);
       const body = await blocked.json();
       // Throttling the auth surface must not reveal anything about credentials.
+      expect(JSON.stringify(body)).not.toMatch(/key|token|exist|account/i);
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe("agentKeyGenerator", () => {
+  it("hashes the agent key and never embeds the raw key in the bucket key", () => {
+    const raw = "super-secret-agent-key";
+    const req = {
+      ip: "203.0.113.9",
+      headers: { "x-agent-key": raw },
+    } as unknown as Request;
+
+    const key = agentKeyGenerator(req);
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(raw)
+      .digest("hex")
+      .slice(0, 16);
+
+    expect(key).toBe(`203.0.113.9:${fingerprint}`);
+    expect(key).not.toContain(raw);
+  });
+
+  it("falls back to IP only when no agent key is present", () => {
+    const req = { ip: "203.0.113.9", headers: {} } as unknown as Request;
+    expect(agentKeyGenerator(req)).toBe("203.0.113.9");
+  });
+});
+
+describe("agent rate limiter", () => {
+  it("buckets independently per agent-key fingerprint", async () => {
+    const limiter = createRateLimiter({
+      windowMs: 60_000,
+      limit: 1,
+      keyGenerator: agentKeyGenerator,
+    });
+    const { url, close } = await harness(limiter);
+    try {
+      expect(
+        (await fetch(url, { headers: { "x-agent-key": "AAA" } })).status,
+      ).toBe(200);
+      expect(
+        (await fetch(url, { headers: { "x-agent-key": "AAA" } })).status,
+      ).toBe(429);
+      // A different agent key has its own bucket.
+      expect(
+        (await fetch(url, { headers: { "x-agent-key": "BBB" } })).status,
+      ).toBe(200);
+    } finally {
+      await close();
+    }
+  });
+
+  it("real agentLimiter returns a generic 429 after exceeding its limit", async () => {
+    const { url, close } = await harness(agentLimiter);
+    try {
+      let lastStatus = 0;
+      for (let i = 0; i < AGENT_LIMIT + 1; i++) {
+        const res = await fetch(url, { headers: { "x-agent-key": "same-key" } });
+        lastStatus = res.status;
+      }
+      expect(lastStatus).toBe(429);
+
+      const blocked = await fetch(url, {
+        headers: { "x-agent-key": "same-key" },
+      });
+      const body = await blocked.json();
       expect(JSON.stringify(body)).not.toMatch(/key|token|exist|account/i);
     } finally {
       await close();

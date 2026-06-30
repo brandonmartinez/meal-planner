@@ -40,6 +40,15 @@ export const GENERAL_LIMIT = 300;
 export const GENERAL_WINDOW_MS = 15 * MINUTE;
 
 /**
+ * Budget for authenticated MCP agent routes. Deliberately DISTINCT from the
+ * display limiter and the browser/JWT `generalLimiter` so an agent's traffic
+ * is throttled in its own bucket and can never borrow from (or starve) the
+ * human surfaces. Keyed by IP + a hash of the agent key.
+ */
+export const AGENT_LIMIT = 120;
+export const AGENT_WINDOW_MS = 15 * MINUTE;
+
+/**
  * Shared defaults: standardized `RateLimit-*` headers (draft-7), no legacy
  * `X-RateLimit-*` headers, and a generic JSON 429 body. The message is
  * deliberately uninformative so a throttled response cannot be used to probe
@@ -109,8 +118,37 @@ export const inviteJoinLimiter = createRateLimiter({
   limit: INVITE_JOIN_LIMIT,
 });
 
+/**
+ * Bucket key for the agent limiter: client IP combined with a hash of the
+ * presented `x-agent-key` (when present). Mirrors {@link displayKeyGenerator}
+ * but reads the agent-credential header — the raw key never appears in the
+ * returned bucket key.
+ *
+ * Note: express-rate-limit v7.5.1 does not export `ipKeyGenerator`, so we
+ * build the IP portion directly (matching the display limiter's approach).
+ */
+export function agentKeyGenerator(req: Request): string {
+  const ip = req.ip ?? "ip-unknown";
+  const raw = req.headers["x-agent-key"];
+  if (typeof raw === "string" && raw.length > 0) {
+    return `${ip}:${apiKeyFingerprint(raw)}`;
+  }
+  return ip;
+}
+
 /** Reasonable general limiter for authenticated routes. Keyed by IP. */
 export const generalLimiter = createRateLimiter({
   windowMs: GENERAL_WINDOW_MS,
   limit: GENERAL_LIMIT,
+});
+
+/**
+ * Limiter for the MCP agent surface (`/api/agent/*`). Mounted BEFORE
+ * `authenticateAgent` so credential floods are rejected before any hash
+ * lookup / DB fan-out. Distinct bucket from display and JWT routes.
+ */
+export const agentLimiter = createRateLimiter({
+  windowMs: AGENT_WINDOW_MS,
+  limit: AGENT_LIMIT,
+  keyGenerator: agentKeyGenerator,
 });

@@ -288,10 +288,15 @@ export async function addSuggestion(
  * Approves a suggestion, enforcing that it belongs to `familyId` via
  * dayPlan.weekPlan.familyId before mutating. A suggestion owned by another
  * family yields 404 without flipping `approved`.
+ *
+ * Captures the approving actor so approval is no longer actorless:
+ * `approver.actorType` is "user" | "agent" and `approver.actorId` is the
+ * User.id or AgentCredential.id respectively.
  */
 export async function approveSuggestion(
   familyId: string,
   suggestionId: string,
+  approver: { actorType: "user" | "agent"; actorId: string },
 ) {
   const owned = await prisma.mealSuggestion.findFirst({
     where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
@@ -303,7 +308,12 @@ export async function approveSuggestion(
 
   return prisma.mealSuggestion.update({
     where: { id: suggestionId },
-    data: { approved: true },
+    data: {
+      approved: true,
+      approvedByActorType: approver.actorType,
+      approvedById: approver.actorId,
+      approvedAt: new Date(),
+    },
     include: suggestionInclude,
   });
 }

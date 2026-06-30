@@ -226,6 +226,7 @@ describe("PATCH /:familyId/suggestions/:suggestionId/approve", () => {
     expect(weekPlanService.approveSuggestion).toHaveBeenCalledWith(
       FAMILY_ID,
       "sug-1",
+      { actorType: "user", actorId: USER_ID },
     );
   });
 
