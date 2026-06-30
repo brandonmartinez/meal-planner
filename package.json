@@ -12,7 +12,7 @@
     "db:reset": "pnpm --filter @meal-planner/api run db:reset"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "packageManager": "pnpm@9.15.4"
 }
