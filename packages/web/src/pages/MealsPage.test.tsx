@@ -34,6 +34,8 @@ function meal(overrides: Record<string, unknown>) {
     difficulty: null,
     familyId: FAMILY_ID,
     _count: { ingredients: 0 },
+    recentlyScheduled: false,
+    lastScheduledOn: null,
     ...overrides,
   };
 }
@@ -68,5 +70,55 @@ describe('MealsPage difficulty', () => {
     expect(screen.queryByText('Easy')).not.toBeInTheDocument();
     expect(screen.queryByText('Medium')).not.toBeInTheDocument();
     expect(screen.queryByText('Hard')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealsPage recent indicator', () => {
+  it('shows a Recent badge with the last-scheduled date when the meal is recent', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json([
+          meal({
+            id: 'm-1',
+            name: 'Tacos',
+            recentlyScheduled: true,
+            lastScheduledOn: '2026-06-29',
+          }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    // Visible, text-bearing badge (not color-only).
+    expect(screen.getByText('Recent')).toBeInTheDocument();
+    // Help text / accessible label surfaces the last-scheduled date.
+    expect(screen.getByTitle('Last scheduled 2026-06-29')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Recent — last scheduled 2026-06-29'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not show a Recent badge when the meal is not recent', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json([
+          meal({
+            id: 'm-2',
+            name: 'Soup',
+            recentlyScheduled: false,
+            lastScheduledOn: null,
+          }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Soup')).toBeInTheDocument();
+    expect(screen.queryByText('Recent')).not.toBeInTheDocument();
   });
 });
