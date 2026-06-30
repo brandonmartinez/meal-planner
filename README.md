@@ -24,43 +24,59 @@ A family meal planning web application that allows family members to suggest mea
 
 ### Prerequisites
 
-- Node.js 22+
-- pnpm 9+
-- Docker & Docker Compose (for PostgreSQL)
+- Docker & Docker Compose
+- VS Code with the Dev Containers extension (recommended), or the
+  [`devcontainer` CLI](https://github.com/devcontainers/cli)
 
-### Local Development
+> **Do not run project code on the host.** All `pnpm`, test, lint, build,
+> Prisma, and `dev` commands run **inside the devcontainer** (or in CI) — never
+> directly on your machine. The devcontainer pins Node 22, pnpm 9, and
+> PostgreSQL 16 so everyone matches CI. See [CONTRIBUTING.md](CONTRIBUTING.md)
+> and [`.devcontainer/README.md`](.devcontainer/README.md) for the full rule and
+> the rationale.
 
-```bash
-# Clone the repo
-git clone https://github.com/brandonmartinez/meal-planner.git
-cd meal-planner
+### Dev Container (the default environment)
 
-# Install dependencies
-pnpm install
+1. Open the folder in VS Code and **"Reopen in Container"**, or start it from the
+   CLI:
 
-# Start PostgreSQL
-docker compose up -d
+   ```bash
+   git clone https://github.com/brandonmartinez/meal-planner.git
+   cd meal-planner
+   devcontainer up --workspace-folder .
+   # or: docker compose -f .devcontainer/docker-compose.yml up -d
+   ```
 
-# Set up environment
-cp packages/api/.env.example packages/api/.env
-# Edit .env with your Google OAuth credentials
+   The first build installs dependencies and generates the Prisma client
+   automatically (`pnpm install && pnpm db:generate`). PostgreSQL 16 runs as a
+   compose service — no separate database setup needed.
 
-# Generate Prisma client and run migrations
-pnpm db:generate
-pnpm db:migrate
+   For Google OAuth, copy the env template and fill in your credentials (editing
+   files on the host is fine; the workspace is mounted into the container):
 
-# Seed the database
-pnpm db:seed
+   ```bash
+   cp packages/api/.env.example packages/api/.env
+   # edit packages/api/.env with your Google OAuth credentials
+   ```
 
-# Start development servers (API + frontend)
-pnpm dev
-```
+2. Run all project commands **in the container**. From the host, use the
+   `scripts/dc-exec.sh` wrapper:
+
+   ```bash
+   scripts/dc-exec.sh pnpm dev          # API + frontend dev servers
+   scripts/dc-exec.sh pnpm -r test      # all workspace tests
+   scripts/dc-exec.sh pnpm -r lint      # all workspace lints
+   scripts/dc-exec.sh pnpm db:migrate   # apply migrations
+   scripts/dc-exec.sh pnpm db:seed      # seed the database
+   ```
+
+   Or SSH in (`ssh -p 2222 node@localhost`) and run the same commands directly
+   inside `/workspace`.
 
 The API runs on http://localhost:3001 and the frontend on http://localhost:5173.
 
-### Dev Container
-
-Open the project in VS Code with the Dev Containers extension for a fully configured development environment with PostgreSQL included.
+See [`.devcontainer/README.md`](.devcontainer/README.md) for SSH setup, the
+`dc-exec.sh` wrapper reference, and forwarded ports.
 
 ## Project Structure
 
