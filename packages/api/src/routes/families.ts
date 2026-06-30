@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
+import { inviteJoinLimiter } from "../middleware/rateLimit.js";
 import * as familyService from "../services/family.js";
 import * as apiKeyService from "../services/apiKey.js";
 import { isValidTimezone } from "../services/weekPlan.js";
@@ -123,6 +124,7 @@ familyRouter.get(
 // Generate invite
 familyRouter.post(
   "/:familyId/invite",
+  inviteJoinLimiter,
   authenticateJWT,
   requireMembership,
   requireRole("PARENT"),
@@ -149,6 +151,7 @@ familyRouter.post(
 // Join family via invite token
 familyRouter.post(
   "/:familyId/join",
+  inviteJoinLimiter,
   authenticateJWT,
   async (req: Request, res: Response) => {
     try {
