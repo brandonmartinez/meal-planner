@@ -399,7 +399,7 @@ describe('FamilySettingsPage', () => {
     // Metadata surfaced.
     expect(screen.getByText(/Last used/i)).toBeInTheDocument();
     expect(screen.getByText(/Never used/i)).toBeInTheDocument();
-    expect(screen.getByText(/Expires/i)).toBeInTheDocument();
+    expect(screen.getByText(/Expires \d/i)).toBeInTheDocument();
     expect(screen.getByText(/No expiry/i)).toBeInTheDocument();
     // Manage actions tied to each credential by name.
     expect(screen.getByRole('button', { name: /rotate planner bot/i })).toBeInTheDocument();
