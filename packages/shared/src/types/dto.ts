@@ -19,6 +19,12 @@
 
 import type { Meal } from "./index.js";
 
+/**
+ * The actor type recorded when a suggestion is approved. A family member
+ * approves as `"user"`; an MCP agent credential approves as `"agent"`.
+ */
+export type ApprovalActorType = "user" | "agent";
+
 /** A user as embedded in family/membership API responses. `avatarUrl` is a
  *  nullable Prisma column and therefore serializes as `string | null`. */
 export interface SerializedUser {
@@ -85,4 +91,76 @@ export interface ImportMealsResultDTO {
   updated: number;
   skipped: number;
   errors: { name: string; error: string }[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Week-plan / MCP scheduling contracts                                       */
+/*                                                                            */
+/* These are the typed wire contracts the MCP server (#5) and the web app     */
+/* both consume for reading week plans and scheduling/approving meals. They   */
+/* mirror the Prisma `weekPlanInclude` shape after JSON serialization:        */
+/* `Date` columns become ISO strings, and nullable Prisma columns serialize   */
+/* as `T | null` (never absent/`undefined`).                                  */
+/* -------------------------------------------------------------------------- */
+
+/** The user who created a suggestion, as embedded in suggestion responses. */
+export interface SuggestedByDTO {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+/** A single meal suggestion on a day, with its embedded meal and the user who
+ *  suggested it. Approval metadata is polymorphic: `approvedByActorType` is the
+ *  actor kind, `approvedById` the User.id or AgentCredential.id, both `null`
+ *  until approved. `approvedAt`/`createdAt` are ISO date strings. */
+export interface MealSuggestionDTO {
+  id: string;
+  mealId: string;
+  dayPlanId: string;
+  userId: string;
+  approved: boolean;
+  approvedByActorType: ApprovalActorType | null;
+  approvedById: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  meal: Meal;
+  suggestedBy: SuggestedByDTO;
+}
+
+/** A single day within a week plan, with its ordered suggestions. `date` is an
+ *  ISO date string (UTC midnight of the calendar day). */
+export interface DayPlanDTO {
+  id: string;
+  date: string;
+  weekPlanId: string;
+  suggestions: MealSuggestionDTO[];
+}
+
+/** A full week plan with its seven day plans. `weekStart` is always a Monday
+ *  (ISO date string); `createdAt`/`updatedAt` are ISO date strings. This is the
+ *  shape returned by `GET .../weeks/:weekStart`, `GET .../weeks/current`, and
+ *  each entry of `GET .../weeks`. */
+export interface WeekPlanDTO {
+  id: string;
+  weekStart: string;
+  familyId: string;
+  createdAt: string;
+  updatedAt: string;
+  days: DayPlanDTO[];
+}
+
+/** The response from `GET /families/:id/weeks?before=&limit=` — previous week
+ *  plans in reverse-chronological order, bounded by `limit`. */
+export interface PreviousWeeksResponseDTO {
+  weeks: WeekPlanDTO[];
+}
+
+/** The request body for `POST /families/:id/schedule` — schedule a meal onto a
+ *  calendar date without first resolving a `dayPlanId`. The service finds (or
+ *  creates) the WeekPlan and DayPlan for `date`. `date` is `YYYY-MM-DD`. */
+export interface ScheduleMealRequestDTO {
+  mealId: string;
+  date: string;
 }

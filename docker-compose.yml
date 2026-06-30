@@ -1,3 +1,17 @@
+# Root compose — single source of truth for the Postgres `db` service.
+#
+# Entry points (kept distinct to avoid DB config drift, see issue #24):
+#   - This file .......................... DB-only host dev. Starts Postgres on
+#                                          localhost:5432 for running app code
+#                                          against a local database.
+#   - .devcontainer/docker-compose.yml ... full containerized dev (`pnpm dev`).
+#                                          Its `db` service `extends` the one
+#                                          below, so the image, credentials,
+#                                          port, and data volume live here and
+#                                          cannot drift between environments.
+#
+# Dev-only defaults: the postgres/postgres credentials below are for local
+# development only. Real deployments inject DATABASE_URL via env (see k8s/).
 services:
   db:
     image: postgres:16-alpine
