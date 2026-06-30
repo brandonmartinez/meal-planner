@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import type { AuthUser } from '@meal-planner/shared';
+import { request } from '../api/client';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -17,12 +18,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me', { credentials: 'include' });
-      if (res.ok) {
-        setUser(await res.json());
-      } else {
-        setUser(null);
-      }
+      // request<T> throws on non-OK (e.g. 401 when signed out) — treat any
+      // failure as "no current user".
+      setUser(await request<AuthUser>('/api/auth/me'));
     } catch {
       setUser(null);
     } finally {
@@ -33,12 +31,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { fetchUser(); }, [fetchUser]);
 
   const login = () => {
+    // Google OAuth is a full-page redirect, not an XHR/fetch — this is the one
+    // documented exception to routing auth calls through request<T>().
     window.location.href = '/api/auth/google';
   };
 
   const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    setUser(null);
+    try {
+      await request<void>('/api/auth/logout', { method: 'POST' });
+    } finally {
+      // Always clear local auth state, even if the server call fails.
+      setUser(null);
+    }
   };
 
   const refresh = async () => {
