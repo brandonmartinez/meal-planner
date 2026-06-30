@@ -1,6 +1,6 @@
 ---
-updated_at: 2026-06-30T23:18:00.000Z
-focus_area: Sprint 1+2 SHIPPED. Sprint 3 Waves 1-2 DONE; Wave 3 running. Then #15, then Sprint 4. Goal: finish through Sprint 4.
+updated_at: 2026-06-30T23:42:00.000Z
+focus_area: Sprint 1+2 SHIPPED. Sprint 3 nearly done — #15 (last) running. Then Sprint 4. Goal: finish through Sprint 4.
 active_issues: [6, 7, 15, 16, 17, 22, 24, 27, 5, 25, 26]
 ---
 
@@ -15,11 +15,11 @@ Plan: `~/.copilot/session-state/.../plan.md`. Conflict rule: parallel across dis
 ### Wave 2 ✅ MERGED & CLOSED
 - #17 (PR57, sec-gate APPROVE) · #27-be (PR58, Part of #27).
 
-### Wave 3 (running)
-- **#6-web** Linus — agent-cred mgmt UI (FamilySettingsPage) — `squad/6-agent-cred-web` → sec-gate → Closes #6
-- **#27-web** Linus — recent badge (MealsPage) — `squad/27-recent-indicator-web` → Closes #27
+### Wave 3 ✅ MERGED & CLOSED
+- #27-web (PR59) → #27 CLOSED · #6-web (PR60, sec-gate; fixed 3 CI test-assertion bugs) → #6 CLOSED.
 
-### Wave 4 (queued): #15 LAST (touches all web pages) → a11y gate
+### Wave 4 (running)
+- **#15** Linus — accessible names + status semantics for forms/loaders (all web pages) — `squad/15-accessible-forms-loaders` → a11y gate → Closes #15. LAST Sprint 3 item.
 Close on merge: #7 #22 #24 #16 #17 #27 #15; #6(+#50) when mgmt be+web both land.
 
 ## Then — Sprint 4 (#5 #25 #26)
