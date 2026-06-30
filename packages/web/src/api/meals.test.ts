@@ -60,6 +60,30 @@ describe("meals api client", () => {
     expect(body).toEqual({ name: "Tacos" });
   });
 
+  it("createMeal sends a chosen difficulty", async () => {
+    let body: { difficulty?: unknown } = {};
+    server.use(
+      http.post("/api/families/f-1/meals", async ({ request }) => {
+        body = (await request.json()) as { difficulty?: unknown };
+        return HttpResponse.json({ id: "m-1" });
+      }),
+    );
+    await mealsApi.createMeal("f-1", { name: "Tacos", difficulty: "MEDIUM" });
+    expect(body.difficulty).toBe("MEDIUM");
+  });
+
+  it("updateMeal sends a null difficulty to clear it", async () => {
+    let body: { difficulty?: unknown } = {};
+    server.use(
+      http.put("/api/families/f-1/meals/m-1", async ({ request }) => {
+        body = (await request.json()) as { difficulty?: unknown };
+        return HttpResponse.json({ id: "m-1" });
+      }),
+    );
+    await mealsApi.updateMeal("f-1", "m-1", { name: "Soup", difficulty: null });
+    expect(body.difficulty).toBeNull();
+  });
+
   it("deleteMeal succeeds on 200", async () => {
     server.use(
       http.delete(

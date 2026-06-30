@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
 import { useFamily } from '../hooks/useFamily';
-import { INGREDIENT_CATEGORIES } from '@meal-planner/shared';
+import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
+import type { Difficulty } from '@meal-planner/shared';
 
 interface IngredientRow {
   name: string;
@@ -21,6 +22,7 @@ export default function MealFormPage() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +39,7 @@ export default function MealFormPage() {
         }
         setName(meal.name);
         setDescription(meal.description || '');
+        setDifficulty(meal.difficulty ?? '');
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -80,6 +83,7 @@ export default function MealFormPage() {
     const data = {
       name: name.trim(),
       description: description.trim() || undefined,
+      difficulty: difficulty === '' ? null : difficulty,
       ingredients: validIngredients.length ? validIngredients : undefined,
     };
 
@@ -129,6 +133,23 @@ export default function MealFormPage() {
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
           />
+        </div>
+
+        <div>
+          <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Difficulty</label>
+          <select
+            id="difficulty"
+            value={difficulty}
+            onChange={e => setDifficulty(e.target.value as Difficulty | '')}
+            className="w-full sm:w-48 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+          >
+            <option value="">None</option>
+            {MEAL_DIFFICULTIES.map(level => (
+              <option key={level} value={level}>
+                {level.charAt(0) + level.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>

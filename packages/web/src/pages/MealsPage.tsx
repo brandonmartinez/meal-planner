@@ -4,6 +4,7 @@ import { listMeals, deleteMeal } from '../api/meals';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
+import DifficultyBadge from '../components/DifficultyBadge';
 import type { MealListItemDTO } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
@@ -108,6 +109,7 @@ export default function MealsPage() {
                       <span className="ml-2 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full">{meta.name}</span>
                     )}
                   </h3>
+                  <DifficultyBadge difficulty={meal.difficulty} />
                 </div>
                 {meal.description && (
                   <p className="text-gray-600 dark:text-gray-300 text-sm mt-1 line-clamp-2">{meal.description}</p>
