@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.js';
 import prisma from '../config/database.js';
 import crypto from 'crypto';
+import { isDisplayRequest, sendDisplayError } from '../utils/displayError.js';
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
@@ -63,9 +64,14 @@ export function requireRole(role: 'PARENT' | 'CHILD') {
 
 export async function authenticateApiKey(req: Request, res: Response, next: NextFunction): Promise<void> {
   const apiKey = req.headers['x-api-key'] as string | undefined;
+  const useDisplayEnvelope = isDisplayRequest(req.originalUrl);
 
   if (!apiKey) {
-    res.status(401).json({ error: 'API key required' });
+    if (useDisplayEnvelope) {
+      sendDisplayError(res, 401, 'MISSING_API_KEY', 'API key required');
+    } else {
+      res.status(401).json({ error: 'API key required' });
+    }
     return;
   }
 
@@ -76,12 +82,20 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     });
 
     if (!keyRecord) {
-      res.status(401).json({ error: 'Invalid API key' });
+      if (useDisplayEnvelope) {
+        sendDisplayError(res, 401, 'INVALID_API_KEY', 'Invalid API key');
+      } else {
+        res.status(401).json({ error: 'Invalid API key' });
+      }
       return;
     }
 
     if (keyRecord.expiresAt && keyRecord.expiresAt < new Date()) {
-      res.status(401).json({ error: 'API key expired' });
+      if (useDisplayEnvelope) {
+        sendDisplayError(res, 401, 'INVALID_API_KEY', 'API key expired');
+      } else {
+        res.status(401).json({ error: 'API key expired' });
+      }
       return;
     }
 
@@ -93,6 +107,10 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     req.familyId = keyRecord.familyId;
     next();
   } catch {
-    res.status(500).json({ error: 'API key verification failed' });
+    if (useDisplayEnvelope) {
+      sendDisplayError(res, 500, 'INTERNAL_ERROR', 'API key verification failed');
+    } else {
+      res.status(500).json({ error: 'API key verification failed' });
+    }
   }
 }

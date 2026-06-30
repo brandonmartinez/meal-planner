@@ -92,14 +92,95 @@ See `packages/api/.env.example` for required configuration.
 
 ### Display API (for Magic Mirror)
 
+The `/api/display/meals` endpoint powers the [MMM-meal-planner](https://github.com/brandonmartinez/MMM-meal-planner) MagicMirror² module and any other read-only display surface. It is authenticated with an `X-API-Key` header (see Family settings → API Keys).
+
+#### Query params
+
+| Param       | Type             | Notes |
+|-------------|------------------|-------|
+| `days`      | integer (1–60)   | Rolling window starting "today" in the resolved timezone. |
+| `from`,`to` | `YYYY-MM-DD`     | Explicit range. Both required together; `to` must be ≥ `from`. |
+| `weekStart` | `YYYY-MM-DD`     | Returns the 7 days starting on this date. |
+| `tz`        | IANA timezone    | Optional override (e.g. `America/Chicago`). |
+
+If no range param is given the endpoint returns the current Mon–Sun week in the resolved timezone.
+
+**Timezone precedence** (highest first): `?tz=` query param → `Family.timezone` (editable in Family settings) → `UTC`.
+
+#### Response shape
+
+```json
+{
+  "family": {
+    "id": "fam_…",
+    "name": "Martinez",
+    "timezone": "America/Chicago"
+  },
+  "meals": [
+    {
+      "date": "2026-05-04",
+      "dayOfWeek": "Monday",
+      "status": "planned",
+      "meals": [
+        {
+          "id": "meal_…",
+          "name": "Spaghetti",
+          "description": "Pasta night",
+          "placeholderKind": null,
+          "icon": null,
+          "imageUrl": null
+        }
+      ]
+    },
+    {
+      "date": "2026-05-05",
+      "dayOfWeek": "Tuesday",
+      "status": "skipped",
+      "meals": []
+    },
+    {
+      "date": "2026-05-06",
+      "dayOfWeek": "Wednesday",
+      "status": "unplanned",
+      "meals": []
+    }
+  ]
+}
+```
+
+- `status` is `"planned"` (≥1 approved real meal), `"skipped"` (only `SKIP` placeholder approved), or `"unplanned"` (no approved suggestions). For back-compat, `meals: []` is preserved on `skipped` days.
+- `icon` is the placeholder emoji when `placeholderKind` is set (e.g. `"🏖️"` for `FREE_DAY`), `null` otherwise.
+- `imageUrl` surfaces the meal's optional thumbnail (additive; `null` when unset).
+
+#### HTTP caching
+
+Responses include `Cache-Control: private, max-age=60` and a strong `ETag`. Polling clients should send `If-None-Match` and handle `304 Not Modified` to avoid re-downloading unchanged plans.
+
+#### Error envelope
+
+All 4xx/5xx responses use:
+
+```json
+{ "error": { "code": "INVALID_TIMEZONE", "message": "Unknown IANA timezone: Not/Real" } }
+```
+
+Codes: `MISSING_API_KEY`, `INVALID_API_KEY`, `INVALID_DATE_RANGE`, `INVALID_TIMEZONE`, `INVALID_QUERY`, `INTERNAL_ERROR`.
+
+#### Examples
+
 ```bash
-# Get meals for the next 7 days
+# Rolling 7 days, anchored to the family's stored timezone
 curl -H "X-API-Key: YOUR_KEY" \
   "https://meals.themartinez.cloud/api/display/meals?days=7"
 
-# Get meals for a specific date range
+# Explicit timezone override + ETag revalidation
 curl -H "X-API-Key: YOUR_KEY" \
-  "https://meals.themartinez.cloud/api/display/meals?from=2024-01-01&to=2024-01-07"
+     -H 'If-None-Match: "abc…"' \
+  "https://meals.themartinez.cloud/api/display/meals?days=7&tz=America/Chicago"
+
+# Specific date range
+curl -H "X-API-Key: YOUR_KEY" \
+  "https://meals.themartinez.cloud/api/display/meals?from=2026-05-04&to=2026-05-10"
 ```
 
 ## License

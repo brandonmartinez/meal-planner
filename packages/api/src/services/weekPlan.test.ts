@@ -14,6 +14,11 @@ const {
   moveSuggestion,
   MoveSuggestionError,
   getApprovedMealsForRange,
+  getStartOfDayInTz,
+  formatDateInTz,
+  dayOfWeekInTz,
+  isValidTimezone,
+  getDisplayDays,
 } = await import("./weekPlan.js");
 
 describe("getMondayOfWeek", () => {
@@ -336,5 +341,121 @@ describe("getApprovedMealsForRange", () => {
     };
     expect(arg.where.date.gte.toISOString()).toBe("2026-05-04T00:00:00.000Z");
     expect(arg.where.date.lte.toISOString()).toBe("2026-05-10T23:59:59.999Z");
+  });
+});
+
+describe("isValidTimezone", () => {
+  it("accepts well-known IANA zones", () => {
+    expect(isValidTimezone("UTC")).toBe(true);
+    expect(isValidTimezone("America/Chicago")).toBe(true);
+    expect(isValidTimezone("Asia/Tokyo")).toBe(true);
+  });
+
+  it("rejects junk", () => {
+    expect(isValidTimezone("Not/Real")).toBe(false);
+    expect(isValidTimezone("")).toBe(false);
+  });
+});
+
+describe("formatDateInTz / dayOfWeekInTz", () => {
+  it("rolls back the date east of UTC at UTC midnight (Tokyo)", () => {
+    // 2026-05-05T00:00Z is 2026-05-05T09:00 in Tokyo — same calendar date.
+    const d = new Date("2026-05-05T00:00:00Z");
+    expect(formatDateInTz(d, "Asia/Tokyo")).toBe("2026-05-05");
+    expect(formatDateInTz(d, "UTC")).toBe("2026-05-05");
+  });
+
+  it("rolls back the date west of UTC just after UTC midnight (Chicago)", () => {
+    // 2026-05-05T02:00Z is 2026-05-04T21:00 (CDT, UTC-5) — previous day.
+    const d = new Date("2026-05-05T02:00:00Z");
+    expect(formatDateInTz(d, "America/Chicago")).toBe("2026-05-04");
+    expect(formatDateInTz(d, "UTC")).toBe("2026-05-05");
+  });
+
+  it("returns weekday name in tz", () => {
+    // 2026-05-04 was a Monday.
+    const d = new Date("2026-05-04T18:00:00Z");
+    expect(dayOfWeekInTz(d, "America/Chicago")).toBe("Monday");
+  });
+});
+
+describe("getStartOfDayInTz", () => {
+  it("returns the UTC instant of local midnight in the given tz", () => {
+    // 2026-05-05 12:00Z; Chicago local midnight that day is 2026-05-05T05:00Z (CDT).
+    const got = getStartOfDayInTz(new Date("2026-05-05T12:00:00Z"), "America/Chicago");
+    expect(got.toISOString()).toBe("2026-05-05T05:00:00.000Z");
+  });
+
+  it("handles east-of-UTC tz (Tokyo, UTC+9)", () => {
+    // 2026-05-05 12:00Z is already 2026-05-05 21:00 in Tokyo,
+    // so Tokyo local midnight that day is 2026-05-04T15:00Z.
+    const got = getStartOfDayInTz(new Date("2026-05-05T12:00:00Z"), "Asia/Tokyo");
+    expect(got.toISOString()).toBe("2026-05-04T15:00:00.000Z");
+  });
+
+  it("handles spring-forward (US/Central, 2026-03-08)", () => {
+    // The clock skips 02:00→03:00 local on this day; local midnight is still well-defined.
+    const got = getStartOfDayInTz(new Date("2026-03-08T18:00:00Z"), "America/Chicago");
+    // CST (UTC-6) was in effect at midnight 2026-03-08; midnight local = 06:00Z.
+    expect(got.toISOString()).toBe("2026-03-08T06:00:00.000Z");
+  });
+
+  it("handles fall-back (US/Central, 2026-11-01)", () => {
+    const got = getStartOfDayInTz(new Date("2026-11-01T18:00:00Z"), "America/Chicago");
+    // CDT (UTC-5) in effect at midnight 2026-11-01; midnight local = 05:00Z.
+    expect(got.toISOString()).toBe("2026-11-01T05:00:00.000Z");
+  });
+});
+
+describe("getDisplayDays", () => {
+  it("fills missing days as 'unplanned' and walks the full range", async () => {
+    prismaMock.dayPlan.findMany.mockResolvedValue([] as never);
+    const r = await getDisplayDays(
+      "fam-1",
+      new Date("2026-05-04T00:00:00Z"),
+      new Date("2026-05-06T00:00:00Z"),
+      "UTC",
+    );
+    expect(r.days.map((d) => d.date)).toEqual([
+      "2026-05-04",
+      "2026-05-05",
+      "2026-05-06",
+    ]);
+    expect(r.days.every((d) => d.status === "unplanned")).toBe(true);
+    expect(r.maxUpdatedAt).toBeNull();
+  });
+
+  it("derives status='skipped' when only SKIP placeholders are approved", async () => {
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      {
+        id: "dp",
+        date: new Date("2026-05-04T00:00:00Z"),
+        weekPlan: { updatedAt: new Date("2026-05-01T00:00:00Z") },
+        suggestions: [
+          {
+            id: "s1",
+            approved: true,
+            createdAt: new Date("2026-05-01T00:00:00Z"),
+            meal: {
+              id: "m-skip",
+              name: "Skip",
+              description: null,
+              placeholderKind: "SKIP",
+              imageUrl: null,
+              updatedAt: new Date("2026-05-01T00:00:00Z"),
+            },
+          },
+        ],
+      },
+    ] as never);
+    const r = await getDisplayDays(
+      "fam-1",
+      new Date("2026-05-04T00:00:00Z"),
+      new Date("2026-05-04T00:00:00Z"),
+      "UTC",
+    );
+    expect(r.days[0].status).toBe("skipped");
+    expect(r.days[0].meals).toEqual([]);
+    expect(r.maxUpdatedAt).not.toBeNull();
   });
 });

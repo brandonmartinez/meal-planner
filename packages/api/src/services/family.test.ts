@@ -9,6 +9,7 @@ const {
   generateInviteToken,
   joinFamily,
   updateMemberRole,
+  updateFamily,
   removeMember,
   getFamilyById,
   getUserFamilies,
@@ -123,6 +124,23 @@ describe("family service", () => {
       expect(prismaMock.familyMember.delete).toHaveBeenCalledWith({
         where: { id: "m-1", familyId: "fam-1" },
       });
+    });
+  });
+
+  describe("updateFamily", () => {
+    it("forwards name and timezone to prisma.family.update", async () => {
+      prismaMock.family.update.mockResolvedValue({
+        id: "fam-1",
+        name: "New",
+        timezone: "America/Chicago",
+      } as never);
+      await updateFamily("fam-1", { name: "New", timezone: "America/Chicago" });
+      expect(prismaMock.family.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "fam-1" },
+          data: { name: "New", timezone: "America/Chicago" },
+        }),
+      );
     });
   });
 

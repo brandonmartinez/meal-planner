@@ -10,6 +10,7 @@ datasource db {
 model Family {
   id        String         @id @default(uuid())
   name      String
+  timezone  String         @default("UTC")
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   members   FamilyMember[]

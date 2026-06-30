@@ -5,6 +5,7 @@ import {
   getMembers,
   generateInvite,
   updateMemberRole,
+  updateFamily,
   removeMember,
   createApiKey,
   listApiKeys,
@@ -25,6 +26,9 @@ export default function FamilySettingsPage() {
   const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tzDraft, setTzDraft] = useState('UTC');
+  const [tzSaving, setTzSaving] = useState(false);
+  const [tzSaved, setTzSaved] = useState(false);
 
   const currentMembership = members.find(m => m.user.id === user?.id);
   const isParent = currentMembership?.role === 'PARENT';
@@ -34,6 +38,7 @@ export default function FamilySettingsPage() {
     try {
       const [f, m] = await Promise.all([getFamily(familyId), getMembers(familyId)]);
       setFamily(f);
+      setTzDraft(f.timezone || 'UTC');
       setMembers(m);
       if (isParent) {
         const keys = await listApiKeys(familyId);
@@ -103,6 +108,30 @@ export default function FamilySettingsPage() {
     }
   };
 
+  const handleSaveTimezone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!familyId) return;
+    setTzSaving(true);
+    setTzSaved(false);
+    try {
+      const updated = await updateFamily(familyId, { timezone: tzDraft });
+      setFamily(updated);
+      setTzSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update timezone');
+    } finally {
+      setTzSaving(false);
+    }
+  };
+
+  const tzOptions = (() => {
+    type IntlWithTz = typeof Intl & { supportedValuesOf?: (k: string) => string[] };
+    const intlAny = Intl as IntlWithTz;
+    const list = intlAny.supportedValuesOf?.('timeZone');
+    if (list && list.length > 0) return list;
+    return ['UTC', 'America/Chicago', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Asia/Tokyo'];
+  })();
+
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
@@ -118,6 +147,39 @@ export default function FamilySettingsPage() {
       <h1 className="text-2xl font-bold mb-6">{family.name} — Settings</h1>
 
       {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+
+      {/* Timezone */}
+      {isParent && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">Timezone</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+            Used by the public Display API to compute the rolling day window
+            for connected MagicMirror² displays.
+          </p>
+          <form onSubmit={handleSaveTimezone} className="flex gap-2 items-center">
+            <select
+              aria-label="Family timezone"
+              value={tzDraft}
+              onChange={(e) => { setTzDraft(e.target.value); setTzSaved(false); }}
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            >
+              {tzOptions.map((tz) => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={tzSaving || tzDraft === family.timezone}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {tzSaving ? 'Saving…' : 'Save'}
+            </button>
+          </form>
+          {tzSaved && (
+            <p className="mt-2 text-sm text-green-700 dark:text-green-400">Timezone updated.</p>
+          )}
+        </section>
+      )}
 
       {/* Members */}
       <section className="mb-8">
