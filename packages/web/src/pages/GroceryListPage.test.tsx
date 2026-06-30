@@ -164,7 +164,7 @@ describe('GroceryListPage', () => {
     renderWithProviders(<GroceryListPage />);
 
     await screen.findByText('Bananas');
-    await userEvent.click(screen.getByTitle('Remove item'));
+    await userEvent.click(screen.getByRole('button', { name: /remove bananas/i }));
 
     await waitFor(() => expect(screen.queryByText('Bananas')).not.toBeInTheDocument());
   });
@@ -180,5 +180,83 @@ describe('GroceryListPage', () => {
     renderWithProviders(<GroceryListPage />);
 
     expect(await screen.findByText(/failed to load grocery list/i)).toBeInTheDocument();
+  });
+});
+
+describe('GroceryListPage accessibility', () => {
+  it('exposes a labelled status region while the list is loading', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas' })])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    // Before the fetch resolves the page shows an accessible loading status.
+    expect(screen.getByRole('status', { name: /loading grocery list/i })).toBeInTheDocument();
+
+    // Wait for content so the loading region is replaced (use findBy for async).
+    expect(await screen.findByText('Bananas')).toBeInTheDocument();
+  });
+
+  it('gives each checkbox and remove control an accessible name with the item', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas', checked: false })])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    // findBy* waits for the async fetch to resolve before querying.
+    expect(await screen.findByRole('checkbox', { name: 'Check Bananas' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Bananas' })).toBeInTheDocument();
+  });
+
+  it('reflects checked state in the checkbox accessible name', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas', checked: true })])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    expect(await screen.findByRole('checkbox', { name: 'Uncheck Bananas' })).toBeInTheDocument();
+  });
+
+  it('labels the add-custom-item controls', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    // The add form is only rendered once the (empty) list resolves.
+    expect(await screen.findByRole('textbox', { name: 'New item name' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'New item quantity' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'New item unit' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'New item category' })).toBeInTheDocument();
+  });
+
+  it('announces a load failure through an alert region', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json({ error: 'Failed to load grocery list' }, { status: 500 }),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to load grocery list');
   });
 });

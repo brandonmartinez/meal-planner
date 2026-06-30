@@ -54,7 +54,7 @@ export default function JoinFamilyPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
-          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -69,7 +69,7 @@ export default function JoinFamilyPage() {
             You've been invited to join as a <strong>{decoded.role}</strong>.
           </p>
         )}
-        {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+        {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
         <button
           onClick={handleJoin}
           disabled={loading}

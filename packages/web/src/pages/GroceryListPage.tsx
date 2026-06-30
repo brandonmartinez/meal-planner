@@ -5,6 +5,7 @@ import { useWeek } from '../context/WeekContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem } from '../api/grocery';
 import { INGREDIENT_CATEGORIES } from '@meal-planner/shared';
 import { formatWeekRange } from '../utils/date';
+import LoadingSpinner from '../components/LoadingSpinner';
 import type { GroceryList, GroceryItem } from '@meal-planner/shared';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -131,11 +132,7 @@ export default function GroceryListPage() {
     if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
     if (loading) {
-        return (
-            <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-        );
+        return <LoadingSpinner message="Loading grocery list…" />;
     }
 
     return (
@@ -152,7 +149,7 @@ export default function GroceryListPage() {
 
             <p className="text-gray-600 dark:text-gray-300 mb-6">{weekStart && formatWeekRange(weekStart)}</p>
 
-            {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+            {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
             {!groceryList ? (
                 <div className="text-center py-12">
@@ -201,6 +198,7 @@ export default function GroceryListPage() {
                                             type="checkbox"
                                             checked={item.checked}
                                             onChange={() => handleToggle(item)}
+                                            aria-label={`${item.checked ? 'Uncheck' : 'Check'} ${item.name}`}
                                             className="h-5 w-5 text-green-600 rounded"
                                         />
                                         <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
@@ -221,8 +219,8 @@ export default function GroceryListPage() {
                                         )}
                                         <button
                                             onClick={() => handleRemove(item.id)}
+                                            aria-label={`Remove ${item.name}`}
                                             className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
-                                            title="Remove item"
                                         >
                                             ×
                                         </button>
@@ -246,6 +244,7 @@ export default function GroceryListPage() {
                                     value={newItemName}
                                     onChange={e => setNewItemName(e.target.value)}
                                     placeholder="Item name *"
+                                    aria-label="New item name"
                                     className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     required
                                 />
@@ -254,6 +253,7 @@ export default function GroceryListPage() {
                                     value={newItemQuantity}
                                     onChange={e => setNewItemQuantity(e.target.value)}
                                     placeholder="Qty"
+                                    aria-label="New item quantity"
                                     className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                                 <input
@@ -261,6 +261,7 @@ export default function GroceryListPage() {
                                     value={newItemUnit}
                                     onChange={e => setNewItemUnit(e.target.value)}
                                     placeholder="Unit"
+                                    aria-label="New item unit"
                                     className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 />
                             </div>
@@ -268,6 +269,7 @@ export default function GroceryListPage() {
                                 <select
                                     value={newItemCategory}
                                     onChange={e => setNewItemCategory(e.target.value)}
+                                    aria-label="New item category"
                                     className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 >
                                     {INGREDIENT_CATEGORIES.map(cat => (

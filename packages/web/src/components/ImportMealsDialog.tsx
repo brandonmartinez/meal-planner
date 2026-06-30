@@ -42,6 +42,8 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
     const [submitting, setSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const headingId = useId();
+    const csvTextId = useId();
+    const modeId = useId();
 
     const handleFile = async (file: File) => {
         const text = await file.text();
@@ -166,7 +168,9 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                         <span className="text-sm text-gray-500 dark:text-gray-400">or paste below</span>
                     </div>
 
+                    <label htmlFor={csvTextId} className="sr-only">CSV content</label>
                     <textarea
+                        id={csvTextId}
                         value={csvText}
                         onChange={e => {
                             setCsvText(e.target.value);
@@ -178,10 +182,11 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                     />
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <label htmlFor={modeId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             When a meal with the same name already exists
                         </label>
                         <select
+                            id={modeId}
                             value={mode}
                             onChange={e => setMode(e.target.value as 'skip' | 'replace')}
                             className="px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
@@ -227,10 +232,10 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                         </div>
                     )}
 
-                    {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded text-sm">{error}</div>}
+                    {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded text-sm">{error}</div>}
 
                     {result && (
-                        <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 p-3 rounded text-sm">
+                        <div role="status" className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 p-3 rounded text-sm">
                             <p className="font-medium mb-1">Import complete</p>
                             <p>
                                 Created: {result.created} · Updated: {result.updated} · Skipped: {result.skipped}
