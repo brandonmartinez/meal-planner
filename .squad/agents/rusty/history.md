@@ -17,6 +17,8 @@ Lead / Architect. Owns cross-package contracts, scope, and code review. Build/CI
 
 📌 Sprint 1 batch (2026-06-30T17:04:41-04:00): Two roles this sprint. (1) Authored #12 `squad/12-shared-dtos` PR #38 (draft) — made `@meal-planner/shared` the single source of truth for serialized API response DTOs (new `src/types/dto.ts`: SerializedUser, FamilyMemberDTO, FamilyDTO, ApiKeyListItemDTO, CreatedApiKeyDTO, ImportMealsResultDTO), removed duplicate web-local interfaces. These DTOs are the wire contract MCP must reuse — the foundational MCP contract surface. Calls: services keep returning Prisma shapes (serialize at `res.json()`), dates are ISO strings, api-key secret-once invariant preserved. (2) Acting as the independent Lead security gate on Frank's #11 (fail-closed secrets) — in review, since Frank can't self-gate.
 
+📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Ran the independent security gates on Frank's two PRs (author was Frank, so I review since he can't self-gate). #10 `PR #41` (scoped rate limits) → APPROVE. #6 `PR #47` (scoped MCP agent credentials) → APPROVE on all 11 acceptance criteria. Because every agent PR shares author `brandonmartinez`, `gh pr review --approve` is blocked — gate verdicts posted as review comments instead; Squad-layer independence (reviewer ≠ author) still holds. #6 stays OPEN: management endpoints deferred to #50.
+
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->

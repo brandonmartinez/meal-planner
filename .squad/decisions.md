@@ -2,6 +2,30 @@
 
 ## Active Decisions
 
+### 2026-06-30T18-32-22: Sprint 2 batch — shared/API contracts, test coverage, and the MCP credential model (#14/#8/#10/#20/#18/#19/#6)
+**By:** coordinator (logged by Scribe)
+**What:** Second implementation sprint, same standing rules: one isolated worktree + draft PR per issue, CI is verification of record (no host runs), GitHub writes via the `brandonmartinez` account, security work gated by an independent reviewer. Coordinator flipped each PR ready and squash-merged after CI went green.
+**References:** PRs #39, #40, #41, #44, #45, #46, #47, #48; issues #14, #8, #10, #20, #18, #19, #6; follow-ups #42, #43, #49, #50, #51
+**Why:** Requested by Brandon Martinez — continue implementation of the reviewed backlog, advancing the shared/API contract surface, test coverage, and the MCP security foundation.
+
+Shipped (merged to main unless noted):
+- **#14 (Linus, PR #39):** Centralized all `packages/web` API calls through a typed `request<T>()` + `ApiError` client (`packages/web/src/api/client.ts`); removed raw `fetch` (OAuth redirect kept as a documented exception). CLOSED.
+- **#8 (Livingston backend+shared PR #40; Linus web UI PR #44):** Nullable meal `difficulty` (EASY/MEDIUM/HARD) end-to-end — Prisma enum + nullable column (hand-authored migration), shared type/constant, Zod validation, service threading, and web display/set/clear (`DifficultyBadge` + form select). CLOSED.
+- **#10 (Frank, PR #41):** Scoped rate limits for auth / invite-join / display surfaces; the display limiter keys on IP + a SHA-256 fingerprint of the api-key (never the raw key); generic 429 with no existence oracle. Independent Rusty gate → APPROVE. CLOSED.
+- **#20 (Yen, PR #45):** Component tests for ImportMealsDialog, Layout, Navigation, ThemeToggle, WeekSelector. CLOSED.
+- **#18 (Yen, PR #46):** Route-handler tests for auth/families/grocery/health/meals/weekPlan via a new `getRouteHandler` helper; service layer mocked. CLOSED.
+- **#19 (Yen, PR #48):** Page-level tests for Login/CreateFamily/FamilySettings/GroceryList/WeekPlan (Meals/MealForm excluded — covered by #44). CLOSED.
+- **#6 (Frank, PR #47):** Scoped MCP agent credentials — a separate `AgentCredential` model (family-scoped; scopes/role, createdBy, expiresAt, lastUsed, revokedAt), `authenticateAgent` middleware, `/api/agent` routes (read/schedule/approve), an allow+deny audit log, approver capture on both JWT and agent paths, a distinct rate limiter, and rotation/revocation/expiry (hand-authored migration). Independent Rusty gate → APPROVE (all 11 criteria). **Stays OPEN** — parent-facing credential-management HTTP endpoints deferred to #50.
+
+Key decisions & lessons:
+- **Merge-safety rule adopted:** PRs #39/#40 were briefly closed-unmerged because branches were deleted before MERGED was confirmed. New rule: run `gh pr ready` BEFORE `gh pr merge`, and verify `state=MERGED` BEFORE deleting any branch/worktree. Both recovered from head SHAs — no work lost.
+- **Self-approval constraint:** every agent PR shares author `brandonmartinez`, so `gh pr review --approve` is blocked. Gate verdicts are posted as review comments instead; Squad-layer independence (reviewer ≠ author) is still satisfied.
+- **CI caught real bugs:** #20 had an ambiguous `/load example/i` query (also matched "Download example template") → anchored to `/^load example$/i`; #19 error-banner tests asserted a fallback string but pages surface `ApiError.message` → MSW error bodies aligned. Both fixed by coordinator.
+- **Integration ordering:** #6 changed `approveSuggestion` to take an actor arg for the audit trail; #18's route test was updated to the new 3-arg contract before merging #6 (synced main into #6's branch and re-ran CI to catch it).
+- **No-host-runs + migrations:** #6/#8 migrations were hand-authored (no DB available) and CI does not run `migrate deploy` → tracked as #42.
+
+Follow-ups filed: #42 (CI migrate-deploy validation, Basher), #43 (trust proxy, Basher/infra), #49 (HMAC/KDF credential hashing, Frank), #50 (agent-credential management endpoints + UI, Frank/Linus), #51 (observable safeAudit failures, Frank).
+
 ### 2026-06-30T17-04-41: Sprint 1 kickoff batch — 6 issues implemented, each isolated worktree + draft PR (#33-#38)
 **By:** coordinator (logged by Scribe)
 **What:** Executed the first implementation sprint: six issues built in parallel, each in its own isolated git worktree on a `squad/{n}-{slug}` branch off `origin/main`, each with its own draft PR. Security-touching work was gated by an independent reviewer (author cannot self-gate).
