@@ -1,15 +1,27 @@
+# syntax=docker/dockerfile:1
+
+# Pin the base image by digest for reproducible builds across all stages.
+# The `node:22-alpine` tag is kept for readability; the digest is authoritative.
+# Bump both together when intentionally upgrading the base image.
+ARG NODE_IMAGE=node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+
 # Stage 1: Install dependencies
-FROM node:22-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/api/package.json ./packages/api/
 COPY packages/web/package.json ./packages/web/
-RUN pnpm install --frozen-lockfile || pnpm install
+# Strict, reproducible install: fail on a stale/missing lockfile (no unlocked fallback).
+# BuildKit cache mount keeps the pnpm content-addressable store warm across builds
+# without affecting what gets installed (the lockfile remains the source of truth).
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # Stage 2: Build
-FROM node:22-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 RUN corepack enable
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -27,17 +39,22 @@ RUN pnpm --filter @meal-planner/api deploy --prod /app/deploy
 RUN cd /app/deploy && npx prisma generate --schema=./prisma/schema.prisma
 
 # Stage 3: Production
-FROM node:22-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app/deploy/node_modules ./node_modules
-COPY --from=builder /app/deploy/package.json ./package.json
-COPY --from=builder /app/packages/api/dist ./dist
-COPY --from=builder /app/packages/api/prisma ./prisma
-COPY --from=builder /app/packages/web/dist ./public
+# Copy runtime artifacts owned by the built-in unprivileged `node` user so the
+# entrypoint (prisma migrate deploy) and the API can read/execute them without root.
+COPY --from=builder --chown=node:node /app/deploy/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/deploy/package.json ./package.json
+COPY --from=builder --chown=node:node /app/packages/api/dist ./dist
+COPY --from=builder --chown=node:node /app/packages/api/prisma ./prisma
+COPY --from=builder --chown=node:node /app/packages/web/dist ./public
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Drop root: run the final container as the unprivileged `node` user.
+USER node
 
 EXPOSE 3001
 
