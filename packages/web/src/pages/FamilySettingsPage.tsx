@@ -11,19 +11,19 @@ import {
   listApiKeys,
   revokeApiKey,
 } from '../api/families.js';
-import type { Family, FamilyMember, ApiKeyInfo, ApiKeyCreated } from '../api/families.js';
+import type { FamilyDTO, FamilyMemberDTO, ApiKeyListItemDTO, CreatedApiKeyDTO } from '../api/families.js';
 import { useAuth } from '../context/AuthContext.js';
 import { useFamily } from '../hooks/useFamily';
 
 export default function FamilySettingsPage() {
   const { familyId, hasFamilies } = useFamily();
   const { user } = useAuth();
-  const [family, setFamily] = useState<Family | null>(null);
-  const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [apiKeys, setApiKeys] = useState<ApiKeyInfo[]>([]);
+  const [family, setFamily] = useState<FamilyDTO | null>(null);
+  const [members, setMembers] = useState<FamilyMemberDTO[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKeyListItemDTO[]>([]);
   const [inviteLink, setInviteLink] = useState('');
   const [newKeyName, setNewKeyName] = useState('');
-  const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
+  const [createdKey, setCreatedKey] = useState<CreatedApiKeyDTO | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [tzDraft, setTzDraft] = useState('UTC');
