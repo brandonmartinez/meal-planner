@@ -3,6 +3,10 @@ import type {
   FamilyMemberDTO,
   ApiKeyListItemDTO,
   CreatedApiKeyDTO,
+  AgentCredentialListItemDTO,
+  CreatedAgentCredentialDTO,
+  RevokedAgentCredentialDTO,
+  AgentScope,
 } from '@meal-planner/shared';
 import { request } from './client';
 
@@ -14,6 +18,10 @@ export type {
   FamilyMemberDTO,
   ApiKeyListItemDTO,
   CreatedApiKeyDTO,
+  AgentCredentialListItemDTO,
+  CreatedAgentCredentialDTO,
+  RevokedAgentCredentialDTO,
+  AgentScope,
 } from '@meal-planner/shared';
 
 const API_BASE = '/api/families';
@@ -89,4 +97,50 @@ export function revokeApiKey(familyId: string, keyId: string) {
   return request<void>(`${API_BASE}/${familyId}/api-keys/${keyId}`, {
     method: 'DELETE',
   });
+}
+
+// --- Scoped MCP agent credentials (issue #6) ------------------------------
+// Parent-facing management of least-privilege agent credentials. Mirrors the
+// API-key client shape, but each credential carries explicit `scopes[]` and an
+// optional `expiresAt`. The raw key is returned ONCE on create and on rotate;
+// the list endpoint returns metadata only and never a key.
+
+/** List a family's agent credentials (metadata only — never a raw key). */
+export function listAgentCredentials(familyId: string) {
+  return request<AgentCredentialListItemDTO[]>(
+    `${API_BASE}/${familyId}/agent-credentials`,
+  );
+}
+
+/** Create a scoped agent credential. The response carries the raw `key`
+ *  exactly once. `expiresAt`, when provided, is an ISO date string in the
+ *  future. */
+export function createAgentCredential(
+  familyId: string,
+  data: { name: string; scopes: AgentScope[]; expiresAt?: string | null },
+) {
+  return request<CreatedAgentCredentialDTO>(
+    `${API_BASE}/${familyId}/agent-credentials`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+/** Rotate a credential — issues a brand-new raw `key` (returned once) and
+ *  invalidates the old one. */
+export function rotateAgentCredential(familyId: string, credentialId: string) {
+  return request<CreatedAgentCredentialDTO>(
+    `${API_BASE}/${familyId}/agent-credentials/${credentialId}/rotate`,
+    { method: 'POST' },
+  );
+}
+
+/** Soft-revoke a credential (stamps `revokedAt`). Idempotent. */
+export function revokeAgentCredential(familyId: string, credentialId: string) {
+  return request<RevokedAgentCredentialDTO>(
+    `${API_BASE}/${familyId}/agent-credentials/${credentialId}`,
+    { method: 'DELETE' },
+  );
 }

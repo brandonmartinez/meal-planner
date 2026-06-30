@@ -71,6 +71,50 @@ export const PLACEHOLDER_NAMES_LOWER = new Set<string>(
   MEAL_PLACEHOLDER_KINDS.map((k) => MEAL_PLACEHOLDERS[k].name.toLowerCase()),
 );
 
+/**
+ * Per-operation scopes an MCP agent credential may be granted. The string
+ * values are the wire contract — they MUST stay byte-for-byte identical to the
+ * API service (`packages/api/src/services/agentCredential.ts`), since the
+ * backend validates incoming `scopes[]` against exactly these values (an
+ * unknown scope is a 400). Deliberately narrow and least-privilege: an agent
+ * only ever holds the grants a parent explicitly hands it.
+ */
+export const AGENT_SCOPES = [
+  "meal_plan:read",
+  "meal_plan:schedule",
+  "meal_plan:approve",
+] as const;
+
+export type AgentScope = (typeof AGENT_SCOPES)[number];
+
+export interface AgentScopeMetadata {
+  /** Short human label for parent-facing UI. */
+  label: string;
+  /** One-line description of what granting this scope lets the agent do. */
+  description: string;
+}
+
+/**
+ * Parent-facing copy for each agent scope. Used by the web Family Settings UI
+ * to render scope checkboxes and badges. The `meal_plan:approve` scope is
+ * privileged (PARENT-equivalent) — its description says so.
+ */
+export const AGENT_SCOPE_METADATA: Record<AgentScope, AgentScopeMetadata> = {
+  "meal_plan:read": {
+    label: "Read meal plans",
+    description: "View week plans and meal suggestions for the family.",
+  },
+  "meal_plan:schedule": {
+    label: "Schedule meals",
+    description: "Add (schedule) meal suggestions onto day plans.",
+  },
+  "meal_plan:approve": {
+    label: "Approve meals",
+    description:
+      "Approve meal suggestions — a privileged, parent-equivalent action.",
+  },
+};
+
 export const INGREDIENT_CATEGORIES = [
   "produce",
   "dairy",
