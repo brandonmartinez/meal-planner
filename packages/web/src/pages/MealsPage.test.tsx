@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../tests/msw/server';
 import { renderWithProviders, screen } from '../test-utils/render';
 import MealsPage from './MealsPage';
@@ -127,14 +127,15 @@ describe('MealsPage accessibility', () => {
   it('exposes a labelled status region while meals load', async () => {
     server.use(
       authMeWithFamily(),
-      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]),
-      ),
+      http.get(`/api/families/${FAMILY_ID}/meals`, async () => {
+        await delay(40);
+        return HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]);
+      }),
     );
 
     renderWithProviders(<MealsPage />);
 
-    expect(screen.getByRole('status', { name: /loading meals/i })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /loading meals/i })).toBeInTheDocument();
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
   });
 

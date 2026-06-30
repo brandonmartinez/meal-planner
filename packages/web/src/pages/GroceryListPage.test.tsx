@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
 import { renderWithProviders, screen, waitFor } from '../test-utils/render';
@@ -187,15 +187,16 @@ describe('GroceryListPage accessibility', () => {
   it('exposes a labelled status region while the list is loading', async () => {
     server.use(
       authMeWithFamily(),
-      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
-        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas' })])),
-      ),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', async () => {
+        await delay(40);
+        return HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas' })]));
+      }),
     );
 
     renderWithProviders(<GroceryListPage />);
 
     // Before the fetch resolves the page shows an accessible loading status.
-    expect(screen.getByRole('status', { name: /loading grocery list/i })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /loading grocery list/i })).toBeInTheDocument();
 
     // Wait for content so the loading region is replaced (use findBy for async).
     expect(await screen.findByText('Bananas')).toBeInTheDocument();

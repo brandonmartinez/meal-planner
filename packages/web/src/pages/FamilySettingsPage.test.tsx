@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
 import { renderWithProviders, screen, waitFor } from '../test-utils/render';
@@ -593,14 +593,17 @@ describe('FamilySettingsPage accessibility', () => {
   it('exposes a labelled status region while settings load', async () => {
     server.use(
       authMe('PARENT'),
-      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id', async () => {
+        await delay(40);
+        return HttpResponse.json(familyDto());
+      }),
       http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
       http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
     );
 
     renderWithProviders(<FamilySettingsPage />);
 
-    expect(screen.getByRole('status', { name: /loading settings/i })).toBeInTheDocument();
+    expect(await screen.findByRole('status', { name: /loading settings/i })).toBeInTheDocument();
 
     // Let the async load resolve so the status region is replaced by content.
     expect(await screen.findByRole('heading', { name: /smiths — settings/i })).toBeInTheDocument();
