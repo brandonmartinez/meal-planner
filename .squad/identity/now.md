@@ -1,28 +1,32 @@
 ---
-updated_at: 2026-06-30T21:30:00.000Z
-focus_area: Sprint 1 complete — all 6 issues implemented, draft PRs open, security gates passed, CI green
-active_issues: [9, 11, 12, 13, 23, 32]
+updated_at: 2026-06-30T21:40:00.000Z
+focus_area: Sprint 1 SHIPPED (all merged to main). Sprint 2 Wave A in progress.
+active_issues: [14, 8, 10, 6, 18, 19, 20]
 ---
 
 # What We're Focused On
 
-**Sprint 1 COMPLETE.** Six issues, one isolated worktree + PR each off `origin/main`. CI is verification of record (all green). GitHub writes via `brandonmartinez`.
+## Sprint 1 — ✅ COMPLETE
+All 6 PRs (#33-#38) merged to `main`, issues #9/#11/#12/#13/#23/#32 closed, main CI green. Worktrees/branches cleaned.
 
-## PRs
-| Issue | Owner | PR | CI | State |
-|-------|-------|----|----|-------|
-| #9 IDOR family-scoping (P1) | Livingston | #37 | green | READY (Frank security gate PASSED) |
-| #11 fail-closed prod secrets | Frank | #34 | green | READY (Rusty Lead gate PASSED) |
-| #12 centralize shared DTOs | Rusty | #38 | green | draft |
-| #13 align Node >=22 | Basher | #36 | green | draft |
-| #23 lint in CI (+ eslint setup) | Basher | #35 | green | draft |
-| #32 devcontainer default | Basher | #33 | green | draft |
+## Sprint 2 — IN PROGRESS (Contracts, tests, MCP security model)
+Verification of record = CI. Writes via `brandonmartinez`. One isolated worktree + draft PR per issue off `origin/main`.
 
-## Follow-ups (tech debt, not blocking)
-- #23: CI uses `pnpm install --no-frozen-lockfile` (host runs barred, no live devcontainer). Once #32 merges, regenerate + commit `pnpm-lock.yaml` from the devcontainer and revert to frozen install.
-- #23: eslint `no-explicit-any` + `no-unused-vars` set to `warn` (6 pre-existing). Tighten to `error` in a future cleanup pass.
-- #9: optional defense-in-depth — switch TOCTOU two-query mutations to atomic updateMany/deleteMany + count.
-- #12: optional `Serialize<T>` helper to give the API a compile-time tie to the shared DTOs.
+### Wave A (running)
+- **#14** Linus — web request<T> consolidation — `squad/14-web-request-helper`
+- **#8** Livingston — meal difficulty BACKEND+SHARED (web UI deferred to Wave B) — `squad/8-meal-difficulty`
+- **#10** Frank — scoped rate limits — `squad/10-scoped-rate-limits` -> independent gate (Rusty)
 
-## Next decision for Brandon
-Non-security PRs (#12/#13/#23/#32) are draft pending your review/flip-to-ready or merge call.
+### Wave B (queued — dependency-gated)
+- **#6** Frank — MCP scoped agent credentials (after #8+#10; design pass w/ Rusty first; independent gate)
+- **#8-web** Linus — difficulty UI (after #14 + #8)
+- **#18** Yen — API route-handler tests (after #8 + #10)
+- **#19** Yen — web page tests (after #14 + #8-web)
+- **#20** Yen — web component tests (after #14)
+
+### Gates
+- #10, #6 are security-touching and Frank-authored -> independent (non-Frank) review gate before ready.
+
+### Carry-forward debt
+- #23 CI uses --no-frozen-lockfile; regen+commit pnpm-lock.yaml from devcontainer, revert to frozen.
+- #23 eslint no-explicit-any / no-unused-vars at warn; tighten to error later.
