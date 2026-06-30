@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
+import RecentBadge from '../components/RecentBadge';
 import type { MealListItemDTO } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
@@ -101,7 +102,7 @@ export default function MealsPage() {
                 key={meal.id}
                 className={`bg-white dark:bg-gray-800 p-4 rounded shadow-sm border border-gray-200 dark:border-gray-700 ${isPlaceholder ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40' : ''}`}
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold text-lg">
                     {meta ? <span className="mr-1">{meta.emoji}</span> : null}
                     {meal.name}
@@ -109,7 +110,13 @@ export default function MealsPage() {
                       <span className="ml-2 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full">{meta.name}</span>
                     )}
                   </h3>
-                  <DifficultyBadge difficulty={meal.difficulty} />
+                  <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+                    <RecentBadge
+                      recentlyScheduled={meal.recentlyScheduled}
+                      lastScheduledOn={meal.lastScheduledOn}
+                    />
+                    <DifficultyBadge difficulty={meal.difficulty} />
+                  </div>
                 </div>
                 {meal.description && (
                   <p className="text-gray-600 dark:text-gray-300 text-sm mt-1 line-clamp-2">{meal.description}</p>
