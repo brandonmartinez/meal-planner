@@ -28,13 +28,24 @@ describe("meals api client", () => {
     expect(url).not.toContain("search=");
   });
 
-  it("throws when the server returns non-OK", async () => {
+  it("surfaces the parsed backend error message on non-OK", async () => {
+    server.use(
+      http.get("/api/families/f-1/meals", () =>
+        HttpResponse.json({ error: "family not found" }, { status: 404 }),
+      ),
+    );
+    await expect(mealsApi.listMeals("f-1")).rejects.toThrow(
+      "family not found",
+    );
+  });
+
+  it("falls back to an HTTP status message when the error body has none", async () => {
     server.use(
       http.get("/api/families/f-1/meals", () =>
         HttpResponse.json({}, { status: 500 }),
       ),
     );
-    await expect(mealsApi.listMeals("f-1")).rejects.toThrow(/Failed to fetch/);
+    await expect(mealsApi.listMeals("f-1")).rejects.toThrow(/HTTP 500/);
   });
 
   it("createMeal POSTs the payload", async () => {

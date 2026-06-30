@@ -17,6 +17,8 @@
  * shapes happens at the Express `res.json()` boundary.
  */
 
+import type { Meal } from "./index.js";
+
 /** A user as embedded in family/membership API responses. `avatarUrl` is a
  *  nullable Prisma column and therefore serializes as `string | null`. */
 export interface SerializedUser {
@@ -67,6 +69,14 @@ export interface CreatedApiKeyDTO {
   name: string;
   createdAt: string;
   key: string;
+}
+
+/** A meal as returned by `GET /families/:id/meals`. The list endpoint does not
+ *  embed the full `ingredients` array; instead it returns an aggregate
+ *  `_count.ingredients`. This is the expanded wire shape the meals list renders
+ *  against — distinct from the plain {@link Meal} domain model. */
+export interface MealListItemDTO extends Meal {
+  _count: { ingredients: number };
 }
 
 /** The response from `POST /families/:id/meals/import`. */

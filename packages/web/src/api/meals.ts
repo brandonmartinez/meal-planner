@@ -1,32 +1,36 @@
-import type { Meal, MealIngredient, ImportMealsResultDTO } from "@meal-planner/shared";
+import type {
+  Meal,
+  MealIngredient,
+  MealListItemDTO,
+  ImportMealsResultDTO,
+} from "@meal-planner/shared";
+import { request } from "./client";
 
-// Re-export the shared DTO so components can import the import-result type from
-// this resource module. Single source of truth lives in `@meal-planner/shared`.
-export type { ImportMealsResultDTO } from "@meal-planner/shared";
+// Re-export the shared DTOs so components can import the meal-list and
+// import-result types from this resource module. Single source of truth lives
+// in `@meal-planner/shared`.
+export type {
+  MealListItemDTO,
+  ImportMealsResultDTO,
+} from "@meal-planner/shared";
 
 const BASE = "/api/families";
 
 export async function listMeals(
   familyId: string,
   search?: string,
-): Promise<Meal[]> {
+): Promise<MealListItemDTO[]> {
   const params = search ? `?search=${encodeURIComponent(search)}` : "";
-  const res = await fetch(`${BASE}/${familyId}/meals${params}`, {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch meals");
-  return res.json();
+  return request<MealListItemDTO[]>(`${BASE}/${familyId}/meals${params}`);
 }
 
 export async function getMeal(
   familyId: string,
   mealId: string,
 ): Promise<Meal & { ingredients: MealIngredient[] }> {
-  const res = await fetch(`${BASE}/${familyId}/meals/${mealId}`, {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch meal");
-  return res.json();
+  return request<Meal & { ingredients: MealIngredient[] }>(
+    `${BASE}/${familyId}/meals/${mealId}`,
+  );
 }
 
 export async function createMeal(
@@ -37,14 +41,10 @@ export async function createMeal(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
-  const res = await fetch(`${BASE}/${familyId}/meals`, {
+  return request<Meal>(`${BASE}/${familyId}/meals`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to create meal");
-  return res.json();
 }
 
 export async function updateMeal(
@@ -56,25 +56,19 @@ export async function updateMeal(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
-  const res = await fetch(`${BASE}/${familyId}/meals/${mealId}`, {
+  return request<Meal>(`${BASE}/${familyId}/meals/${mealId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update meal");
-  return res.json();
 }
 
 export async function deleteMeal(
   familyId: string,
   mealId: string,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/${familyId}/meals/${mealId}`, {
+  return request<void>(`${BASE}/${familyId}/meals/${mealId}`, {
     method: "DELETE",
-    credentials: "include",
   });
-  if (!res.ok) throw new Error("Failed to delete meal");
 }
 
 export async function importMeals(
@@ -86,15 +80,8 @@ export async function importMeals(
   }[],
   mode: "skip" | "replace" = "skip",
 ): Promise<ImportMealsResultDTO> {
-  const res = await fetch(`${BASE}/${familyId}/meals/import`, {
+  return request<ImportMealsResultDTO>(`${BASE}/${familyId}/meals/import`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ meals, mode }),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || "Failed to import meals");
-  }
-  return res.json();
 }

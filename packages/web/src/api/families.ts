@@ -4,6 +4,7 @@ import type {
   ApiKeyListItemDTO,
   CreatedApiKeyDTO,
 } from '@meal-planner/shared';
+import { request } from './client';
 
 // Re-export the shared DTOs so pages can keep importing family/api-key types
 // from this resource module. These are the single source of truth in
@@ -16,20 +17,6 @@ export type {
 } from '@meal-planner/shared';
 
 const API_BASE = '/api/families';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-  if (res.status === 204) return undefined as T;
-  return res.json();
-}
 
 export function createFamily(name: string) {
   return request<FamilyDTO>(API_BASE, {

@@ -4,14 +4,14 @@ import { listMeals, deleteMeal } from '../api/meals';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
-import type { Meal } from '@meal-planner/shared';
+import type { MealListItemDTO } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
 export default function MealsPage() {
   const { familyId, hasFamilies } = useFamily();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [meals, setMeals] = useState<(Meal & { _count?: { ingredients: number } })[]>([]);
+  const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -24,7 +24,7 @@ export default function MealsPage() {
     if (!familyId) return;
     try {
       const data = await listMeals(familyId, search || undefined);
-      setMeals(data as any);
+      setMeals(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load meals');
     } finally {
@@ -113,7 +113,7 @@ export default function MealsPage() {
                   <p className="text-gray-600 dark:text-gray-300 text-sm mt-1 line-clamp-2">{meal.description}</p>
                 )}
                 <p className="text-gray-400 dark:text-gray-500 text-xs mt-2">
-                  {(meal as any)._count?.ingredients ?? 0} ingredient{((meal as any)._count?.ingredients ?? 0) !== 1 ? 's' : ''}
+                  {meal._count.ingredients} ingredient{meal._count.ingredients !== 1 ? 's' : ''}
                 </p>
                 <div className="flex gap-2 mt-3">
                   {!isPlaceholder && (
