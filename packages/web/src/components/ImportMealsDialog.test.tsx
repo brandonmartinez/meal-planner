@@ -38,7 +38,7 @@ describe('ImportMealsDialog', () => {
         const user = userEvent.setup();
         renderDialog();
 
-        await user.click(screen.getByRole('button', { name: /load example/i }));
+        await user.click(screen.getByRole('button', { name: /^load example$/i }));
 
         // The sample CSV contains two meals.
         expect(screen.getByText('Spaghetti Bolognese')).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe('ImportMealsDialog', () => {
         );
         const { onImported } = renderDialog();
 
-        await user.click(screen.getByRole('button', { name: /load example/i }));
+        await user.click(screen.getByRole('button', { name: /^load example$/i }));
         await user.click(screen.getByRole('button', { name: /import 2 meals/i }));
 
         await waitFor(() => expect(screen.getByText(/import complete/i)).toBeInTheDocument());
@@ -77,7 +77,7 @@ describe('ImportMealsDialog', () => {
         );
         const { onImported } = renderDialog();
 
-        await user.click(screen.getByRole('button', { name: /load example/i }));
+        await user.click(screen.getByRole('button', { name: /^load example$/i }));
         await user.click(screen.getByRole('button', { name: /import 2 meals/i }));
 
         await waitFor(() => expect(screen.getByText(/import blew up/i)).toBeInTheDocument());
