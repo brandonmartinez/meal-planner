@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import { MEAL_DIFFICULTIES } from "@meal-planner/shared";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as mealService from "../services/meals.js";
@@ -10,10 +11,11 @@ function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
 }
 
-const createMealSchema = z.object({
+export const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
+  difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
   ingredients: z
     .array(
       z.object({
@@ -26,10 +28,11 @@ const createMealSchema = z.object({
     .optional(),
 });
 
-const updateMealSchema = z.object({
+export const updateMealSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
+  difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
   ingredients: z
     .array(
       z.object({

@@ -34,6 +34,7 @@ export interface Meal {
   description?: string;
   imageUrl?: string;
   placeholderKind: import("../constants/index.js").MealPlaceholderKind | null;
+  difficulty: import("../constants/index.js").Difficulty | null;
   familyId: string;
   ingredients?: MealIngredient[];
 }

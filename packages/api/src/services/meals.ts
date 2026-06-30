@@ -4,6 +4,7 @@ import {
   MEAL_PLACEHOLDERS,
   PLACEHOLDER_NAMES_LOWER,
 } from "@meal-planner/shared";
+import type { Difficulty } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 
 export async function listMeals(
@@ -37,6 +38,7 @@ export async function createMeal(
     name: string;
     description?: string;
     imageUrl?: string;
+    difficulty?: Difficulty | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -51,6 +53,7 @@ export async function createMeal(
         name: data.name,
         description: data.description,
         imageUrl: data.imageUrl,
+        difficulty: data.difficulty,
         familyId,
         ingredients: data.ingredients?.length
           ? { create: data.ingredients }
@@ -69,6 +72,7 @@ export async function updateMeal(
     name?: string;
     description?: string;
     imageUrl?: string;
+    difficulty?: Difficulty | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -98,6 +102,7 @@ export async function updateMeal(
         name: data.name,
         description: data.description,
         imageUrl: data.imageUrl,
+        difficulty: data.difficulty,
         ingredients:
           data.ingredients !== undefined
             ? { create: data.ingredients }

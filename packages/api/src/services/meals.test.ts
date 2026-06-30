@@ -12,6 +12,11 @@ const {
   importMeals,
 } = await import("./meals.js");
 
+// Route-level Zod schemas (validation lives at the route boundary).
+const { createMealSchema, updateMealSchema } = await import(
+  "../routes/meals.js"
+);
+
 // Helper: emulate prisma.$transaction(fn) by invoking fn with prismaMock as tx.
 function stubTransaction() {
   prismaMock.$transaction.mockImplementation(
@@ -88,6 +93,36 @@ describe("meals service", () => {
       };
       expect(arg.data.ingredients).toBeUndefined();
     });
+
+    it("persists difficulty when provided", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-3" } as never);
+      await createMeal("fam-1", { name: "Tacos", difficulty: "MEDIUM" });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBe("MEDIUM");
+    });
+
+    it("passes through a null difficulty (no difficulty set)", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-4" } as never);
+      await createMeal("fam-1", { name: "Soup", difficulty: null });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBeNull();
+    });
+
+    it("leaves difficulty undefined when omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-5" } as never);
+      await createMeal("fam-1", { name: "Salad" });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBeUndefined();
+    });
   });
 
   describe("updateMeal", () => {
@@ -151,6 +186,54 @@ describe("meals service", () => {
         data: { ingredients?: unknown };
       };
       expect(arg.data.ingredients).toBeUndefined();
+    });
+
+    it("persists difficulty when provided", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { difficulty: "HARD" });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBe("HARD");
+    });
+
+    it("clears difficulty to null when difficulty is null", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { difficulty: null });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBeNull();
+    });
+
+    it("leaves difficulty untouched when omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBeUndefined();
     });
   });
 
@@ -257,6 +340,62 @@ describe("meals service", () => {
       expect(result.created).toBe(1);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].name).toBe("A");
+    });
+  });
+});
+
+describe("meal difficulty route validation", () => {
+  describe("createMealSchema", () => {
+    it("accepts a valid difficulty", () => {
+      const parsed = createMealSchema.parse({
+        name: "Tacos",
+        difficulty: "EASY",
+      });
+      expect(parsed.difficulty).toBe("EASY");
+    });
+
+    it("accepts an explicit null difficulty", () => {
+      const parsed = createMealSchema.parse({ name: "Tacos", difficulty: null });
+      expect(parsed.difficulty).toBeNull();
+    });
+
+    it("accepts an omitted difficulty", () => {
+      const parsed = createMealSchema.parse({ name: "Tacos" });
+      expect(parsed.difficulty).toBeUndefined();
+    });
+
+    it("rejects an invalid difficulty value", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", difficulty: "EXTREME" }),
+      ).toThrow();
+    });
+
+    it("rejects a lowercase difficulty value", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", difficulty: "easy" }),
+      ).toThrow();
+    });
+  });
+
+  describe("updateMealSchema", () => {
+    it("accepts each valid difficulty value", () => {
+      for (const value of ["EASY", "MEDIUM", "HARD"] as const) {
+        expect(updateMealSchema.parse({ difficulty: value }).difficulty).toBe(
+          value,
+        );
+      }
+    });
+
+    it("accepts an explicit null difficulty (clearing)", () => {
+      expect(updateMealSchema.parse({ difficulty: null }).difficulty).toBeNull();
+    });
+
+    it("accepts an omitted difficulty", () => {
+      expect(updateMealSchema.parse({ name: "x" }).difficulty).toBeUndefined();
+    });
+
+    it("rejects an invalid difficulty value", () => {
+      expect(() => updateMealSchema.parse({ difficulty: "HARDISH" })).toThrow();
     });
   });
 });
