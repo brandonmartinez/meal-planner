@@ -21,6 +21,10 @@ export const MEAL_PLACEHOLDER_KINDS = [
 
 export type MealPlaceholderKind = (typeof MEAL_PLACEHOLDER_KINDS)[number];
 
+export const MEAL_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
+
+export type Difficulty = (typeof MEAL_DIFFICULTIES)[number];
+
 export interface MealPlaceholderMetadata {
   name: string;
   description: string;

@@ -52,6 +52,7 @@ model Meal {
   description          String?
   imageUrl             String?
   placeholderKind      MealPlaceholderKind?
+  difficulty           Difficulty?
   family               Family           @relation(fields: [familyId], references: [id])
   familyId             String
   ingredients          MealIngredient[]
@@ -69,6 +70,12 @@ enum MealPlaceholderKind {
   DINING_OUT
   TRAVEL
   SKIP
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
 }
 
 model MealIngredient {
