@@ -81,7 +81,7 @@ describe('WeekPlanPage', () => {
     server.use(
       authMe('PARENT'),
       http.post('/api/families/:familyId/weeks/:weekStart', () =>
-        HttpResponse.json({ error: 'Boom' }, { status: 500 }),
+        HttpResponse.json({ error: 'Failed to load week plan' }, { status: 500 }),
       ),
     );
 

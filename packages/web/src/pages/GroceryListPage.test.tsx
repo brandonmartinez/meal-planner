@@ -173,7 +173,7 @@ describe('GroceryListPage', () => {
     server.use(
       authMeWithFamily(),
       http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
-        HttpResponse.json({ error: 'Boom' }, { status: 500 }),
+        HttpResponse.json({ error: 'Failed to load grocery list' }, { status: 500 }),
       ),
     );
 
