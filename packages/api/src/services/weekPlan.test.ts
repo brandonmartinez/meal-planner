@@ -177,10 +177,13 @@ describe("suggestions", () => {
     expect(prismaMock.mealSuggestion.create).not.toHaveBeenCalled();
   });
 
-  it("approveSuggestion flips approved to true when in family", async () => {
+  it("approveSuggestion flips approved to true and captures the approver when in family", async () => {
     prismaMock.mealSuggestion.findFirst.mockResolvedValue({ id: "s-1" } as never);
     prismaMock.mealSuggestion.update.mockResolvedValue({} as never);
-    await approveSuggestion("fam-1", "s-1");
+    await approveSuggestion("fam-1", "s-1", {
+      actorType: "user",
+      actorId: "user-1",
+    });
     expect(prismaMock.mealSuggestion.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s-1", dayPlan: { weekPlan: { familyId: "fam-1" } } },
@@ -189,7 +192,30 @@ describe("suggestions", () => {
     expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s-1" },
-        data: { approved: true },
+        data: {
+          approved: true,
+          approvedByActorType: "user",
+          approvedById: "user-1",
+          approvedAt: expect.any(Date),
+        },
+      }),
+    );
+  });
+
+  it("approveSuggestion records an agent actor when approved by an agent", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({ id: "s-2" } as never);
+    prismaMock.mealSuggestion.update.mockResolvedValue({} as never);
+    await approveSuggestion("fam-1", "s-2", {
+      actorType: "agent",
+      actorId: "cred-9",
+    });
+    expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          approved: true,
+          approvedByActorType: "agent",
+          approvedById: "cred-9",
+        }),
       }),
     );
   });
@@ -197,7 +223,10 @@ describe("suggestions", () => {
   it("approveSuggestion rejects a suggestion from another family (404, no write)", async () => {
     prismaMock.mealSuggestion.findFirst.mockResolvedValue(null);
     await expect(
-      approveSuggestion("fam-1", "s-OTHER"),
+      approveSuggestion("fam-1", "s-OTHER", {
+        actorType: "user",
+        actorId: "user-1",
+      }),
     ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
     expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
   });

@@ -8,14 +8,15 @@ datasource db {
 }
 
 model Family {
-  id        String         @id @default(uuid())
-  name      String
-  timezone  String         @default("UTC")
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  members   FamilyMember[]
-  meals     Meal[]
-  weekPlans WeekPlan[]
+  id               String            @id @default(uuid())
+  name             String
+  timezone         String            @default("UTC")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  members          FamilyMember[]
+  meals            Meal[]
+  weekPlans        WeekPlan[]
+  agentCredentials AgentCredential[]
 }
 
 model User {
@@ -119,6 +120,14 @@ model MealSuggestion {
   suggestedBy User   @relation(fields: [userId], references: [id])
   userId    String
   approved  Boolean  @default(false)
+  // Approver metadata. Approval is no longer actorless: when a suggestion is
+  // approved we capture WHO approved it (a family member or an MCP agent
+  // credential) and WHEN. `approvedByActorType` is "user" | "agent";
+  // `approvedById` is the User.id or AgentCredential.id respectively. Left as
+  // a plain string pair (not an FK) because the approver is polymorphic.
+  approvedByActorType String?
+  approvedById        String?
+  approvedAt          DateTime?
   createdAt DateTime @default(now())
 }
 
@@ -151,4 +160,53 @@ model ApiKey {
   expiresAt DateTime?
   lastUsed  DateTime?
   createdAt DateTime  @default(now())
+}
+
+/// Scoped, least-privilege credential for MCP agents that read AND mutate
+/// meal plans. Deliberately SEPARATE from the read-only Magic Mirror `ApiKey`
+/// so a write-capable agent credential can never be conflated with a display
+/// key. Only the SHA-256 `hashedKey` is stored; the raw key is returned once
+/// at creation/rotation and never persisted or logged. `scopes` holds the
+/// per-operation grants (`meal_plan:read` | `meal_plan:schedule` |
+/// `meal_plan:approve`). A credential is family-scoped, revocable
+/// (`revokedAt`) and expirable (`expiresAt`).
+model AgentCredential {
+  id        String          @id @default(uuid())
+  name      String
+  hashedKey String          @unique
+  family    Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  familyId  String
+  scopes    String[]        @default([])
+  createdBy String
+  expiresAt DateTime?
+  lastUsed  DateTime?
+  revokedAt DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  auditLogs AgentAuditLog[]
+
+  @@index([familyId])
+}
+
+/// Append-only audit trail for every agent authorization decision. Records
+/// who (credential), what family, what action, the target resource id(s), the
+/// outcome (allowed | denied) and an optional reason. `credentialId` is a
+/// nullable FK with onDelete: SetNull so audit history survives credential
+/// rotation/revocation/deletion. `familyId` is a plain string (matching the
+/// existing `GroceryList.familyId` style) so the log is never cascade-wiped.
+model AgentAuditLog {
+  id           String           @id @default(uuid())
+  actorType    String
+  credential   AgentCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  credentialId String?
+  familyId     String
+  action       String
+  targetType   String?
+  targetIds    String[]         @default([])
+  outcome      String
+  reason       String?
+  createdAt    DateTime         @default(now())
+
+  @@index([familyId])
+  @@index([credentialId])
 }

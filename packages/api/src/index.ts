@@ -16,10 +16,12 @@ import { mealsRouter } from "./routes/meals.js";
 import { weekPlanRouter } from "./routes/weekPlan.js";
 import { groceryRouter } from "./routes/grocery.js";
 import { displayRouter } from "./routes/display.js";
+import { agentRouter } from "./routes/agent.js";
 import {
   displayLimiter,
   authLimiter,
   generalLimiter,
+  agentLimiter,
 } from "./middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +76,11 @@ app.use("/api/families", groceryRouter);
 // displayLimiter runs BEFORE the router's authenticateApiKey, so floods are
 // rejected before any key lookup or DB fan-out.
 app.use("/api/display", displayLimiter, displayRouter);
+// MCP agent surface on its own prefix + its own distinct limiter, mounted
+// BEFORE authenticateAgent so credential floods are rejected before any hash
+// lookup. Kept separate from /api/families so it never inherits the JWT
+// generalLimiter or browser middleware.
+app.use("/api/agent", agentLimiter, agentRouter);
 
 // Static file serving for production
 const webDistPath = path.resolve(__dirname, "../../web/dist");
