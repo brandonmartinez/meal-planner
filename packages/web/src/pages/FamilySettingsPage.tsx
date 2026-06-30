@@ -24,6 +24,7 @@ export default function FamilySettingsPage() {
   const [inviteLink, setInviteLink] = useState('');
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<CreatedApiKeyDTO | null>(null);
+  const [keyCopyState, setKeyCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [tzDraft, setTzDraft] = useState('UTC');
@@ -91,10 +92,21 @@ export default function FamilySettingsPage() {
     try {
       const key = await createApiKey(familyId, newKeyName.trim());
       setCreatedKey(key);
+      setKeyCopyState('idle');
       setNewKeyName('');
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create key');
+    }
+  };
+
+  const handleCopyCreatedKey = async () => {
+    if (!createdKey) return;
+    try {
+      await navigator.clipboard.writeText(createdKey.key);
+      setKeyCopyState('copied');
+    } catch {
+      setKeyCopyState('error');
     }
   };
 
@@ -252,8 +264,32 @@ export default function FamilySettingsPage() {
 
           {createdKey && (
             <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded text-sm">
-              <p className="font-medium text-yellow-800 dark:text-yellow-200">Save this key — it won't be shown again:</p>
-              <code className="block mt-1 break-all">{createdKey.key}</code>
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                Copy this key now — this is the only time it will be shown:
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <code className="flex-1 break-all bg-yellow-100/60 dark:bg-yellow-950/40 px-2 py-1 rounded">
+                  {createdKey.key}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyCreatedKey}
+                  aria-label={`Copy API key ${createdKey.name}`}
+                  className="shrink-0 px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+                >
+                  {keyCopyState === 'copied' ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              {keyCopyState === 'copied' && (
+                <p role="status" className="mt-2 text-green-700 dark:text-green-400">
+                  Key copied to clipboard.
+                </p>
+              )}
+              {keyCopyState === 'error' && (
+                <p role="alert" className="mt-2 text-red-700 dark:text-red-400">
+                  Couldn’t copy automatically — select the key above and copy it manually.
+                </p>
+              )}
             </div>
           )}
 
@@ -261,11 +297,23 @@ export default function FamilySettingsPage() {
             {apiKeys.map(k => (
               <li key={k.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded shadow-sm border border-transparent dark:border-gray-700">
                 <div>
-                  <span className="font-medium">{k.name}</span>
-                  <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">Created {new Date(k.createdAt).toLocaleDateString()}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{k.name}</span>
+                    <span aria-hidden="true" className="font-mono text-xs text-gray-400 dark:text-gray-500 tracking-widest">
+                      ••••••••
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">
+                    Created {new Date(k.createdAt).toLocaleDateString()}
+                    {' · '}
+                    {k.lastUsed
+                      ? `Last used ${new Date(k.lastUsed).toLocaleDateString()}`
+                      : 'Never used'}
+                  </div>
                 </div>
                 <button
                   onClick={() => handleRevokeKey(k.id)}
+                  aria-label={`Revoke ${k.name}`}
                   className="text-sm px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
                 >
                   Revoke

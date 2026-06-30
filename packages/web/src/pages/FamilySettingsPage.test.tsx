@@ -234,7 +234,107 @@ describe('FamilySettingsPage', () => {
     await userEvent.type(await screen.findByPlaceholderText(/key name/i), 'CI');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    expect(await screen.findByText(/won't be shown again/i)).toBeInTheDocument();
+    expect(await screen.findByText(/only time it will be shown/i)).toBeInTheDocument();
     expect(screen.getByText('secret-abc-123')).toBeInTheDocument();
+  });
+
+  it('copies the freshly created key and shows a confirmation', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+      http.post('/api/families/:id/api-keys', () =>
+        HttpResponse.json({
+          id: 'key-1',
+          name: 'CI',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          key: 'secret-abc-123',
+        }),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.type(await screen.findByPlaceholderText(/key name/i), 'CI');
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    const copyBtn = await screen.findByRole('button', { name: /copy api key ci/i });
+    await userEvent.click(copyBtn);
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('secret-abc-123');
+    expect(await screen.findByText(/key copied to clipboard/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /copy api key ci/i })).toHaveTextContent(/copied/i);
+  });
+
+  it('shows a failure message when copying the created key fails', async () => {
+    // Override the clipboard mock so writeText rejects.
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+      http.post('/api/families/:id/api-keys', () =>
+        HttpResponse.json({
+          id: 'key-1',
+          name: 'CI',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          key: 'secret-abc-123',
+        }),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.type(await screen.findByPlaceholderText(/key name/i), 'CI');
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /copy api key ci/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/copy it manually/i);
+  });
+
+  it('renders existing keys masked with created and last-used info, never the raw secret', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () =>
+        HttpResponse.json([
+          {
+            id: 'key-used',
+            name: 'Mirror',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            lastUsed: '2026-02-15T00:00:00.000Z',
+            // A defensive payload: even if the server ever leaked a secret on
+            // the list endpoint, the UI must never render it for stored keys.
+            key: 'leaked-secret-should-not-render',
+          },
+          {
+            id: 'key-fresh',
+            name: 'Unused',
+            createdAt: '2026-01-05T00:00:00.000Z',
+            lastUsed: null,
+          },
+        ]),
+      ),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    expect(await screen.findByText('Mirror')).toBeInTheDocument();
+    // Last-used surfaced for a used key, "Never used" for an unused one.
+    expect(screen.getByText(/Last used/i)).toBeInTheDocument();
+    expect(screen.getByText(/Never used/i)).toBeInTheDocument();
+    // Masked indicator is present, raw secret is never rendered.
+    expect(screen.getAllByText('••••••••').length).toBe(2);
+    expect(screen.queryByText('leaked-secret-should-not-render')).not.toBeInTheDocument();
+    // Revoke action is clearly tied to each key by name.
+    expect(screen.getByRole('button', { name: /revoke mirror/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /revoke unused/i })).toBeInTheDocument();
   });
 });
