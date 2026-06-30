@@ -3,6 +3,7 @@ import type {
   MealIngredient,
   MealListItemDTO,
   ImportMealsResultDTO,
+  Difficulty,
 } from "@meal-planner/shared";
 import { request } from "./client";
 
@@ -38,6 +39,7 @@ export async function createMeal(
   data: {
     name: string;
     description?: string;
+    difficulty?: Difficulty | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
@@ -53,6 +55,7 @@ export async function updateMeal(
   data: {
     name: string;
     description?: string;
+    difficulty?: Difficulty | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
