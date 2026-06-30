@@ -1,4 +1,8 @@
-import type { Meal, MealIngredient } from "@meal-planner/shared";
+import type { Meal, MealIngredient, ImportMealsResultDTO } from "@meal-planner/shared";
+
+// Re-export the shared DTO so components can import the import-result type from
+// this resource module. Single source of truth lives in `@meal-planner/shared`.
+export type { ImportMealsResultDTO } from "@meal-planner/shared";
 
 const BASE = "/api/families";
 
@@ -73,13 +77,6 @@ export async function deleteMeal(
   if (!res.ok) throw new Error("Failed to delete meal");
 }
 
-export interface ImportMealsResult {
-  created: number;
-  updated: number;
-  skipped: number;
-  errors: { name: string; error: string }[];
-}
-
 export async function importMeals(
   familyId: string,
   meals: {
@@ -88,7 +85,7 @@ export async function importMeals(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   }[],
   mode: "skip" | "replace" = "skip",
-): Promise<ImportMealsResult> {
+): Promise<ImportMealsResultDTO> {
   const res = await fetch(`${BASE}/${familyId}/meals/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

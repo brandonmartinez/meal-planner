@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { importMeals, type ImportMealsResult } from '../api/meals';
+import { importMeals, type ImportMealsResultDTO } from '../api/meals';
 import { parseMealsCSV, type ParsedImportMeal } from '../utils/csv';
 
 interface Props {
@@ -37,7 +37,7 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
     const [preview, setPreview] = useState<ParsedImportMeal[] | null>(null);
     const [warnings, setWarnings] = useState<string[]>([]);
     const [error, setError] = useState('');
-    const [result, setResult] = useState<ImportMealsResult | null>(null);
+    const [result, setResult] = useState<ImportMealsResultDTO | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 

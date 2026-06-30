@@ -1,3 +1,7 @@
+// API response DTOs (serialized wire contracts) live alongside the domain
+// models and are re-exported from the package index.
+export * from "./dto.js";
+
 export enum Role {
   PARENT = "PARENT",
   CHILD = "CHILD",
