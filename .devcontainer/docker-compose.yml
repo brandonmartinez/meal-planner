@@ -1,3 +1,16 @@
+# Devcontainer compose — full containerized dev environment (`pnpm dev`, tests,
+# lint, Prisma). This is the default dev path; see .devcontainer/README.md.
+#
+# Entry points (kept distinct to avoid DB config drift, see issue #24):
+#   - ../docker-compose.yml ... DB-only host dev (Postgres on :5432).
+#   - This file ............... containerized dev: the `app` service plus the
+#                               shared `db`.
+#
+# The `db` service is NOT redefined here — it `extends` the single source of
+# truth in ../docker-compose.yml, so the image, credentials, port, and data
+# volume can never drift between the two environments. This file stays
+# standalone-runnable (`docker compose -f .devcontainer/docker-compose.yml up
+# -d` and scripts/dc-exec.sh both depend on that).
 services:
   app:
     image: mcr.microsoft.com/devcontainers/typescript-node:22
@@ -11,17 +24,16 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/meal_planner
 
+  # Postgres for containerized dev. All DB config (image, user, password, db
+  # name, port, data volume) is inherited from the root compose so it lives in
+  # exactly one place. Add devcontainer-only overrides here only if needed.
   db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: meal_planner
-    ports:
-      - "5432:5432"
+    extends:
+      file: ../docker-compose.yml
+      service: db
 
+# Declared so the data-volume mount inherited by `db` (via extends) resolves.
+# The volume is compose-project-scoped, so devcontainer data stays separate
+# from any host-dev Postgres started from the root compose.
 volumes:
   postgres-data:
