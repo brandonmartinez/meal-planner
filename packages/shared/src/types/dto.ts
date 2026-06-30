@@ -80,9 +80,17 @@ export interface CreatedApiKeyDTO {
 /** A meal as returned by `GET /families/:id/meals`. The list endpoint does not
  *  embed the full `ingredients` array; instead it returns an aggregate
  *  `_count.ingredients`. This is the expanded wire shape the meals list renders
- *  against — distinct from the plain {@link Meal} domain model. */
+ *  against — distinct from the plain {@link Meal} domain model.
+ *
+ *  Recent-scheduling metadata (issue #27): a meal is "recent" when it has at
+ *  least one **approved** `MealSuggestion` scheduled in the family's current or
+ *  immediately previous week, resolved in `Family.timezone`. `lastScheduledOn`
+ *  is the calendar date (`YYYY-MM-DD`) of the most recent such approved
+ *  suggestion, or `null` when the meal is not recent. */
 export interface MealListItemDTO extends Meal {
   _count: { ingredients: number };
+  recentlyScheduled: boolean;
+  lastScheduledOn: string | null;
 }
 
 /** The response from `POST /families/:id/meals/import`. */

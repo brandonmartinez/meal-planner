@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prismaMock } from "../../tests/helpers/prisma.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
@@ -27,6 +27,32 @@ function stubTransaction() {
 
 describe("meals service", () => {
   describe("listMeals", () => {
+    // Pin "now" so the current/previous week window is deterministic. Default
+    // anchor: Tue 2026-06-30 12:00Z → current week Mon 2026-06-29, previous
+    // week Mon 2026-06-22 (in UTC).
+    const CURRENT_MONDAY = "2026-06-29T00:00:00.000Z";
+    const PREVIOUS_MONDAY = "2026-06-22T00:00:00.000Z";
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-06-30T12:00:00.000Z"));
+      // Default family timezone resolves to UTC unless a test overrides it.
+      prismaMock.family.findUnique.mockResolvedValue({
+        timezone: "UTC",
+      } as never);
+      // Default: no recent approved suggestions.
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // A stored DayPlan/WeekPlan date is UTC midnight of the calendar day.
+    function suggestion(mealId: string, isoDate: string) {
+      return { mealId, dayPlan: { date: new Date(`${isoDate}T00:00:00.000Z`) } };
+    }
+
     it("returns all meals when no search filter is given", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1");
@@ -48,6 +74,136 @@ describe("meals service", () => {
         contains: "pizza",
         mode: "insensitive",
       });
+    });
+
+    it("flags a meal scheduled this week as recent with its lastScheduledOn", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Tacos" },
+      ] as never);
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        suggestion("m-1", "2026-06-30"),
+      ] as never);
+
+      const result = await listMeals("fam-1");
+      expect(result[0].recentlyScheduled).toBe(true);
+      expect(result[0].lastScheduledOn).toBe("2026-06-30");
+    });
+
+    it("flags a meal scheduled in the previous week as recent", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Tacos" },
+      ] as never);
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        suggestion("m-1", "2026-06-24"),
+      ] as never);
+
+      const result = await listMeals("fam-1");
+      expect(result[0].recentlyScheduled).toBe(true);
+      expect(result[0].lastScheduledOn).toBe("2026-06-24");
+    });
+
+    it("uses the most recent approved date when a meal has multiple in-window suggestions", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Tacos" },
+      ] as never);
+      // Deliberately out of order: last week then this week.
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        suggestion("m-1", "2026-06-24"),
+        suggestion("m-1", "2026-06-30"),
+      ] as never);
+
+      const result = await listMeals("fam-1");
+      expect(result[0].lastScheduledOn).toBe("2026-06-30");
+    });
+
+    it("marks meals with no approved in-window suggestions as not recent", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Tacos" },
+        { id: "m-2", name: "Pizza" },
+      ] as never);
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        suggestion("m-1", "2026-06-30"),
+      ] as never);
+
+      const result = await listMeals("fam-1");
+      const m2 = result.find((m) => m.id === "m-2")!;
+      expect(m2.recentlyScheduled).toBe(false);
+      expect(m2.lastScheduledOn).toBeNull();
+    });
+
+    it("queries approved suggestions only (unapproved proposals never flag a meal)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1");
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: { approved?: unknown };
+      };
+      expect(arg.where.approved).toBe(true);
+    });
+
+    it("scopes the recent lookup to the family on both the meal and the week plan", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1");
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: {
+          meal?: { familyId?: string };
+          dayPlan?: { weekPlan?: { familyId?: string } };
+        };
+      };
+      expect(arg.where.meal?.familyId).toBe("fam-1");
+      expect(arg.where.dayPlan?.weekPlan?.familyId).toBe("fam-1");
+    });
+
+    it("restricts the window to the current and previous week starts (older weeks excluded)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1");
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: {
+          dayPlan?: { weekPlan?: { weekStart?: { in?: Date[] } } };
+        };
+      };
+      const window = arg.where.dayPlan?.weekPlan?.weekStart?.in ?? [];
+      const iso = window.map((d) => d.toISOString()).sort();
+      expect(iso).toEqual([PREVIOUS_MONDAY, CURRENT_MONDAY]);
+    });
+
+    it("resolves the recent window in the family timezone (boundary correctness)", async () => {
+      // 2026-06-29 03:30Z is Monday in UTC, but Sunday 23:30 in America/New_York
+      // (EDT, UTC-4). The family-tz week therefore starts a week earlier.
+      vi.setSystemTime(new Date("2026-06-29T03:30:00.000Z"));
+      prismaMock.family.findUnique.mockResolvedValue({
+        timezone: "America/New_York",
+      } as never);
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+
+      await listMeals("fam-1");
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: {
+          dayPlan?: { weekPlan?: { weekStart?: { in?: Date[] } } };
+        };
+      };
+      const iso = (arg.where.dayPlan?.weekPlan?.weekStart?.in ?? [])
+        .map((d) => d.toISOString())
+        .sort();
+      // Family-local "now" is Sun 2026-06-28 → current week Mon 2026-06-22,
+      // previous week Mon 2026-06-15. (UTC would have given 06-29/06-22.)
+      expect(iso).toEqual([
+        "2026-06-15T00:00:00.000Z",
+        "2026-06-22T00:00:00.000Z",
+      ]);
+    });
+
+    it("issues a bounded number of queries regardless of meal count (no N+1)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "A" },
+        { id: "m-2", name: "B" },
+        { id: "m-3", name: "C" },
+      ] as never);
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+
+      await listMeals("fam-1");
+      // One meal query + exactly one windowed suggestion query — not per-meal.
+      expect(prismaMock.meal.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.mealSuggestion.findMany).toHaveBeenCalledTimes(1);
     });
   });
 
