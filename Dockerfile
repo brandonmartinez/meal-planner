@@ -29,8 +29,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/packages/api/node_modules ./packages/api/node_modules
 COPY --from=deps /app/packages/web/node_modules ./packages/web/node_modules
+COPY --from=deps /app/packages/mcp/node_modules ./packages/mcp/node_modules
 COPY . .
 RUN pnpm --filter @meal-planner/shared run build
+RUN pnpm --filter @meal-planner/mcp run build
 RUN pnpm --filter @meal-planner/api run db:generate
 RUN pnpm --filter @meal-planner/api run build
 RUN pnpm --filter @meal-planner/web run build

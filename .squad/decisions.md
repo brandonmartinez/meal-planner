@@ -130,6 +130,12 @@ Durable decisions captured this batch:
 
 Gate status at hand-off: #9 APPROVED + ready; #11 Lead gate in review; all other PRs remain draft pending review.
 
+### 2026-07-01T14:01:24-04:00: Mount MCP handler inside API Express app (#89)
+**By:** Rusty
+**What:** Mounted `packages/mcp`'s hosted MCP core handler directly into the existing API Express app at `POST /mcp` on port 3001, alongside `/api` and the SPA, so production ingress can reach `https://meals.themartinez.cloud/mcp` without new Kubernetes resources. The standalone `packages/mcp` HTTP server remains for local development, while production uses the in-process route. Implementation exported `createMcpCoreHandler`, added `@meal-planner/mcp` as an API dependency, wired `mcpLimiter`, passed the already-parsed Express body into the handler, updated Docker build/copy steps, docs, and tests.
+**Why:** The production image is a single API container; the prior standalone MCP process was not built or served there. In-process mounting is the lowest-risk fit for the existing topology: no sidecar, second port, process manager, Service, or Ingress change; the existing ingress routes `/mcp` to port 3001. It preserves the per-request `x-agent-key` → loopback `GET /api/agent/me` → `familyId` auth model, avoids double-consuming the request body, and keeps MCP rate limiting in a dedicated bucket before key lookup or transport work.
+**Verification:** Build and lint passed; 716 tests passed, including 5 new MCP/API coverage tests.
+
 ## Governance
 
 - All meaningful changes require team consensus

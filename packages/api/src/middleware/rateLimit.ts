@@ -152,3 +152,18 @@ export const agentLimiter = createRateLimiter({
   limit: AGENT_LIMIT,
   keyGenerator: agentKeyGenerator,
 });
+
+/**
+ * Limiter for the MCP agent surface (`/mcp`). Distinct bucket from the
+ * `/api/agent/*` limiter and browser/JWT `generalLimiter` so an agent's MCP
+ * traffic is throttled independently and can never borrow from or starve those
+ * surfaces. Mounted BEFORE the MCP route handler so credential/JSON-RPC floods
+ * are rejected before any key lookup or transport work. Uses the same
+ * {@link agentKeyGenerator} (reads `x-agent-key`) and the same budget as
+ * `agentLimiter`.
+ */
+export const mcpLimiter = createRateLimiter({
+  windowMs: AGENT_WINDOW_MS,
+  limit: AGENT_LIMIT,
+  keyGenerator: agentKeyGenerator,
+});

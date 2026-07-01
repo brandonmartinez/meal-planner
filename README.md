@@ -106,6 +106,29 @@ See `packages/api/.env.example` for required configuration.
 
 ## API
 
+The `/api/display/meals` endpoint powers the [MMM-meal-planner](https://github.com/brandonmartinez/MMM-meal-planner) MagicMirror² module and any other read-only display surface. It is authenticated with an `X-API-Key` header (see Family settings → API Keys).
+
+## AI Agent / MCP
+
+The meal planner exposes a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for AI agents.
+
+### Production endpoint
+
+```
+POST https://meals.themartinez.cloud/mcp
+Header: x-agent-key: <scoped-agent-key>
+```
+
+Auth is **per-request** via the `x-agent-key` header. The server resolves the family and scopes from the key on every call — no ambient credential, no session state. Missing or invalid key → 401.
+
+> Mint a scoped agent credential under Family Settings → Agent Credentials, or via
+> `POST /api/families/:familyId/agent-credentials`. The raw key is returned once —
+> store it securely.
+
+### Dev endpoint
+
+During `pnpm dev` an additional standalone MCP HTTP server also runs at `http://localhost:3100/mcp` for hot-reload convenience. See [`packages/mcp/README.md`](packages/mcp/README.md) for the full tool list, stdio usage, and smoke-test steps.
+
 ### Display API (for Magic Mirror)
 
 The `/api/display/meals` endpoint powers the [MMM-meal-planner](https://github.com/brandonmartinez/MMM-meal-planner) MagicMirror² module and any other read-only display surface. It is authenticated with an `X-API-Key` header (see Family settings → API Keys).
