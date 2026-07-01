@@ -102,49 +102,81 @@ export default function MealsPage() {
             return (
               <div
                 key={meal.id}
-                className={`bg-white dark:bg-gray-800 p-4 rounded shadow-sm border border-gray-200 dark:border-gray-700 ${isPlaceholder ? 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40' : ''}`}
+                className={`flex h-full flex-col rounded-lg border p-4 shadow-sm transition-shadow hover:shadow-md ${
+                  isPlaceholder
+                    ? 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+                }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-lg">
-                    {meta ? <span className="mr-1">{meta.emoji}</span> : null}
+                {/* Zone 1 — title */}
+                <div className="flex items-start gap-2">
+                  {meta && (
+                    <span className="shrink-0 text-lg leading-6" aria-hidden="true">
+                      {meta.emoji}
+                    </span>
+                  )}
+                  <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug line-clamp-2 min-h-[2.75rem]">
                     {meal.name}
-                    {meta && (
-                      <span className="ml-2 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full">{meta.name}</span>
-                    )}
                   </h3>
-                  <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
-                    <RecentBadge
-                      recentlyScheduled={meal.recentlyScheduled}
-                      lastScheduledOn={meal.lastScheduledOn}
-                    />
-                    <DifficultyBadge difficulty={meal.difficulty} />
-                  </div>
                 </div>
-                {meal.description && (
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mt-1 line-clamp-2">{meal.description}</p>
-                )}
-                <p className="text-gray-400 dark:text-gray-500 text-xs mt-2">
-                  {meal._count.ingredients} ingredient{meal._count.ingredients !== 1 ? 's' : ''}
+
+                {/* Zone 2 — badges (reserved row keeps cards aligned) */}
+                <div className="mt-2 flex min-h-[1.5rem] flex-wrap items-center gap-1.5">
+                  {isPlaceholder ? (
+                    <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                      Built-in
+                    </span>
+                  ) : (
+                    <>
+                      <RecentBadge
+                        recentlyScheduled={meal.recentlyScheduled}
+                        lastScheduledOn={meal.lastScheduledOn}
+                      />
+                      <DifficultyBadge difficulty={meal.difficulty} />
+                    </>
+                  )}
+                </div>
+
+                {/* Zone 3 — description (reserved 2-line height) */}
+                <p className="mt-2 min-h-[2.5rem] text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
+                  {meal.description || (
+                    <span className="text-gray-400 dark:text-gray-500">No description</span>
+                  )}
                 </p>
-                <div className="flex gap-2 mt-3">
-                  {!isPlaceholder && (
-                    <button
-                      onClick={() => navigate(`/meals/${meal.id}/edit`)}
-                      aria-label={`Edit ${meal.name}`}
-                      className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60"
-                    >
-                      Edit
-                    </button>
-                  )}
-                  {isParent && !isPlaceholder && (
-                    <button
-                      onClick={() => handleDelete(meal.id)}
-                      aria-label={`Delete ${meal.name}`}
-                      className="text-sm px-3 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
-                    >
-                      Delete
-                    </button>
-                  )}
+
+                {/* Zone 4 + 5 — meta and actions, pinned to the bottom */}
+                <div className="mt-auto pt-3">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {isPlaceholder
+                      ? 'Automatic option'
+                      : `${meal._count.ingredients} ingredient${meal._count.ingredients !== 1 ? 's' : ''}`}
+                  </p>
+                  <div className="mt-3 flex min-h-[2rem] gap-2 border-t border-gray-100 pt-3 dark:border-gray-700/60">
+                    {isPlaceholder ? (
+                      <span className="self-center text-xs text-gray-400 dark:text-gray-500">
+                        Managed automatically
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => navigate(`/meals/${meal.id}/edit`)}
+                          aria-label={`Edit ${meal.name}`}
+                          className="rounded bg-blue-100 px-3 py-1 text-sm text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                        >
+                          Edit
+                        </button>
+                        {isParent && (
+                          <button
+                            onClick={() => handleDelete(meal.id)}
+                            aria-label={`Delete ${meal.name}`}
+                            className="rounded bg-red-100 px-3 py-1 text-sm text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             );

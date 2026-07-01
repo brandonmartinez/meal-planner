@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useId } from 'react';
 import { listMeals } from '../api/meals';
-import type { Meal, MealPlaceholderKind } from '@meal-planner/shared';
+import type { MealListItemDTO, MealPlaceholderKind } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
+import RecentBadge from './RecentBadge';
+import DifficultyBadge from './DifficultyBadge';
 
 interface MealPickerProps {
   familyId: string;
@@ -12,7 +14,7 @@ interface MealPickerProps {
 }
 
 export default function MealPicker({ familyId, onSelect, onClose }: MealPickerProps) {
-  const [meals, setMeals] = useState<Meal[]>([]);
+  const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const headingId = useId();
@@ -31,13 +33,13 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
   // Index placeholders by kind so we can render them in canonical order.
-  const placeholderByKind = new Map<MealPlaceholderKind, Meal>();
+  const placeholderByKind = new Map<MealPlaceholderKind, MealListItemDTO>();
   for (const m of meals) {
     if (m.placeholderKind) placeholderByKind.set(m.placeholderKind, m);
   }
   const placeholders = MEAL_PLACEHOLDER_KINDS
     .map((kind) => placeholderByKind.get(kind))
-    .filter((m): m is Meal => Boolean(m));
+    .filter((m): m is MealListItemDTO => Boolean(m));
   const regularMeals = meals.filter(m => !m.placeholderKind);
 
   return (
@@ -102,7 +104,16 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                 onClick={() => onSelect(meal.id)}
                 className="w-full text-left p-3 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
               >
-                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{meal.name}</div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{meal.name}</div>
+                  <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+                    <RecentBadge
+                      recentlyScheduled={meal.recentlyScheduled}
+                      lastScheduledOn={meal.lastScheduledOn}
+                    />
+                    <DifficultyBadge difficulty={meal.difficulty} />
+                  </div>
+                </div>
                 {meal.description && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
                 )}

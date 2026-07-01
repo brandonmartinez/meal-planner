@@ -7,9 +7,9 @@ import { server } from '../../tests/msw/server';
 import MealPicker from './MealPicker';
 
 const meals = [
-    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1' },
-    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1' },
-    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1' },
+    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1', difficulty: 'HARD', _count: { ingredients: 3 }, recentlyScheduled: true, lastScheduledOn: '2026-06-29' },
+    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null },
+    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null },
 ];
 
 /** Harness with a real trigger button so we can assert focus return on close. */
@@ -72,6 +72,30 @@ describe('MealPicker', () => {
 
         await userEvent.click(screen.getByText('Tacos'));
         expect(onSelect).toHaveBeenCalledWith('m-1');
+    });
+
+    it('surfaces recent and difficulty badges on meal rows', async () => {
+        server.use(
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(meals)),
+        );
+
+        renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        // Recent meal (Tacos) shows a text-bearing Recent badge with an
+        // accessible label carrying the last-scheduled date.
+        expect(screen.getByText('Recent')).toBeInTheDocument();
+        expect(
+            screen.getByLabelText('Recent — last scheduled 2026-06-29'),
+        ).toBeInTheDocument();
+        // …and its difficulty pill.
+        expect(screen.getByLabelText('Difficulty: Hard')).toBeInTheDocument();
+
+        // Non-recent meal (Pizza) has neither badge.
+        expect(screen.queryAllByText('Recent')).toHaveLength(1);
+        expect(screen.queryByLabelText('Difficulty: Easy')).not.toBeInTheDocument();
     });
 
     it('invokes onClose when the close button is clicked', async () => {
