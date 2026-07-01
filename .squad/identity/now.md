@@ -1,28 +1,29 @@
 ---
-updated_at: 2026-07-01T00:30:00.000Z
-focus_area: Sprints 1–4 SHIPPED & milestones CLOSED. Sprint 5 (security/CI hardening) LAUNCHED — 4 agents running. Then live devcontainer demo.
-active_issues: [42, 43, 49, 51]
+updated_at: 2026-07-01T01:00:00.000Z
+focus_area: ALL SPRINTS COMPLETE (1–5). Every milestone CLOSED, 0 open issues, main green. Live demo running in an isolated container off latest main.
+active_issues: []
 ---
 
 # What We're Focused On
 
-## Running now — Sprint 5 (milestone #5): #42 #43 #49 #51 (all off origin/main@206e57d)
-Security & CI hardening follow-ups. Disjoint files → all parallel. Each: isolated worktree + draft PR + gate before merge.
-- **#51** Livingston — HMAC-SHA256 + server-side pepper for agent+display credential hashing; fail-closed `CREDENTIAL_PEPPER` in config; lazy legacy SHA-256→HMAC rehash-on-verify (no key invalidation). Touches agentCredential.ts, apiKey.ts, auth.ts, config. → **Frank security gate** (critical).
-- **#49** Livingston — make `safeAudit` dropped audit writes OBSERVABLE (structured error log, no secrets; stays non-throwing). Touches agentAuth.ts (+agent.ts call sites). → **Frank security-adjacent gate**.
-- **#43** Livingston — `app.set('trust proxy', <finite hop>)` before rate limit so IP limits work behind ingress; NOT blanket `true`; `TRUST_PROXY` config. Touches index.ts. → **Frank security-adjacent gate**.
-- **#42** Basher — CI: `prisma migrate deploy` against the Postgres service + schema-drift check. Touches ci.yml. → **Rusty infra gate**.
+## 🎉 Program complete — Sprints 1–5 all SHIPPED, MERGED & CLOSED
+All GitHub milestones (Sprint 1–5) closed. **0 open issues.** `origin/main` green (CI test job) @ b179f23.
 
-After Sprint 5 merges: START DEVCONTAINER + open browser to live app (user request).
+- **Sprint 1** — #9 IDOR family-scoping · #11 fail-closed prod secrets · #12 shared API DTOs · #13 Node version align · #23 lint-in-CI · #32 devcontainer default.
+- **Sprint 2** — #8 #10 #14 #18 #19 #20 · #6 (core).
+- **Sprint 3** — #7 #16 #17 #22 #24 #27 · #6(+#50) · #15 (a11y names/loaders, last-to-merge). All security/a11y gates passed.
+- **Sprint 4** — #25 pin k8s image tags · #26 migrations-out-of-startup (integrated on #25 single-pin) · #5 MCP server package (packages/mcp). Infra + security gates passed.
+- **Sprint 5** — #42 CI migration validation · #43 trust proxy · #49 observable audit drops · #51 peppered HMAC credential hashing. All Frank/Rusty gates passed.
 
-## Sprint 4 — ✅ 3/3 SHIPPED, MERGED & CLOSED (milestone CLOSED)
-#25(PR63,Rusty infra-gate) · #26(PR64,Rusty infra re-gate; integrated on #63 pinning: migrate Job pinned, kustomization single-pin, deploy.sh migrate-first+rollback-guard) · #5(PR65,Frank sec-gate; coordinator fixed 2 TS build errors [agent.ts mealId scope, mcp ToolResult index sig] + regenerated pnpm-lock). Main green @206e57d.
+## Live demo (final user request) — ✅ RUNNING
+Latest `origin/main` (b179f23) running in an **isolated** setup that never touches the user's main checkout or the pre-existing `mrdj-*` devcontainer:
+- Detached worktree `../demo-main`; docker network `mealdemo`; Postgres `mealdemo-db` (postgres:16); app container `mealdemo-app` (node:22) running `pnpm dev`.
+- Host ports: **web → http://localhost:5174**, api → http://localhost:3002 (container-internal 5173/3001; vite proxies /api). 5173/3001 left to the user's existing devcontainer.
+- Migrations applied + demo data created (family "The Demo Family", 12 meals, a scheduled/approved current week).
+- **Ephemeral dev-only login** added to `demo-main` ONLY (uncommitted, `NODE_ENV!==production` guarded): GET `/api/auth/dev-login` mints a demo session cookie. Never committed, never on main.
 
-## Sprint 3 — ✅ 8/8 SHIPPED & CLOSED (milestone CLOSED)
-#24 #22 #7 #16 #6(+#50) #17 #27 #15. All gates passed.
+## Carry-forward debt (noted, NOT filed — do not action without user ask)
+- Frank N2: `middleware/rateLimit.ts` apiKeyFingerprint still bare SHA-256 with a stale comment (rate-limit bucket key, not a verification path).
 
-## Sprints 1+2 — ✅ SHIPPED (milestones CLOSED)
-S1: #9/#11/#12/#13/#23/#32. S2: #14/#8/#10/#20/#18/#19/#6(core).
-
-## GitHub state: milestones Sprint 1–4 CLOSED; Sprint 5 OPEN (4 issues). No other open issues.
-## Carry-forward debt: #23 lockfile drift being partly resolved via container-regen; #42 (in Sprint 5) closes the migration-validation gap.
+## Teardown (when user is done with the demo)
+`docker rm -f mealdemo-app mealdemo-db && docker network rm mealdemo && git worktree remove ../demo-main --force`
