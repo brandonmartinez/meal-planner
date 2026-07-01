@@ -5,6 +5,16 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./httpServer": {
+      "types": "./dist/httpServer.d.ts",
+      "import": "./dist/httpServer.js"
+    }
+  },
   "bin": {
     "meal-planner-mcp": "./dist/index.js",
     "meal-planner-mcp-http": "./dist/http.js"

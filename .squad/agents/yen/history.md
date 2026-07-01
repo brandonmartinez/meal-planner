@@ -20,3 +20,4 @@ Tester / QA. Owns test coverage across all packages. API tests: `globals: false`
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
+📌 Team update (2026-07-01T17-12-00Z): #87/#88 MCP bearer auth tests added for bearer/x-agent-key compatibility and regressions. — decided by Yen

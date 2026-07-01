@@ -145,6 +145,24 @@ Durable decisions captured this batch:
 
 Gate status at hand-off: #9 APPROVED + ready; #11 Lead gate in review; all other PRs remain draft pending review.
 
+### 2026-07-01T14:01:24-04:00: Mount MCP handler inside API Express app (#89)
+**By:** Rusty
+**What:** Mounted `packages/mcp`'s hosted MCP core handler directly into the existing API Express app at `POST /mcp` on port 3001, alongside `/api` and the SPA, so production ingress can reach `https://meals.themartinez.cloud/mcp` without new Kubernetes resources. The standalone `packages/mcp` HTTP server remains for local development, while production uses the in-process route. Implementation exported `createMcpCoreHandler`, added `@meal-planner/mcp` as an API dependency, wired `mcpLimiter`, passed the already-parsed Express body into the handler, updated Docker build/copy steps, docs, and tests.
+**Why:** The production image is a single API container; the prior standalone MCP process was not built or served there. In-process mounting is the lowest-risk fit for the existing topology: no sidecar, second port, process manager, Service, or Ingress change; the existing ingress routes `/mcp` to port 3001. It preserves the per-request `x-agent-key` → loopback `GET /api/agent/me` → `familyId` auth model, avoids double-consuming the request body, and keeps MCP rate limiting in a dedicated bucket before key lookup or transport work.
+**Verification:** Build and lint passed; 716 tests passed, including 5 new MCP/API coverage tests.
+
+### 2026-07-01T14:57:00-04:00: PR #90 merge re-review — Bearer auth union + per-credential limiter fix
+**By:** Frank, Rusty
+**What:** Rusty resolved merge conflicts with `main` after upstream #88 added `Authorization: Bearer` support and `WWW-Authenticate` challenges to the hosted MCP transport, preserving those changes alongside the `createMcpCoreHandler` extraction for the API-mounted `/mcp` route (merge commit `5122b6a`). Frank's post-merge security re-review found checks 1, 2, 3, and 5 clean, noted only a low-severity reflected-`Host` posture caveat, and identified a medium gap where `agentKeyGenerator` keyed Bearer-authenticated requests by IP only because it read `x-agent-key` but not `Authorization: Bearer`. Rusty fixed the gap in `packages/api/src/middleware/rateLimit.ts` by fingerprinting Bearer tokens or `x-agent-key` so both credential presentations share the same per-credential rate-limit bucket (commit `f1fb50c`); 728 tests pass across 4 packages.
+**Why:** The merge needed to keep standards-aligned Bearer intake and challenge behavior from #88 while preserving #89's shared MCP core handler. The rate-limit fix restores per-credential isolation and operator visibility for Bearer clients, avoiding shared-IP collateral throttling without changing the raw-key handling, auth-before-body ordering, or no-log/no-echo guarantees.
+**Merged from:** `decisions/inbox/frank-mcp-merge-rereview.md`
+
+### 2026-07-01T14:57:00-04:00: Frank security review — hosted MCP endpoint `/mcp` (#89)
+**By:** Frank
+**What:** Initial security review for the API-hosted `/mcp` path returned 🟡 ship-with-notes with no blocking credential leak, auth bypass, middleware-order, SSRF, or body-consumption issues. Findings: key values are not logged or echoed; auth resolves family from the presented credential before tool work; `mcpLimiter` is mounted before MCP work; the loopback `/api/agent/me` call uses configured localhost/API base URL rather than client input; Express body parsing is not used by the core handler until after auth succeeds.
+**Why:** This preserves the hosted MCP security invariants from #81/#89 while calling out non-blocking operational notes: validate `MCP_REQUEST_TIMEOUT_MS` to avoid `NaN` timeouts, watch the loopback `agentLimiter` bucket for multi-IP use of one key, and keep the pre-existing bare SHA-256 rate-limit fingerprint debt separate from key storage hashing.
+**Merged from:** `decisions/inbox/frank-mcp-security-review.md`
+
 ## Governance
 
 - All meaningful changes require team consensus

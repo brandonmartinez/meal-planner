@@ -17,11 +17,13 @@ import { weekPlanRouter } from "./routes/weekPlan.js";
 import { groceryRouter } from "./routes/grocery.js";
 import { displayRouter } from "./routes/display.js";
 import { agentRouter } from "./routes/agent.js";
+import { mcpRouter } from "./routes/mcp.js";
 import {
   displayLimiter,
   authLimiter,
   generalLimiter,
   agentLimiter,
+  mcpLimiter,
 } from "./middleware/rateLimit.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -90,6 +92,12 @@ app.use("/api/display", displayLimiter, displayRouter);
 // lookup. Kept separate from /api/families so it never inherits the JWT
 // generalLimiter or browser middleware.
 app.use("/api/agent", agentLimiter, agentRouter);
+// Hosted MCP endpoint: mounted on the same port/process as the API so it ships
+// in the existing container image and is reachable through the same ingress at
+// /mcp. mcpLimiter throttles credential floods BEFORE the handler reaches any
+// key-lookup or transport work. express.json() above has already parsed req.body
+// by the time the handler runs, so the body stream is not double-consumed.
+app.use("/mcp", mcpLimiter, mcpRouter);
 
 // Static file serving for production
 const webDistPath = path.resolve(__dirname, "../../web/dist");

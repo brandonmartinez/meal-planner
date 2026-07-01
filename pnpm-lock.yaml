@@ -23,6 +23,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@meal-planner/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@meal-planner/shared':
         specifier: workspace:*
         version: link:../shared

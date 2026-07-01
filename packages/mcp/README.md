@@ -55,10 +55,38 @@ If both are sent, Bearer wins. For each request the server:
 
 A request carrying family A's key can only ever operate on family A — the family
 is derived from the key, never from the URL or client input. There is no shared
-session state between requests; every call re-authenticates. Entry point:
-`dist/http.js` (`meal-planner-mcp-http` bin), default port `3100`, MCP endpoint
-`POST /mcp`, plus unauthenticated `GET /health` and
-`GET /.well-known/oauth-protected-resource` probes.
+session state between requests; every call re-authenticates.
+
+#### Production endpoint
+
+In production the MCP handler is **mounted inside the API Express app** at
+`POST /mcp` on the same port as the API (`:3001`). This ships in the existing
+container image and is reachable through the existing ingress at:
+
+```
+https://meals.themartinez.cloud/mcp
+```
+
+No additional port, container, k8s service, or ingress change is required — the
+existing `meals.themartinez.cloud/` ingress routes straight to the pod and the
+API serves `/mcp` alongside `/api` and the SPA.
+
+#### Dev / standalone endpoint
+
+During local development (`pnpm dev`) the MCP package also runs as a **separate
+standalone process** on `:3100`, which is convenient for hot-reload and isolated
+testing of the MCP layer. The hosted HTTP server started by `pnpm dev` uses the
+same per-request auth model.
+
+| Environment | Endpoint | Served by |
+|---|---|---|
+| **Production** | `https://meals.themartinez.cloud/mcp` | API Express app, port 3001 |
+| **Dev (`pnpm dev`)** | `http://localhost:3100/mcp` | Standalone MCP HTTP server |
+
+The standalone entrypoint (`dist/http.js` / `meal-planner-mcp-http` bin) remains
+available at default port `3100`. Unauthenticated `GET /health` and
+`GET /.well-known/oauth-protected-resource` probes are served by the standalone
+process only.
 
 ## Tools
 
@@ -162,12 +190,17 @@ pnpm --filter @meal-planner/mcp run dev:stdio
 
 ### Local dev (`pnpm dev`)
 
-The root `pnpm dev` runs this package's `dev` script, so MCP starts as hosted
-HTTP at `http://localhost:3100/mcp` (health at `/health`). It needs no
-`MEAL_PLANNER_AGENT_KEY` or `MEAL_PLANNER_FAMILY_ID` to boot; auth is
-per-request. Point an MCP client at `POST http://localhost:3100/mcp` and include
+The root `pnpm dev` runs this package's `dev` script, so MCP also starts as hosted
+HTTP at `http://localhost:3100/mcp` (health at `/health`). This standalone
+process is convenient for hot-reload and isolated testing of the MCP layer
+without a full API restart. Auth is per-request on the standalone server too.
+Point an MCP client at `POST http://localhost:3100/mcp` and include
 `Authorization: Bearer <key>` on every JSON-RPC request (`x-agent-key` still
 works). Mint a scoped key with the smoke-test steps below.
+
+> **Production note:** in production, `/mcp` is served by the API Express app
+> on port 3001 (no separate MCP process). The standalone `:3100` server is a
+> dev-only convenience.
 
 To run the single-tenant stdio server instead:
 

@@ -28,3 +28,4 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
+📌 Team update (2026-07-01T17-12-00Z): #87/#88 MCP bearer auth implementation landed; reviewer-lockout remediation handled by Rusty. — decided by Livingston

@@ -198,6 +198,92 @@ describe("agentKeyGenerator", () => {
     const req = { ip: "203.0.113.9", headers: {} } as unknown as Request;
     expect(agentKeyGenerator(req)).toBe("203.0.113.9");
   });
+
+  it("reads Bearer token from Authorization header", () => {
+    const raw = "bearer-token-value";
+    const req = {
+      ip: "203.0.113.9",
+      headers: { authorization: `Bearer ${raw}` },
+    } as unknown as Request;
+
+    const key = agentKeyGenerator(req);
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(raw)
+      .digest("hex")
+      .slice(0, 16);
+
+    expect(key).toBe(`203.0.113.9:${fingerprint}`);
+    expect(key).not.toContain(raw);
+  });
+
+  it("Bearer and x-agent-key with the same credential map to the same bucket", () => {
+    const raw = "shared-credential-value";
+    const withBearer = {
+      ip: "203.0.113.9",
+      headers: { authorization: `Bearer ${raw}` },
+    } as unknown as Request;
+    const withHeader = {
+      ip: "203.0.113.9",
+      headers: { "x-agent-key": raw },
+    } as unknown as Request;
+
+    expect(agentKeyGenerator(withBearer)).toBe(agentKeyGenerator(withHeader));
+  });
+
+  it("two different Bearer tokens map to different bucket keys", () => {
+    const reqA = {
+      ip: "203.0.113.9",
+      headers: { authorization: "Bearer token-alpha" },
+    } as unknown as Request;
+    const reqB = {
+      ip: "203.0.113.9",
+      headers: { authorization: "Bearer token-beta" },
+    } as unknown as Request;
+
+    expect(agentKeyGenerator(reqA)).not.toBe(agentKeyGenerator(reqB));
+  });
+
+  it("prefers Bearer over x-agent-key when both are present", () => {
+    const bearerToken = "bearer-wins";
+    const agentKeyToken = "agent-key-loses";
+    const req = {
+      ip: "203.0.113.9",
+      headers: {
+        authorization: `Bearer ${bearerToken}`,
+        "x-agent-key": agentKeyToken,
+      },
+    } as unknown as Request;
+
+    const key = agentKeyGenerator(req);
+    const bearerFingerprint = crypto
+      .createHash("sha256")
+      .update(bearerToken)
+      .digest("hex")
+      .slice(0, 16);
+
+    expect(key).toBe(`203.0.113.9:${bearerFingerprint}`);
+  });
+
+  it("ignores Authorization header with empty Bearer token", () => {
+    const raw = "actual-key";
+    const req = {
+      ip: "203.0.113.9",
+      headers: {
+        authorization: "Bearer   ",
+        "x-agent-key": raw,
+      },
+    } as unknown as Request;
+
+    const key = agentKeyGenerator(req);
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(raw)
+      .digest("hex")
+      .slice(0, 16);
+
+    expect(key).toBe(`203.0.113.9:${fingerprint}`);
+  });
 });
 
 describe("agent rate limiter", () => {
