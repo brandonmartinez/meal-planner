@@ -35,6 +35,28 @@ jobs:
       - run: pnpm -r run lint
       - run: pnpm --filter @meal-planner/shared run build
       - run: pnpm --filter @meal-planner/api run db:generate
+      # Validate that the committed migrations apply cleanly to a real, empty
+      # Postgres 16 from zero (same command the prod migrate Job uses:
+      # `prisma migrate deploy`). This catches broken/incomplete migration SQL
+      # that `prisma generate` alone would never exercise.
+      - name: Apply Prisma migrations to Postgres (migrate deploy from zero)
+        run: pnpm --filter @meal-planner/api run db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meal_planner_test
+      # Detect schema drift: compare the just-migrated live database against
+      # schema.prisma. `--from-url` introspects the real DB produced by the
+      # migrations above; `--to-schema-datamodel` is the current schema. If they
+      # differ (e.g. someone edited schema.prisma without running
+      # `db:migrate:dev` to generate a migration), `--exit-code` makes the CLI
+      # exit non-zero (2) and fails the job.
+      - name: Check for Prisma schema drift (schema.prisma vs migration history)
+        run: >-
+          pnpm --filter @meal-planner/api exec prisma migrate diff
+          --from-url "$DATABASE_URL"
+          --to-schema-datamodel ./prisma/schema.prisma
+          --exit-code
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/meal_planner_test
       - run: pnpm --filter @meal-planner/api run build
       - run: pnpm --filter @meal-planner/web run build
       - run: pnpm --filter @meal-planner/mcp run build
