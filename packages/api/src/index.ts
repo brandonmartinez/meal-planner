@@ -29,6 +29,15 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Trust the single reverse-proxy hop in front of the app — the Traefik
+// Kubernetes ingress (see k8s/ingress.yaml). This MUST be set before the
+// rate-limit middleware runs so `req.ip` and the IP-keyed rate-limit buckets
+// resolve the real client from `X-Forwarded-For` instead of the proxy's
+// address. Configured via TRUST_PROXY (default: 1 hop) — never the blanket
+// `true`, which would let clients spoof their IP to evade limits. See
+// config.trustProxy / parseTrustProxy for the rationale.
+app.set("trust proxy", config.trustProxy);
+
 // Middleware
 app.use(
   helmet({
