@@ -7,6 +7,10 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  # Pre-rollout database migration Job (issue #26). Listing it here means the
+  # single `images[].newTag` pin below repins the Job's image too, since it uses
+  # the same image name as the Deployment — no second images[] entry needed.
+  - migrate-job.yaml
 
 # Immutable image pin.
 #

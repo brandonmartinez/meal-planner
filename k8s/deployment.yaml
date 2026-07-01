@@ -31,6 +31,11 @@ spec:
               value: "production"
             - name: PORT
               value: "3001"
+            # Migrations run in the dedicated meal-planner-migrate Job before
+            # rollout (issue #26), never per-replica. This keeps app pods from
+            # racing on `prisma migrate deploy` during a multi-replica rollout.
+            - name: SKIP_MIGRATIONS
+              value: "1"
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

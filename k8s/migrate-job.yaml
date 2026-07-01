@@ -1,0 +1,70 @@
+# Dedicated database migration step (issue #26).
+#
+# Production migrations no longer run inside the per-replica app container
+# startup path (that raced across replicas during rollout). This Job runs
+# `prisma migrate deploy` exactly once per deploy, BEFORE the Deployment is
+# rolled forward. `k8s/deploy.sh` applies this Job, waits for it to complete,
+# and aborts the rollout if it fails — so a bad migration never reaches the
+# app replicas.
+#
+# It uses the SAME image as the Deployment but overrides `command` to run the
+# migration directly, bypassing docker-entrypoint.sh entirely.
+#
+# IMAGE PINNING (issue #26 + #63): the image below carries the same immutable
+# default tag as k8s/deployment.yaml. Because this Job is listed in
+# k8s/kustomization.yaml `resources` and references the same image NAME
+# (ghcr.io/brandonmartinez/meal-planner), the single `images[].newTag` pin in
+# kustomization.yaml repins BOTH the Deployment and this Job — and CI's
+# `pin-deploy-image` job keeps that one entry current. `deploy.sh` renders this
+# Job through kustomize so it always runs at the exact tag being rolled out,
+# guaranteeing the schema applied matches the code that will serve it. Never use
+# `latest` or `imagePullPolicy: Always` here.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: meal-planner-migrate
+  labels:
+    app: meal-planner
+    component: migrate
+spec:
+  # One attempt plus a couple retries to ride out a transient DB blip, but a
+  # genuinely failing migration still ends in a terminal Failed condition that
+  # deploy.sh detects and uses to block the rollout.
+  backoffLimit: 2
+  # Bound the total runtime so a hung migration fails rather than blocking
+  # forever; stays under the deploy.sh wait timeout.
+  activeDeadlineSeconds: 170
+  # Auto-clean the finished Job object so the next deploy starts clean.
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: meal-planner
+        component: migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/brandonmartinez/meal-planner:v1.0.0
+          # Pinned, immutable tags are content-stable; the kustomize image pin
+          # (and CI) keep this current, so there is no need to re-pull a tag
+          # already cached on the node. Matches the Deployment's pull policy.
+          imagePullPolicy: IfNotPresent
+          # Override ENTRYPOINT/CMD: run migrations directly, do not start the API.
+          command:
+            ["npx", "prisma", "migrate", "deploy", "--schema", "./prisma/schema.prisma"]
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: meal-planner-secrets
+                  key: database-url
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
