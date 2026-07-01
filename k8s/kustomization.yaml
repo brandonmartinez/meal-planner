@@ -25,4 +25,4 @@ resources:
 #     `IMAGE_TAG=v1.0.41 ./k8s/deploy.sh`) and re-apply.
 images:
   - name: ghcr.io/brandonmartinez/meal-planner
-    newTag: v1.0.100
+    newTag: v1.0.102
