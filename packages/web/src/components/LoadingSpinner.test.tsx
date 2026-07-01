@@ -16,4 +16,13 @@ describe('LoadingSpinner', () => {
         expect(screen.getByRole('status')).toHaveAttribute('aria-label', 'Fetching meals');
         expect(screen.getByText('Fetching meals')).toBeInTheDocument();
     });
+
+    it('exposes an accessible status name even when the label is visually hidden', () => {
+        render(<LoadingSpinner message="Loading meals…" size="sm" hideLabel />);
+        // role="status" is still discoverable by its accessible name (aria-label),
+        // so assistive tech announces the loading state without a visible label.
+        expect(
+            screen.getByRole('status', { name: 'Loading meals…' }),
+        ).toBeInTheDocument();
+    });
 });

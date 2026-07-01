@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.js';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -26,7 +27,7 @@ export default function LoginPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <LoadingSpinner message="Loading…" />
       </div>
     );
   }

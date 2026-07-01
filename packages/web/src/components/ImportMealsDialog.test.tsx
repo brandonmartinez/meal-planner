@@ -145,3 +145,33 @@ describe('ImportMealsDialog', () => {
         });
     });
 });
+
+describe('ImportMealsDialog accessibility', () => {
+    it('labels the CSV input and the duplicate-handling select', () => {
+        renderDialog();
+
+        // The CSV textarea has a visually-hidden but programmatic label.
+        expect(screen.getByRole('textbox', { name: 'CSV content' })).toBeInTheDocument();
+        // The duplicate-handling select is associated with its visible label.
+        expect(
+            screen.getByRole('combobox', { name: /when a meal with the same name already exists/i }),
+        ).toBeInTheDocument();
+    });
+
+    it('announces a completed import through a status region', async () => {
+        const user = userEvent.setup();
+        server.use(
+            http.post(IMPORT_URL, () =>
+                HttpResponse.json({ created: 2, updated: 0, skipped: 0, errors: [] }),
+            ),
+        );
+
+        renderDialog();
+
+        await user.click(screen.getByRole('button', { name: /^load example$/i }));
+        await user.click(screen.getByRole('button', { name: /import 2 meals/i }));
+
+        const status = await screen.findByRole('status');
+        expect(status).toHaveTextContent(/import complete/i);
+    });
+});

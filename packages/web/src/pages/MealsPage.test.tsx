@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../tests/msw/server';
 import { renderWithProviders, screen } from '../test-utils/render';
 import MealsPage from './MealsPage';
@@ -120,5 +120,49 @@ describe('MealsPage recent indicator', () => {
 
     expect(await screen.findByText('Soup')).toBeInTheDocument();
     expect(screen.queryByText('Recent')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealsPage accessibility', () => {
+  it('exposes a labelled status region while meals load', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, async () => {
+        await delay(40);
+        return HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]);
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByRole('status', { name: /loading meals/i })).toBeInTheDocument();
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+  });
+
+  it('gives the search field an accessible name', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json([])),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByRole('textbox', { name: 'Search meals' })).toBeInTheDocument();
+  });
+
+  it('names the edit and delete controls after the meal they act on', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    // Wait for the async list before asserting on the per-meal controls.
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit Tacos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Tacos' })).toBeInTheDocument();
   });
 });

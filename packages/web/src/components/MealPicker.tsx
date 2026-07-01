@@ -3,6 +3,7 @@ import { listMeals } from '../api/meals';
 import type { Meal, MealPlaceholderKind } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 import Modal from './Modal';
+import LoadingSpinner from './LoadingSpinner';
 
 interface MealPickerProps {
   familyId: string;
@@ -57,6 +58,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search meals..."
+          aria-label="Search meals"
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           data-autofocus
         />
@@ -64,9 +66,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
 
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-          </div>
+          <LoadingSpinner message="Loading meals…" size="sm" hideLabel className="py-8" />
         ) : (
           <>
             {placeholders.length > 0 && (

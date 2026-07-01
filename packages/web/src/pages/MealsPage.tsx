@@ -6,6 +6,7 @@ import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
+import LoadingSpinner from '../components/LoadingSpinner';
 import type { MealListItemDTO } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 
@@ -49,7 +50,7 @@ export default function MealsPage() {
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
-    return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
+    return <LoadingSpinner message="Loading meals…" />;
   }
 
   return (
@@ -85,10 +86,11 @@ export default function MealsPage() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder="Search meals..."
+        aria-label="Search meals"
         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded mb-6"
       />
 
-      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+      {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {meals.length === 0 ? (
         <p className="text-gray-500 dark:text-gray-400 text-center py-8">No meals yet. Add your first meal!</p>
@@ -128,6 +130,7 @@ export default function MealsPage() {
                   {!isPlaceholder && (
                     <button
                       onClick={() => navigate(`/meals/${meal.id}/edit`)}
+                      aria-label={`Edit ${meal.name}`}
                       className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60"
                     >
                       Edit
@@ -136,6 +139,7 @@ export default function MealsPage() {
                   {isParent && !isPlaceholder && (
                     <button
                       onClick={() => handleDelete(meal.id)}
+                      aria-label={`Delete ${meal.name}`}
                       className="text-sm px-3 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
                     >
                       Delete
