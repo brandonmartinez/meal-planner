@@ -5,9 +5,11 @@
 # plain `docker compose` (as dev.sh does), nothing forwards the app ports — so we
 # publish them here. Layered on top of .devcontainer/docker-compose.yml; `ports`
 # entries are additive, so this keeps the existing SSH (2222) mapping and adds
-# the API and web dev-server ports.
+# the API, web, and MCP dev-server ports. :3100 matches the MCP dev script's
+# default hosted HTTP endpoint.
 services:
   app:
     ports:
       - "127.0.0.1:3001:3001" # API (Express)
+      - "127.0.0.1:3100:3100" # MCP hosted HTTP (dev; POST /mcp, GET /health)
       - "127.0.0.1:5173:5173" # Web (Vite dev server)

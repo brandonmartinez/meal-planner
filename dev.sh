@@ -4,9 +4,10 @@
 #
 # Brings up the devcontainer (app + Postgres) with plain Docker Compose, makes
 # sure dependencies, the Prisma client, and migrations are in place, then runs
-# the API (:3001) and web (:5173) dev servers *inside the container* and streams
-# their logs. This honors the team policy that no project code runs on the host
-# — everything executes in the container; the host only orchestrates.
+# the API (:3001), MCP (:3100), and web (:5173) dev servers *inside the
+# container* and streams their logs. This honors the team policy that no project
+# code runs on the host — everything executes in the container; the host only
+# orchestrates.
 #
 # Usage:
 #   ./dev.sh [--seed] [--fresh] [--no-apps] [--down] [-h|--help]
@@ -22,6 +23,7 @@
 # Ports (published to 127.0.0.1 by .devcontainer/docker-compose.dev-ports.yml):
 #   http://localhost:5173  → web app
 #   http://localhost:3001  → API
+#   http://localhost:3100/mcp  → MCP hosted HTTP
 #
 # Stopping: press Ctrl-C to stop the dev servers (the containers keep running so
 # the next start is fast). To stop the whole stack, run `./dev.sh --down`.
@@ -130,10 +132,11 @@ fi
 
 cat <<'BANNER'
 
-✅ Dev environment is up. Starting API + web…
+✅ Dev environment is up. Starting API + web + MCP…
 
    Web app : http://localhost:5173
    API     : http://localhost:3001
+   MCP     : http://localhost:3100/mcp
 
    Press Ctrl-C to stop the dev servers (containers stay up).
    Run './dev.sh --down' to stop the whole stack.
