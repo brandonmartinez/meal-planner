@@ -151,7 +151,25 @@ Or during development (no build step):
 MEAL_PLANNER_API_BASE_URL=http://localhost:3001 \
 MEAL_PLANNER_AGENT_KEY=your-agent-key \
 MEAL_PLANNER_FAMILY_ID=your-family-id \
-pnpm --filter @meal-planner/mcp run dev
+pnpm --filter @meal-planner/mcp run dev:stdio
+```
+
+### Local dev (`pnpm dev`)
+
+The root `pnpm dev` runs this package's `dev` script, so MCP starts as hosted
+HTTP at `http://localhost:3100/mcp` (health at `/health`). It needs no
+`MEAL_PLANNER_AGENT_KEY` or `MEAL_PLANNER_FAMILY_ID` to boot; auth is
+per-request. Point an MCP client at `POST http://localhost:3100/mcp` and include
+`x-agent-key` on every JSON-RPC request. Mint a scoped key with the smoke-test
+steps below.
+
+To run the single-tenant stdio server instead:
+
+```bash
+MEAL_PLANNER_API_BASE_URL=http://localhost:3001 \
+MEAL_PLANNER_AGENT_KEY=your-agent-key \
+MEAL_PLANNER_FAMILY_ID=your-family-id \
+pnpm --filter @meal-planner/mcp run dev:stdio
 ```
 
 ### Hosted HTTP server
@@ -342,8 +360,9 @@ The audit entry only ever stores the credential **id** — never the raw key.
 | Script | Description |
 | --- | --- |
 | `build` | Type-check and emit to `dist/`. |
-| `dev` | Run the stdio server from source with `tsx watch`. |
-| `dev:http` | Run the hosted HTTP server from source with `tsx watch`. |
+| `dev` | Run the **hosted HTTP** server from source with `tsx watch` (what root `pnpm dev` runs). Boots without secrets on `:3100`; auth is per-request. |
+| `dev:stdio` | Run the **stdio** server from source with `tsx watch` (requires `MEAL_PLANNER_AGENT_KEY` + `MEAL_PLANNER_FAMILY_ID`). |
+| `dev:http` | Run the hosted HTTP server from source with `tsx watch` (raw; set `MEAL_PLANNER_API_BASE_URL` yourself). |
 | `start` | Run the built stdio server (`dist/index.js`). |
 | `start:http` | Run the built hosted HTTP server (`dist/http.js`). |
 | `lint` | ESLint over `src/`. |
