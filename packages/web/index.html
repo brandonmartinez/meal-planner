@@ -11,18 +11,12 @@
     <meta name="apple-mobile-web-app-title" content="Meal Planner" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Meal Planner</title>
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem("theme");
-          var prefersDark = window.matchMedia(
-            "(prefers-color-scheme: dark)",
-          ).matches;
-          var isDark = stored === "dark" || (stored !== "light" && prefersDark);
-          if (isDark) document.documentElement.classList.add("dark");
-        } catch (e) {}
-      })();
-    </script>
+    <!--
+      Theme bootstrap is an external same-origin file (public/theme-init.js),
+      not an inline script: the API serves this SPA under a strict CSP with
+      `script-src 'self'` and no `'unsafe-inline'`, which blocks inline scripts.
+    -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

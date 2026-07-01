@@ -1,6 +1,7 @@
 import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { AGENT_SCOPES } from "@meal-planner/shared";
 import type { HttpMcpConfig } from "./config.js";
 import { MealPlannerApiClient } from "./apiClient.js";
 import { createServer, SERVER_NAME, SERVER_VERSION } from "./server.js";
@@ -9,9 +10,13 @@ import { ApiError, ApiTransportError } from "./errors.js";
 /** Header carrying the raw scoped agent key — matches the API middleware and
  *  the stdio client. Treated as a secret: never logged. */
 const AGENT_KEY_HEADER = "x-agent-key";
+const AUTHORIZATION_HEADER = "authorization";
+const WWW_AUTHENTICATE_REALM = "meal-planner-mcp";
+const TRUSTED_HOST_PATTERN = /^[A-Za-z0-9.-]+(:\d+)?$/;
 
 /** The MCP endpoint path. Kept as a constant so tests and docs stay in sync. */
 export const MCP_PATH = "/mcp";
+const WELL_KNOWN_PATH = "/.well-known/oauth-protected-resource";
 
 export interface HttpMcpServerDeps {
   /** Injectable fetch, primarily for tests. Defaults to global `fetch`. */
@@ -44,13 +49,64 @@ function sendJson(
   res: ServerResponse,
   status: number,
   body: unknown,
+  extraHeaders?: Record<string, string>,
 ): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(payload),
+    ...extraHeaders,
   });
   res.end(payload);
+}
+
+function requestBaseUrl(req: IncomingMessage): string | undefined {
+  const forwardedProto = firstHeader(req.headers["x-forwarded-proto"]);
+  const forwardedScheme = forwardedProto?.split(",")[0]?.trim().toLowerCase();
+  const scheme =
+    forwardedScheme === "http" || forwardedScheme === "https"
+      ? forwardedScheme
+      : "http";
+  const host = firstHeader(req.headers.host)?.trim();
+  if (!host || !TRUSTED_HOST_PATTERN.test(host)) {
+    return undefined;
+  }
+  return `${scheme}://${host}`;
+}
+
+function resourceMetadataUrl(req: IncomingMessage): string | undefined {
+  const baseUrl = requestBaseUrl(req);
+  return baseUrl ? `${baseUrl}${WELL_KNOWN_PATH}` : undefined;
+}
+
+function buildWwwAuthenticate(
+  error?: "invalid_token" | "insufficient_scope",
+  metadataUrl?: string,
+): string {
+  const challengeParams = [`Bearer realm="${WWW_AUTHENTICATE_REALM}"`];
+  if (error) {
+    challengeParams.push(`error="${error}"`);
+  }
+  if (metadataUrl) {
+    challengeParams.push(`resource_metadata="${metadataUrl}"`);
+  }
+  return challengeParams.join(", ");
+}
+
+function extractAgentKey(req: IncomingMessage): string | undefined {
+  const authorization = firstHeader(req.headers[AUTHORIZATION_HEADER]);
+  if (authorization) {
+    const match = /^Bearer[ ]+(.+)$/i.exec(authorization);
+    if (match) {
+      const bearerToken = match[1].trim();
+      if (bearerToken.length > 0) {
+        return bearerToken;
+      }
+    }
+  }
+
+  const fallbackKey = firstHeader(req.headers[AGENT_KEY_HEADER]);
+  return fallbackKey && fallbackKey.trim().length > 0 ? fallbackKey : undefined;
 }
 
 /**
@@ -66,9 +122,12 @@ function sendJson(
  * Path and method routing are NOT performed here — the caller is responsible
  * for ensuring only valid `POST /mcp` requests reach this handler.
  *
- *  1. Read the raw agent key from the `x-agent-key` header. Missing → 401.
+ *  1. Read the raw agent key from `Authorization: Bearer` (preferred) or
+ *     `x-agent-key` (fallback). Missing → 401 + `WWW-Authenticate` challenge.
  *  2. Calls `GET /api/agent/me` to resolve `{ familyId, scopes, name }` from
- *     that key (unknown/revoked/expired → `401`; the key is never echoed).
+ *     that key (unknown/revoked/expired → `401` + `error="invalid_token"`;
+ *     scope denial → `403` + `error="insufficient_scope"`; the key is never
+ *     echoed).
  *  3. Bind a fresh, per-request API client (bound to the presented key) and an
  *     MCP server whose tool handlers are bound to the RESOLVED family. A
  *     request carrying family A's key can only ever operate on family A.
@@ -89,9 +148,17 @@ export function createMcpCoreHandler(
   parsedBody: unknown | (() => Promise<unknown>),
 ) => Promise<void> {
   return async (req, res, parsedBody) => {
-    const rawKey = firstHeader(req.headers[AGENT_KEY_HEADER]);
+    const metadataUrl = resourceMetadataUrl(req);
+    const rawKey = extractAgentKey(req);
     if (!rawKey) {
-      sendJson(res, 401, { error: "Agent credential required" });
+      sendJson(
+        res,
+        401,
+        { error: "Agent credential required" },
+        {
+          "www-authenticate": buildWwwAuthenticate(undefined, metadataUrl),
+        },
+      );
       return;
     }
 
@@ -112,6 +179,34 @@ export function createMcpCoreHandler(
       if (err instanceof ApiError) {
         // Map the API's auth/scope status through (401/403/…). The key is
         // never part of an ApiError, so nothing sensitive is echoed.
+        if (err.status === 401) {
+          sendJson(
+            res,
+            401,
+            { error: err.message },
+            {
+              "www-authenticate": buildWwwAuthenticate(
+                "invalid_token",
+                metadataUrl,
+              ),
+            },
+          );
+          return;
+        }
+        if (err.status === 403) {
+          sendJson(
+            res,
+            403,
+            { error: err.message },
+            {
+              "www-authenticate": buildWwwAuthenticate(
+                "insufficient_scope",
+                metadataUrl,
+              ),
+            },
+          );
+          return;
+        }
         sendJson(res, err.status, { error: err.message });
         return;
       }
@@ -191,6 +286,21 @@ export function createRequestHandler(
       return;
     }
 
+    // OAuth Protected Resource Metadata (RFC 9728) — unauthenticated.
+    if (path === WELL_KNOWN_PATH) {
+      if (method !== "GET") {
+        sendJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+      const baseUrl = requestBaseUrl(req);
+      sendJson(res, 200, {
+        resource: baseUrl ? `${baseUrl}${MCP_PATH}` : MCP_PATH,
+        scopes_supported: [...AGENT_SCOPES],
+        bearer_methods_supported: ["header"],
+      });
+      return;
+    }
+
     if (path !== MCP_PATH) {
       sendJson(res, 404, { error: "Not found" });
       return;
@@ -202,16 +312,9 @@ export function createRequestHandler(
       return;
     }
 
-    // Fast-path key existence check BEFORE body parsing so tests and real
-    // callers alike get 401 without needing to consume the request stream.
-    // The full credential validation (API round-trip) runs inside coreHandler.
-    if (!firstHeader(req.headers["x-agent-key"])) {
-      sendJson(res, 401, { error: "Agent credential required" });
-      return;
-    }
-
     // Pass the body as a lazy reader: coreHandler calls it only AFTER auth
     // succeeds, so the stream is never consumed for a rejected-auth request.
+    // Auth (Bearer / x-agent-key check + API round-trip) runs in coreHandler.
     await coreHandler(req, res, () => readJsonBody(req));
   };
 }

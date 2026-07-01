@@ -29,20 +29,25 @@ family. Entry point: `dist/index.js` (`meal-planner-mcp` bin).
 ### Hosted Streamable HTTP (remote, multi-tenant)
 
 ```
-AI agent ──HTTP POST /mcp (x-agent-key per request)──▶ @meal-planner/mcp (hosted)
-                                                          │
-                                          per request:    ▼
-                                    GET /api/agent/me  ──▶ meal-planner API
-                                    (resolve family + scopes from the key)
+AI agent ──HTTP POST /mcp (Authorization: Bearer <key> per request)──▶ @meal-planner/mcp (hosted)
+                                                                         │
+                                                         per request:    ▼
+                                                   GET /api/agent/me  ──▶ meal-planner API
+                                                   (resolve family + scopes from the key)
 ```
 
 The hosted server holds **no** ambient credential and **no** family id. Every
-request must carry its own scoped key in the `x-agent-key` header. For each
-request the server:
+request must carry its own scoped key. `Authorization: Bearer <key>` is the
+preferred header; `x-agent-key` is still accepted for backward compatibility.
+If both are sent, Bearer wins. For each request the server:
 
-1. Reads `x-agent-key` (missing → `401`).
+1. Reads the key from `Authorization: Bearer` (or falls back to `x-agent-key`)
+   (missing → `401` + `WWW-Authenticate: Bearer realm="meal-planner-mcp"`).
 2. Calls `GET /api/agent/me` to resolve `{ familyId, scopes, name }` from that
-   key (unknown/revoked/expired → `401`; the key is never echoed).
+   key (unknown/revoked/expired → `401` +
+   `WWW-Authenticate: Bearer realm="meal-planner-mcp", error="invalid_token"`;
+   scope denial → `403` +
+   `WWW-Authenticate: Bearer realm="meal-planner-mcp", error="insufficient_scope"`).
 3. Binds a fresh, per-request MCP server + tool handlers to the **resolved**
    family and serves the JSON-RPC request through a stateless
    `StreamableHTTPServerTransport` (`sessionIdGenerator: undefined`,
@@ -79,8 +84,9 @@ same per-request auth model.
 | **Dev (`pnpm dev`)** | `http://localhost:3100/mcp` | Standalone MCP HTTP server |
 
 The standalone entrypoint (`dist/http.js` / `meal-planner-mcp-http` bin) remains
-available at default port `3100`. A `GET /health` liveness probe is served by
-the standalone process only.
+available at default port `3100`. Unauthenticated `GET /health` and
+`GET /.well-known/oauth-protected-resource` probes are served by the standalone
+process only.
 
 ## Tools
 
@@ -147,8 +153,8 @@ hardcoded and never logged.**
 ### Hosted HTTP (multi-tenant)
 
 The hosted server reads **neither** an agent key **nor** a family id at boot —
-both arrive per request in the `x-agent-key` header and the family is resolved
-from the key.
+the key arrives per request (`Authorization: Bearer <key>` preferred;
+`x-agent-key` also accepted) and the family is resolved from that key.
 
 | Variable | Required | Description |
 | --- | --- | --- |
@@ -188,6 +194,9 @@ The root `pnpm dev` runs this package's `dev` script, so MCP also starts as host
 HTTP at `http://localhost:3100/mcp` (health at `/health`). This standalone
 process is convenient for hot-reload and isolated testing of the MCP layer
 without a full API restart. Auth is per-request on the standalone server too.
+Point an MCP client at `POST http://localhost:3100/mcp` and include
+`Authorization: Bearer <key>` on every JSON-RPC request (`x-agent-key` still
+works). Mint a scoped key with the smoke-test steps below.
 
 > **Production note:** in production, `/mcp` is served by the API Express app
 > on port 3001 (no separate MCP process). The standalone `:3100` server is a
@@ -216,27 +225,47 @@ node packages/mcp/dist/http.js
 ```
 
 Clients then POST JSON-RPC to `http://<host>:3100/mcp`, passing their scoped key
-in the `x-agent-key` header on **every** request (and an
-`Accept: application/json, text/event-stream` header, per the Streamable HTTP
+on **every** request (`Authorization: Bearer <key>` preferred; `x-agent-key`
+accepted for backward compatibility) and an
+`Accept: application/json, text/event-stream` header (per the Streamable HTTP
 spec). No family id is ever sent by the client — the server resolves it from the
-key. Example round-trip with `curl`:
+key. Unauthenticated/invalid requests get `401` with a
+`WWW-Authenticate: Bearer realm="meal-planner-mcp"` challenge (and
+`error="invalid_token"` for invalid/revoked keys); scope denials return `403`
+with `error="insufficient_scope"`.
+
+The hosted transport also exposes unauthenticated resource metadata at:
+
+```bash
+curl -s http://localhost:3100/.well-known/oauth-protected-resource
+```
+
+Example round-trip with `curl`:
 
 ```bash
 KEY=your-agent-key
 ACCEPT="application/json, text/event-stream"
 
 # initialize (per-request auth: valid key -> 200, missing/invalid -> 401)
-curl -s -H "x-agent-key: $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
+curl -s -H "Authorization: Bearer $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"c","version":"0"}}}' \
   http://localhost:3100/mcp
 
 # call a family-from-key tool — the family is derived from the key
-curl -s -H "x-agent-key: $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
+curl -s -H "Authorization: Bearer $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_current_grocery_list","arguments":{}}}' \
+  http://localhost:3100/mcp
+
+# legacy header still works (Bearer takes precedence when both are present)
+curl -s -H "x-agent-key: $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}' \
   http://localhost:3100/mcp
 
 # liveness probe (no auth)
 curl -s http://localhost:3100/health
+
+# OAuth-protected-resource metadata (no auth)
+curl -s http://localhost:3100/.well-known/oauth-protected-resource
 ```
 
 The transport runs **stateless** (a fresh MCP server + transport per request),
