@@ -16,7 +16,14 @@ spec:
     spec:
       containers:
         - name: meal-planner
-          image: ghcr.io/brandonmartinez/meal-planner:latest
+          # Immutable pin. The tag is overridden at deploy time by the Kustomize
+          # `images` entry in kustomization.yaml (kept current by CI). The value
+          # here is a sane default for a raw `kubectl apply -f` and must never be
+          # a mutable tag such as `latest`.
+          image: ghcr.io/brandonmartinez/meal-planner:v1.0.0
+          # Pinned, immutable tags are content-stable, so there is no need to
+          # re-pull when the tag is already cached on the node.
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
           env:

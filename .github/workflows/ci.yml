@@ -89,6 +89,37 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  pin-deploy-image:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # Serialize with other pushes to main so concurrent runs don't clobber the pin.
+    concurrency:
+      group: pin-deploy-image
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Pin k8s deployment to immutable image tag
+        env:
+          VERSION: ${{ needs.build-and-push.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          FILE="k8s/kustomization.yaml"
+          echo "Pinning ${FILE} image to ${TAG}"
+          sed -i -E "s|^([[:space:]]*newTag:).*|\1 ${TAG}|" "$FILE"
+          if git diff --quiet -- "$FILE"; then
+            echo "Image already pinned to ${TAG}; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git commit -m "build: pin k8s deployment to ${TAG} [skip ci]"
+          git push origin HEAD:main
+
   release:
     needs: build-and-push
     runs-on: ubuntu-latest
