@@ -257,3 +257,37 @@ export async function recordAgentAudit(entry: AgentAuditEntry) {
     },
   });
 }
+
+/**
+ * Records an audit entry without ever throwing. An audit-write failure must
+ * never change an already-decided auth/authz outcome, nor turn an otherwise
+ * successful operation into an error — but a dropped write MUST be observable,
+ * otherwise audit-trail gaps are silent and invisible to monitoring.
+ *
+ * On failure we emit a single structured `[audit]` error log carrying enough
+ * context to investigate (action, outcome, familyId, credentialId, reason, and
+ * the error message). The audit entry only ever carries the credential id —
+ * never a raw agent key or secret — so nothing sensitive is logged here.
+ *
+ * This is the drop-safe wrapper every call site should use. Call
+ * `recordAgentAudit` directly only where an audit-write failure genuinely must
+ * propagate (there are currently no such sites).
+ */
+export async function safeRecordAgentAudit(entry: AgentAuditEntry): Promise<void> {
+  try {
+    await recordAgentAudit(entry);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Structured, single-line context so the drop is greppable in logs and
+    // surfaces in monitoring. Never include the raw agent key (it is not part
+    // of the audit entry) or any other secret.
+    console.error("[audit] dropped agent audit write — audit-trail gap", {
+      action: entry.action,
+      outcome: entry.outcome,
+      familyId: entry.familyId,
+      credentialId: entry.credentialId,
+      reason: entry.reason ?? null,
+      error: message,
+    });
+  }
+}

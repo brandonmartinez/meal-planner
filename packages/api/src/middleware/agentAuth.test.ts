@@ -149,6 +149,52 @@ describe("authenticateAgent", () => {
       }),
     });
   });
+
+  it("surfaces a dropped audit write without throwing or changing the outcome, and never logs the raw key", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    // The audit-trail write fails, but auth has already decided cross-family.
+    prismaMock.agentAuditLog.create.mockRejectedValue(
+      new Error("audit db unreachable"),
+    );
+    prismaMock.agentCredential.findUnique.mockResolvedValue(
+      validCredential({ familyId: "fam-1" }) as never,
+    );
+    const req = buildReq({
+      params: { familyId: "fam-OTHER" },
+      headers: { "x-agent-key": "super-secret-raw-key" },
+    });
+    const res = buildRes();
+    const next = buildNext();
+
+    // Must not throw even though the audit write rejects.
+    await expect(authenticateAgent(req, res, next)).resolves.toBeUndefined();
+
+    // The already-decided outcome is unchanged (still a cross-family 403).
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+
+    // The drop is observable: a structured [audit] error with the context
+    // needed to investigate.
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const [message, context] = consoleErrorSpy.mock.calls[0];
+    expect(message).toContain("[audit]");
+    expect(context).toMatchObject({
+      action: "authenticate",
+      outcome: "denied",
+      familyId: "fam-1",
+      credentialId: "cred-1",
+      reason: "cross_family",
+      error: "audit db unreachable",
+    });
+
+    // The raw agent key must NEVER appear in what we log.
+    const logged = JSON.stringify(consoleErrorSpy.mock.calls);
+    expect(logged).not.toContain("super-secret-raw-key");
+
+    consoleErrorSpy.mockRestore();
+  });
 });
 
 describe("requireScope", () => {
@@ -206,5 +252,42 @@ describe("requireScope", () => {
     await handler(req, res, next);
 
     expect(next).toHaveBeenCalled();
+  });
+
+  it("still denies (403) and surfaces the drop when the audit write fails", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    prismaMock.agentAuditLog.create.mockRejectedValue(new Error("db down"));
+    const handler = requireScope(AGENT_SCOPES.APPROVE);
+    const req = buildReq();
+    req.agent = {
+      id: "cred-1",
+      familyId: "fam-1",
+      scopes: ["meal_plan:read"],
+      createdBy: "parent-1",
+    };
+    const res = buildRes();
+    const next = buildNext();
+
+    await expect(handler(req, res, next)).resolves.toBeUndefined();
+
+    // Outcome unchanged: missing scope is still a 403.
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+
+    // The dropped audit write is observable.
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const [message, context] = consoleErrorSpy.mock.calls[0];
+    expect(message).toContain("[audit]");
+    expect(context).toMatchObject({
+      action: "meal_plan:approve",
+      outcome: "denied",
+      reason: "missing_scope",
+      credentialId: "cred-1",
+      error: "db down",
+    });
+
+    consoleErrorSpy.mockRestore();
   });
 });
