@@ -21,6 +21,10 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 
 📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Shipped #8 backend+shared `PR #40` — nullable meal `difficulty` (EASY/MEDIUM/HARD) through the stack: a Prisma enum + nullable column (hand-authored migration, no DB available), the shared type/constant in `@meal-planner/shared`, Zod validation, and service threading. Linus carried the web UI in #44. #8 CLOSED.
 
+📌 Sprint 3 batch (2026-06-30T21:57:00-04:00): #7 — MCP backend endpoints (current/prev week, schedule-by-date, approve-by-family), Zod-validated, returning shared DTOs. #27 backend — recent-meal indicator (Linus carried the web badge). Both merged & closed.
+
+📌 Sprint 5 batch (2026-06-30T21:57:02-04:00): Three backend PRs, all Frank-gated APPROVE, merged & closed. #43 (PR #67) — trust-proxy config: `app.set("trust proxy", config.trustProxy)` default `1`, `TRUST_PROXY` env, `parseTrustProxy()`. #49 (PR #68) — observable audit drops: `safeRecordAgentAudit` wrapper with a 6-field allowlist `console.error`, replaced 18 silent `catch {}` sites, fail-open preserved. #51 (PR #69) — peppered HMAC-SHA256 credential hashing: `utils/credentialHash.ts` (`hashCredential` + `legacyHashCredential`), lazy legacy-rehash on verify, `CREDENTIAL_PEPPER` fail-closed in prod, no schema change; merged after #43/#49 with main synced in.
+
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->

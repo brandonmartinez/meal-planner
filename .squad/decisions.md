@@ -2,6 +2,40 @@
 
 ## Active Decisions
 
+### 2026-06-30T21-57-02: Sprint 5 batch — final backlog hardening (#42/#43/#49/#51), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Milestone created for the 4 remaining backlog issues; all built, gated, merged to `origin/main`, and closed. Standing rules unchanged (isolated worktree + PR per issue, CI = verification of record, independent gates via PR comment since author = `brandonmartinez`, owner-authority merge on unprotected main).
+**References:** PRs #66, #67, #68, #69; issues #42, #43, #49, #51
+**Why:** Requested by Brandon Martinez — close out the reviewed backlog and the security/infra follow-up debt from Sprints 2–4.
+- **#42 (Basher, PR #66):** CI migration validation — `prisma migrate deploy` + `migrate diff --exit-code` drift check added to the test job. Rusty infra gate → APPROVE.
+- **#43 (Livingston, PR #67):** Trust-proxy config — `app.set("trust proxy", config.trustProxy)` default `1`, `TRUST_PROXY` env, `parseTrustProxy()`. Frank gate → APPROVE.
+- **#49 (Livingston, PR #68):** Observable audit drops — `safeRecordAgentAudit` wrapper with a 6-field allowlist `console.error`, replaced 18 silent `catch {}` sites, fail-open preserved. Frank gate → APPROVE.
+- **#51 (Livingston, PR #69):** Peppered HMAC-SHA256 credential hashing — `utils/credentialHash.ts` (`hashCredential` + `legacyHashCredential`), lazy legacy-rehash on verify, `CREDENTIAL_PEPPER` fail-closed in prod, no schema change. Frank gate → APPROVE. Merged after #43/#49 with main synced in.
+- **Follow-up debt (noted, not filed):** `middleware/rateLimit.ts` `apiKeyFingerprint` is still bare SHA-256 with a stale comment (Frank N2).
+
+### 2026-06-30T21-57-01: Sprint 4 batch — k8s immutable tags, migration ordering, MCP package (#25/#26/#5), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Three issues built, gated, merged to `origin/main`, and closed. Same standing rules (isolated worktree + PR per issue, CI = verification of record, independent gate via PR comment, owner-authority merge).
+**References:** PRs #63, #64, #65; issues #25, #26, #5
+**Why:** Requested by Brandon Martinez — advance the infra/deploy hardening and land the MCP server package foundation.
+- **#25 (Basher, PR #63):** Pin k8s to immutable image tags. Rusty infra gate → APPROVE.
+- **#26 (Basher, PR #64):** Move prod migrations out of the multi-replica startup. Rusty gate initially REQUEST-CHANGES (migrate-job hardcoded `:latest`); relaunched to integrate on #25's single-source pinned tag in `kustomization.yaml`. `deploy.sh` runs the migrate Job first (fail-fast), then `apply -k`. Re-gate → APPROVE.
+- **#5 (Rusty, PR #65):** MCP server package `packages/mcp`. Frank security gate → APPROVE. Coordinator fixed 2 TS compile errors before merge (`agent.ts` `mealId` scope hoist; mcp `ToolResult` index signature) and regenerated `pnpm-lock.yaml`.
+
+### 2026-06-30T21-57-00: Sprint 3 batch — MCP endpoints, prod/infra hardening, and a11y sweep (8 issues), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Eight issues built in parallel, each on its own isolated worktree + PR, all merged to `origin/main` and closed. Standing rules unchanged (CI = verification of record, security/a11y work gated by an independent reviewer via PR comment since author = `brandonmartinez`, owner-authority merge).
+**References:** PRs (incl. #62); issues #7, #22, #24, #16, #6, #27, #17, #15 (also closed #50)
+**Why:** Requested by Brandon Martinez — land the MCP backend surface, harden prod/infra, and clear the accessibility backlog.
+- **#7 (Livingston):** MCP backend endpoints — current/prev week, schedule-by-date, approve-by-family, Zod, shared DTOs.
+- **#22 (Basher):** Harden prod Docker image (non-root, frozen lockfile). Security gate → PASS.
+- **#24 (Basher):** Compose drift fix (root vs devcontainer).
+- **#16 (Linus):** Accessible modals (MealPicker, ImportMealsDialog). A11y gate → PASS.
+- **#6 (Frank backend + Linus web):** Agent-credential management endpoints + UI (also closed #50). Security gate → PASS.
+- **#27 (Livingston backend + Linus web):** Recent-meal indicator (backend + web badge).
+- **#17 (Linus):** API key copy + last-used display.
+- **#15 (Linus, PR #62):** Accessible names + loading-status across web pages. A11y gate → PASS. Last to merge — de-raced 3 loading-status a11y tests before merge.
+
 ### 2026-06-30T18-32-22: Sprint 2 batch — shared/API contracts, test coverage, and the MCP credential model (#14/#8/#10/#20/#18/#19/#6)
 **By:** coordinator (logged by Scribe)
 **What:** Second implementation sprint, same standing rules: one isolated worktree + draft PR per issue, CI is verification of record (no host runs), GitHub writes via the `brandonmartinez` account, security work gated by an independent reviewer. Coordinator flipped each PR ready and squash-merged after CI went green.
