@@ -119,18 +119,49 @@ export const inviteJoinLimiter = createRateLimiter({
 });
 
 /**
+ * Extract the raw agent credential from an Express request.
+ *
+ * Tries `Authorization: Bearer <token>` first (mirrors the MCP HTTP handler's
+ * `extractAgentKey` so both surfaces always agree on which credential is
+ * presented), then falls back to the `x-agent-key` header. Returns `undefined`
+ * when neither carries a non-empty value.
+ *
+ * The returned value is a raw credential — callers MUST hash it before use
+ * and MUST NOT log or persist it.
+ */
+function extractAgentCredential(req: Request): string | undefined {
+  const authorization = req.headers["authorization"];
+  if (typeof authorization === "string") {
+    const match = /^Bearer[ ]+(.+)$/i.exec(authorization);
+    if (match) {
+      const token = match[1].trim();
+      if (token.length > 0) return token;
+    }
+  }
+  const agentKey = req.headers["x-agent-key"];
+  if (typeof agentKey === "string" && agentKey.length > 0) {
+    return agentKey;
+  }
+  return undefined;
+}
+
+/**
  * Bucket key for the agent limiter: client IP combined with a hash of the
- * presented `x-agent-key` (when present). Mirrors {@link displayKeyGenerator}
- * but reads the agent-credential header — the raw key never appears in the
- * returned bucket key.
+ * presented credential. The credential is read from `Authorization: Bearer
+ * <token>` first (matching the MCP HTTP handler), then falls back to the
+ * `x-agent-key` header. Falls back to IP-only when neither is present.
+ *
+ * Both auth styles with the same underlying token map to the **same** bucket,
+ * so per-credential throttling is consistent regardless of how the caller
+ * authenticates. The raw credential never appears in the returned key.
  *
  * Note: express-rate-limit v7.5.1 does not export `ipKeyGenerator`, so we
  * build the IP portion directly (matching the display limiter's approach).
  */
 export function agentKeyGenerator(req: Request): string {
   const ip = req.ip ?? "ip-unknown";
-  const raw = req.headers["x-agent-key"];
-  if (typeof raw === "string" && raw.length > 0) {
+  const raw = extractAgentCredential(req);
+  if (raw !== undefined) {
     return `${ip}:${apiKeyFingerprint(raw)}`;
   }
   return ip;
@@ -159,8 +190,8 @@ export const agentLimiter = createRateLimiter({
  * traffic is throttled independently and can never borrow from or starve those
  * surfaces. Mounted BEFORE the MCP route handler so credential/JSON-RPC floods
  * are rejected before any key lookup or transport work. Uses the same
- * {@link agentKeyGenerator} (reads `x-agent-key`) and the same budget as
- * `agentLimiter`.
+ * {@link agentKeyGenerator} (reads `Authorization: Bearer <token>` or
+ * `x-agent-key`) and the same budget as `agentLimiter`.
  */
 export const mcpLimiter = createRateLimiter({
   windowMs: AGENT_WINDOW_MS,
