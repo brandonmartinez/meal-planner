@@ -1,5 +1,9 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import {
+  INGREDIENT_CATEGORIES,
+  MEAL_DIFFICULTIES,
+} from "@meal-planner/shared";
 import { authenticateAgent, requireScope } from "../middleware/agentAuth.js";
 import {
   AGENT_SCOPES,
@@ -15,16 +19,17 @@ import * as mealService from "../services/meals.js";
  * (per-operation grant). The handler records the allowed/denied audit entry
  * with concrete target resource ids; the middleware records auth/scope denials.
  *
- * Agents may read/schedule/approve meal plans and read the family's meal
- * catalog. There is intentionally no agent route for members, roles,
- * invites, API keys, auth/session, OAuth, or secrets — those surfaces live
- * under `/api/families` and `/api/auth` behind the JWT chain and are
- * unreachable with an agent credential.
+ * Agents may read/schedule/approve meal plans, read the family's meal catalog,
+ * and create/edit meals in that catalog (meal:write). There is intentionally
+ * no agent route for members, roles, invites, API keys, auth/session, OAuth,
+ * or secrets — those surfaces live under `/api/families` and `/api/auth`
+ * behind the JWT chain and are unreachable with an agent credential. There is
+ * deliberately no meal DELETE.
  *
  * Routes come in two shapes: legacy `/:familyId/*` routes cross-check the path
- * family against the credential, while the family-from-key route (`/me`)
- * derives the family from the key alone — the basis for a hosted, multi-tenant
- * MCP server.
+ * family against the credential, while the family-from-key routes (`/me`,
+ * `/meals`) derive the family from the key alone — the basis for a hosted,
+ * multi-tenant MCP server.
  */
 export const agentRouter = Router();
 
@@ -57,6 +62,34 @@ function paramStr(val: string | string[] | undefined): string {
 // carries no `:familyId`). This is what lets a HOSTED MCP server operate
 // without a family id ever being configured or passed into a tool.
 
+// Meal catalog write shape an AI produces after parsing a recipe (CSV / scan /
+// pasted text). Parsing/OCR is the calling model's job — we only accept the
+// structured result and validate it at the boundary.
+const ingredientInputSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.string().min(1).optional(),
+  unit: z.string().min(1).optional(),
+  category: z.enum(INGREDIENT_CATEGORIES).optional(),
+});
+
+const createMealSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  difficulty: z.enum(MEAL_DIFFICULTIES).optional(),
+  ingredients: z.array(ingredientInputSchema).optional(),
+});
+
+const updateMealSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
+    ingredients: z.array(ingredientInputSchema).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field must be provided",
+  });
+
 // GET /api/agent/me — any valid credential; no scope required.
 // Resolves the family + granted scopes for the presented key so the hosted MCP
 // server can bind its tools to that family. Authenticated purely from the key
@@ -79,6 +112,101 @@ agentRouter.get(
       scopes: agent.scopes,
       name: agent.name,
     });
+  },
+);
+
+// POST /api/agent/meals — scope: meal:write
+// Create a meal in the family resolved from the key. Full shape: name,
+// description?, difficulty?, ingredients[]. Distinct from meal-plan scheduling.
+agentRouter.post(
+  "/meals",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.WRITE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    try {
+      const data = createMealSchema.parse(req.body);
+      const meal = await mealService.createMeal(agent.familyId, data);
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.WRITE,
+        outcome: "allowed",
+        targetType: "meal",
+        targetIds: [meal.id],
+      });
+      res.status(201).json(meal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      res.status(500).json({ error: "Failed to create meal" });
+    }
+  },
+);
+
+// PATCH /api/agent/meals/:mealId — scope: meal:write
+// Edit a meal in the family resolved from the key. Preserves service guardrails:
+// a meal from another family yields 404 (no existence leak); a placeholder meal
+// cannot be edited (403). Both denials are audited with the target meal id.
+agentRouter.patch(
+  "/meals/:mealId",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.WRITE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const mealId = paramStr(req.params.mealId);
+    try {
+      const data = updateMealSchema.parse(req.body);
+      const meal = await mealService.updateMeal(mealId, agent.familyId, data);
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.WRITE,
+        outcome: "allowed",
+        targetType: "meal",
+        targetIds: [mealId],
+      });
+      res.json(meal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      const message = error instanceof Error ? error.message : "";
+      if (message === "Meal not found") {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.WRITE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [mealId],
+          reason: "not_found",
+        });
+        res.status(404).json({ error: "Meal not found" });
+        return;
+      }
+      if (message === "Cannot modify placeholder meal") {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.WRITE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [mealId],
+          reason: "placeholder",
+        });
+        res.status(403).json({ error: "Cannot modify placeholder meal" });
+        return;
+      }
+      res.status(500).json({ error: "Failed to update meal" });
+    }
   },
 );
 

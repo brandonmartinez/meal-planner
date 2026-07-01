@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INGREDIENT_CATEGORIES } from "@meal-planner/shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { MealPlannerApiClient } from "./apiClient.js";
 import { ApiError, ApiTransportError } from "./errors.js";
@@ -53,6 +54,30 @@ const dateString = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "must be a YYYY-MM-DD date");
 
+/** Difficulty enum shared by the meal-write tool schemas. */
+const difficultyEnum = z.enum(["EASY", "MEDIUM", "HARD"]);
+
+/** A single parsed ingredient the model produced from a recipe. */
+const ingredientSchema = z.object({
+  name: z.string().min(1).describe("Ingredient name, e.g. 'olive oil'."),
+  quantity: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Amount as free text, e.g. '2' or '1/2'."),
+  unit: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Unit for the quantity, e.g. 'cups', 'g', 'tbsp'."),
+  category: z
+    .enum(INGREDIENT_CATEGORIES)
+    .optional()
+    .describe(
+      "Grocery aisle/category. One of: " + INGREDIENT_CATEGORIES.join(", ") + ".",
+    ),
+});
+
 /**
  * Pure, testable tool handlers bound to a client + family. Each returns an MCP
  * {@link ToolResult}. Kept separate from {@link registerTools} so unit tests
@@ -95,6 +120,36 @@ export function createToolHandlers(
       suggestionId: string;
     }): Promise<ToolResult> =>
       run(() => client.approveSuggestion(familyId, args.suggestionId)),
+
+    // Family-from-key tools: the API resolves the family from the presented
+    // key, so these do not thread `familyId` into the request path.
+    create_meal: (args: {
+      name: string;
+      description?: string;
+      difficulty?: "EASY" | "MEDIUM" | "HARD";
+      ingredients?: {
+        name: string;
+        quantity?: string;
+        unit?: string;
+        category?: string;
+      }[];
+    }): Promise<ToolResult> => run(() => client.createMeal(args)),
+
+    update_meal: (args: {
+      mealId: string;
+      name?: string;
+      description?: string;
+      difficulty?: "EASY" | "MEDIUM" | "HARD" | null;
+      ingredients?: {
+        name: string;
+        quantity?: string;
+        unit?: string;
+        category?: string;
+      }[];
+    }): Promise<ToolResult> => {
+      const { mealId, ...rest } = args;
+      return run(() => client.updateMeal(mealId, rest));
+    },
   };
 }
 
@@ -109,6 +164,8 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   get_previous_week_plans: "meal_plan:read",
   schedule_meal: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
+  create_meal: "meal:write",
+  update_meal: "meal:write",
 };
 
 /**
@@ -230,5 +287,60 @@ export function registerTools(
       },
     },
     (args) => handlers.approve_suggestion(args),
+  );
+
+  server.registerTool(
+    "create_meal",
+    {
+      title: "Create meal",
+      description:
+        "Create a meal in the family's catalog from a recipe you have already " +
+        "parsed (from a CSV, a photo/scan, or pasted text — you do the " +
+        "parsing/OCR; this tool only stores the structured result). Provide a " +
+        "name and, optionally, a description, a difficulty (EASY/MEDIUM/HARD), " +
+        "and a list of ingredients. Requires the meal:write scope.",
+      inputSchema: {
+        name: z.string().min(1).describe("The meal's name (required)."),
+        description: z
+          .string()
+          .optional()
+          .describe("Optional short description or notes."),
+        difficulty: difficultyEnum
+          .optional()
+          .describe("Optional difficulty: EASY, MEDIUM, or HARD."),
+        ingredients: z
+          .array(ingredientSchema)
+          .optional()
+          .describe("Optional list of ingredients parsed from the recipe."),
+      },
+    },
+    (args) => handlers.create_meal(args),
+  );
+
+  server.registerTool(
+    "update_meal",
+    {
+      title: "Update meal",
+      description:
+        "Edit an existing meal in the family's catalog. Identify the meal by " +
+        "its id (use list_meals to find it) and provide only the fields to " +
+        "change. Passing `ingredients` REPLACES the meal's ingredient list. " +
+        "Placeholder meals (e.g. Free Day, Leftovers) cannot be edited. " +
+        "Requires the meal:write scope.",
+      inputSchema: {
+        mealId: z.string().min(1).describe("The id of the meal to edit."),
+        name: z.string().min(1).optional().describe("New name."),
+        description: z.string().optional().describe("New description."),
+        difficulty: difficultyEnum
+          .nullable()
+          .optional()
+          .describe("New difficulty, or null to clear it."),
+        ingredients: z
+          .array(ingredientSchema)
+          .optional()
+          .describe("Replacement ingredient list (replaces all existing)."),
+      },
+    },
+    (args) => handlers.update_meal(args),
   );
 }

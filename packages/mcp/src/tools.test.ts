@@ -12,12 +12,15 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 /** A stub API client whose methods are individually mockable. */
 function stubClient() {
   return {
+    getAgentMe: vi.fn(),
     listMeals: vi.fn(),
     getCurrentWeekPlan: vi.fn(),
     getWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMeal: vi.fn(),
     approveSuggestion: vi.fn(),
+    createMeal: vi.fn(),
+    updateMeal: vi.fn(),
   };
 }
 
@@ -97,6 +100,55 @@ describe("createToolHandlers", () => {
     expect(client.approveSuggestion).toHaveBeenCalledWith(FAMILY, "s-1");
   });
 
+  it("create_meal forwards the structured recipe (no familyId in the call)", async () => {
+    const client = stubClient();
+    client.createMeal.mockResolvedValue({ id: "meal-new" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const input = {
+      name: "Tacos",
+      difficulty: "EASY" as const,
+      ingredients: [{ name: "tortillas", category: "bakery" }],
+    };
+    const result = await handlers.create_meal(input);
+
+    expect(client.createMeal).toHaveBeenCalledWith(input);
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual({ id: "meal-new" });
+  });
+
+  it("update_meal splits mealId from the patch body", async () => {
+    const client = stubClient();
+    client.updateMeal.mockResolvedValue({ id: "meal-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.update_meal({ mealId: "meal-1", name: "Better Tacos" });
+    expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
+      name: "Better Tacos",
+    });
+  });
+
+  it("surfaces an out-of-scope create_meal as a 403 tool error (never throws)", async () => {
+    const client = stubClient();
+    client.createMeal.mockRejectedValue(
+      new ApiError(403, "Insufficient scope"),
+    );
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.create_meal({ name: "Tacos" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("API error 403: Insufficient scope");
+  });
+
   it("maps an ApiError to an isError tool result with status + message", async () => {
     const client = stubClient();
     client.approveSuggestion.mockRejectedValue(
@@ -143,7 +195,7 @@ describe("createToolHandlers", () => {
 });
 
 describe("registerTools", () => {
-  it("registers all six meal-planning tools", () => {
+  it("registers all nine meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -158,6 +210,8 @@ describe("registerTools", () => {
       "get_previous_week_plans",
       "schedule_meal",
       "approve_suggestion",
+      "create_meal",
+      "update_meal",
     ]);
     // Each registration provides a config with an inputSchema and a handler.
     for (const call of registerTool.mock.calls) {
@@ -176,6 +230,8 @@ describe("TOOL_SCOPES", () => {
       get_previous_week_plans: "meal_plan:read",
       schedule_meal: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
+      create_meal: "meal:write",
+      update_meal: "meal:write",
     });
   });
 });

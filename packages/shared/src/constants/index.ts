@@ -83,6 +83,7 @@ export const AGENT_SCOPES = [
   "meal_plan:read",
   "meal_plan:schedule",
   "meal_plan:approve",
+  "meal:write",
 ] as const;
 
 export type AgentScope = (typeof AGENT_SCOPES)[number];
@@ -112,6 +113,10 @@ export const AGENT_SCOPE_METADATA: Record<AgentScope, AgentScopeMetadata> = {
     label: "Approve meals",
     description:
       "Approve meal suggestions — a privileged, parent-equivalent action.",
+  },
+  "meal:write": {
+    label: "Create & edit meals",
+    description: "Create new meals and edit existing meals in the catalog.",
   },
 };
 

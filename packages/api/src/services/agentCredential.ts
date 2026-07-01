@@ -8,11 +8,13 @@ import { hashCredential, legacyHashCredential } from "../utils/credentialHash.js
  *  - `meal_plan:read`     — read week plans / suggestions for the family.
  *  - `meal_plan:schedule` — add (schedule) meal suggestions onto day plans.
  *  - `meal_plan:approve`  — approve a suggestion (PARENT-equivalent action).
+ *  - `meal:write`         — create/edit meals in the family's catalog.
  */
 export const AGENT_SCOPES = {
   READ: "meal_plan:read",
   SCHEDULE: "meal_plan:schedule",
   APPROVE: "meal_plan:approve",
+  WRITE: "meal:write",
 } as const;
 
 export type AgentScope = (typeof AGENT_SCOPES)[keyof typeof AGENT_SCOPES];

@@ -4,6 +4,8 @@ import type {
   PreviousWeeksResponseDTO,
   MealSuggestionDTO,
   AgentIdentityDTO,
+  Meal,
+  Difficulty,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -25,6 +27,34 @@ export interface ApiClientOptions {
 interface RequestOptions {
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+}
+
+/** The structured meal shape a caller (e.g. an AI that parsed a recipe) sends
+ *  to create a meal. `ingredients` are optional; each needs at least a name. */
+export interface CreateMealInput {
+  name: string;
+  description?: string;
+  difficulty?: Difficulty;
+  ingredients?: {
+    name: string;
+    quantity?: string;
+    unit?: string;
+    category?: string;
+  }[];
+}
+
+/** Partial edit of an existing meal. Every field is optional; `difficulty` may
+ *  be `null` to clear it. At least one field must be provided. */
+export interface UpdateMealInput {
+  name?: string;
+  description?: string;
+  difficulty?: Difficulty | null;
+  ingredients?: {
+    name: string;
+    quantity?: string;
+    unit?: string;
+    category?: string;
+  }[];
 }
 
 /**
@@ -122,6 +152,22 @@ export class MealPlannerApiClient {
       `/api/agent/${encodeURIComponent(familyId)}/suggestions/${encodeURIComponent(
         suggestionId,
       )}/approve`,
+    );
+  }
+
+  // --- Meal catalog write (family-from-key; meal:write scope) ---------------
+
+  /** Create a meal in the family the key resolves to (no family in the path). */
+  createMeal(input: CreateMealInput): Promise<Meal> {
+    return this.request<Meal>("POST", `/api/agent/meals`, { body: input });
+  }
+
+  /** Edit an existing meal by id in the family the key resolves to. */
+  updateMeal(mealId: string, input: UpdateMealInput): Promise<Meal> {
+    return this.request<Meal>(
+      "PATCH",
+      `/api/agent/meals/${encodeURIComponent(mealId)}`,
+      { body: input },
     );
   }
 

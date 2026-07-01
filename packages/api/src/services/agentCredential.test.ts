@@ -31,10 +31,11 @@ function sha256(s: string) {
 
 describe("agentCredential service", () => {
   describe("scope helpers", () => {
-    it("recognizes only the three known scopes", () => {
+    it("recognizes only the four known scopes", () => {
       expect(isAgentScope("meal_plan:read")).toBe(true);
       expect(isAgentScope("meal_plan:schedule")).toBe(true);
       expect(isAgentScope("meal_plan:approve")).toBe(true);
+      expect(isAgentScope("meal:write")).toBe(true);
       expect(isAgentScope("members:write")).toBe(false);
       expect(isAgentScope("meal_plan:delete")).toBe(false);
     });
@@ -42,6 +43,8 @@ describe("agentCredential service", () => {
     it("hasScope checks membership", () => {
       expect(hasScope(["meal_plan:read"], AGENT_SCOPES.READ)).toBe(true);
       expect(hasScope(["meal_plan:read"], AGENT_SCOPES.APPROVE)).toBe(false);
+      expect(hasScope(["meal:write"], AGENT_SCOPES.WRITE)).toBe(true);
+      expect(hasScope(["meal_plan:read"], AGENT_SCOPES.WRITE)).toBe(false);
     });
   });
 
