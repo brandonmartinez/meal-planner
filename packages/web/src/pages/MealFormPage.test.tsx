@@ -104,3 +104,46 @@ describe('MealFormPage difficulty', () => {
     expect(body.difficulty).toBeNull();
   });
 });
+
+describe('MealFormPage accessibility', () => {
+  it('associates accessible names with the meal name and description controls', async () => {
+    renderForm('/meals/new');
+
+    // Labels are programmatically associated via htmlFor/id, so each control is
+    // reachable by its accessible name rather than DOM order.
+    expect(screen.getByRole('textbox', { name: 'Name *' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Description' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Difficulty' })).toBeInTheDocument();
+  });
+
+  it('gives each ingredient control and its remove button an accessible name', async () => {
+    renderForm('/meals/new');
+
+    // First ingredient row uses positional labels until the user names it.
+    expect(screen.getByRole('textbox', { name: 'Ingredient 1 name' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Quantity for ingredient 1' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Unit for ingredient 1' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Category for ingredient 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove ingredient 1' })).toBeInTheDocument();
+
+    // Once named, the remove control announces the ingredient by name.
+    await userEvent.type(screen.getByRole('textbox', { name: 'Ingredient 1 name' }), 'Garlic');
+    expect(screen.getByRole('button', { name: 'Remove Garlic' })).toBeInTheDocument();
+  });
+
+  it('announces a save failure through an alert region', async () => {
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json({ error: 'Failed to save meal' }, { status: 500 }),
+      ),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Failed to save meal');
+  });
+});

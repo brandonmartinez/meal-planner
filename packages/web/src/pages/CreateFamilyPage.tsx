@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createFamily } from '../api/families.js';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ export default function CreateFamilyPage() {
   const navigate = useNavigate();
   const { refresh } = useAuth();
   const { families, switchFamily } = useFamily();
+  const nameId = useId();
 
   // After createFamily + refresh, the AuthContext re-renders with the new
   // membership. Wait for it to be observable before navigating, otherwise
@@ -44,10 +45,11 @@ export default function CreateFamilyPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
       <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Create a Family</h1>
-        {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+        {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
         <form onSubmit={handleSubmit}>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Family Name</label>
+          <label htmlFor={nameId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Family Name</label>
           <input
+            id={nameId}
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}

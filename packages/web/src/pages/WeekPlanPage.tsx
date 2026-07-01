@@ -22,6 +22,7 @@ import {
 import { formatWeekRange } from '../utils/date';
 import DayCard from '../components/DayCard';
 import MealPicker from '../components/MealPicker';
+import LoadingSpinner from '../components/LoadingSpinner';
 import type { WeekPlan, DayPlan, MealSuggestion } from '@meal-planner/shared';
 
 export default function WeekPlanPage() {
@@ -131,11 +132,7 @@ export default function WeekPlanPage() {
     if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
     if (loading) {
-        return (
-            <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-        );
+        return <LoadingSpinner message="Loading week plan…" />;
     }
 
     return (
@@ -154,7 +151,7 @@ export default function WeekPlanPage() {
                 </Link>
             </div>
 
-            {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+            {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
             <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

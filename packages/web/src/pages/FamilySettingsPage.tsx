@@ -27,6 +27,7 @@ import type {
 import { AGENT_SCOPES, AGENT_SCOPE_METADATA } from '@meal-planner/shared';
 import { useAuth } from '../context/AuthContext.js';
 import { useFamily } from '../hooks/useFamily';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function FamilySettingsPage() {
   const { familyId, hasFamilies } = useFamily();
@@ -233,18 +234,18 @@ export default function FamilySettingsPage() {
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
-    return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
+    return <LoadingSpinner message="Loading settings…" />;
   }
 
   if (!family) {
-    return <div className="text-center py-12 text-red-600 dark:text-red-400">Family not found</div>;
+    return <div role="alert" className="text-center py-12 text-red-600 dark:text-red-400">Family not found</div>;
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-6">{family.name} — Settings</h1>
 
-      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+      {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {/* Timezone */}
       {isParent && (
@@ -274,7 +275,7 @@ export default function FamilySettingsPage() {
             </button>
           </form>
           {tzSaved && (
-            <p className="mt-2 text-sm text-green-700 dark:text-green-400">Timezone updated.</p>
+            <p role="status" className="mt-2 text-sm text-green-700 dark:text-green-400">Timezone updated.</p>
           )}
         </section>
       )}
@@ -293,12 +294,14 @@ export default function FamilySettingsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleRoleChange(m.id, m.role === 'PARENT' ? 'CHILD' : 'PARENT')}
+                    aria-label={`Toggle role for ${m.user.name}`}
                     className="text-sm px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60"
                   >
                     Toggle Role
                   </button>
                   <button
                     onClick={() => handleRemove(m.id)}
+                    aria-label={`Remove ${m.user.name}`}
                     className="text-sm px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
                   >
                     Remove
@@ -324,7 +327,7 @@ export default function FamilySettingsPage() {
           </div>
           {inviteLink && (
             <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm break-all border border-transparent dark:border-gray-700">
-              <p className="text-green-700 dark:text-green-400 font-medium mb-1">Link copied to clipboard!</p>
+              <p role="status" className="text-green-700 dark:text-green-400 font-medium mb-1">Link copied to clipboard!</p>
               <code>{inviteLink}</code>
             </div>
           )}
@@ -341,6 +344,7 @@ export default function FamilySettingsPage() {
               value={newKeyName}
               onChange={e => setNewKeyName(e.target.value)}
               placeholder="Key name"
+              aria-label="API key name"
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
             />
             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -427,6 +431,7 @@ export default function FamilySettingsPage() {
               value={newAgentName}
               onChange={e => setNewAgentName(e.target.value)}
               placeholder="Credential name (e.g. Planner Bot)"
+              aria-label="Agent credential name"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
             />
 

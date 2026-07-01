@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
 import { renderWithProviders, screen, waitFor } from '../test-utils/render';
@@ -572,5 +572,60 @@ describe('FamilySettingsPage', () => {
     // No rotate/revoke actions for an already-revoked credential.
     expect(screen.queryByRole('button', { name: /rotate old bot/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /revoke old bot/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('FamilySettingsPage accessibility', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+    vi.restoreAllMocks();
+  });
+
+  it('exposes a labelled status region while settings load', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', async () => {
+        await delay(40);
+        return HttpResponse.json(familyDto());
+      }),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    expect(await screen.findByRole('status', { name: /loading settings/i })).toBeInTheDocument();
+
+    // Let the async load resolve so the status region is replaced by content.
+    expect(await screen.findByRole('heading', { name: /smiths — settings/i })).toBeInTheDocument();
+  });
+
+  it('labels the API key name field and names member action buttons after the member', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    // Member actions for the non-self member (Bobby) announce the member name.
+    expect(await screen.findByRole('button', { name: 'Remove Bobby' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Toggle role for Bobby' })).toBeInTheDocument();
+
+    // The API key creation field has an accessible name despite no visible label.
+    expect(screen.getByRole('textbox', { name: 'API key name' })).toBeInTheDocument();
+    // The agent credential name field is likewise labelled.
+    expect(screen.getByRole('textbox', { name: 'Agent credential name' })).toBeInTheDocument();
   });
 });

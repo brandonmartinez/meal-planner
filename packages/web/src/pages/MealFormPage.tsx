@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
 import { useFamily } from '../hooks/useFamily';
 import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import type { Difficulty } from '@meal-planner/shared';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface IngredientRow {
   name: string;
@@ -19,6 +20,9 @@ export default function MealFormPage() {
   const { familyId, hasFamilies } = useFamily();
   const navigate = useNavigate();
   const isEdit = Boolean(mealId);
+
+  const nameId = useId();
+  const descriptionId = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -104,19 +108,20 @@ export default function MealFormPage() {
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
-    return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
+    return <LoadingSpinner message="Loading meal…" />;
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-6">{isEdit ? 'Edit Meal' : 'New Meal'}</h1>
 
-      {error && <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
+      {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
+          <label htmlFor={nameId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
           <input
+            id={nameId}
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
@@ -126,8 +131,9 @@ export default function MealFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+          <label htmlFor={descriptionId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
           <textarea
+            id={descriptionId}
             value={description}
             onChange={e => setDescription(e.target.value)}
             rows={3}
@@ -165,13 +171,16 @@ export default function MealFormPage() {
           </div>
 
           <div className="space-y-3">
-            {ingredients.map((ing, index) => (
+            {ingredients.map((ing, index) => {
+              const rowLabel = ing.name.trim() || `ingredient ${index + 1}`;
+              return (
               <div key={index} className="flex flex-wrap gap-2 items-center">
                 <input
                   type="text"
                   value={ing.name}
                   onChange={e => handleIngredientChange(index, 'name', e.target.value)}
                   placeholder="Name"
+                  aria-label={`Ingredient ${index + 1} name`}
                   className="flex-1 min-w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
                 <input
@@ -179,6 +188,7 @@ export default function MealFormPage() {
                   value={ing.quantity}
                   onChange={e => handleIngredientChange(index, 'quantity', e.target.value)}
                   placeholder="Qty"
+                  aria-label={`Quantity for ${rowLabel}`}
                   className="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
                 <input
@@ -186,11 +196,13 @@ export default function MealFormPage() {
                   value={ing.unit}
                   onChange={e => handleIngredientChange(index, 'unit', e.target.value)}
                   placeholder="Unit"
+                  aria-label={`Unit for ${rowLabel}`}
                   className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
                 <select
                   value={ing.category}
                   onChange={e => handleIngredientChange(index, 'category', e.target.value)}
+                  aria-label={`Category for ${rowLabel}`}
                   className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
                 >
                   <option value="">Category</option>
@@ -202,12 +214,13 @@ export default function MealFormPage() {
                   type="button"
                   onClick={() => removeIngredient(index)}
                   className="ml-auto text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-base px-3 py-1"
-                  aria-label="Remove ingredient"
+                  aria-label={`Remove ${rowLabel}`}
                 >
                   ✕
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Single source of truth for the resources that make up the Meal Planner
+# deployment. Apply everything with:  kubectl apply -k k8s/
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  # Pre-rollout database migration Job (issue #26). Listing it here means the
+  # single `images[].newTag` pin below repins the Job's image too, since it uses
+  # the same image name as the Deployment — no second images[] entry needed.
+  - migrate-job.yaml
+
+# Immutable image pin.
+#
+# `newTag` is the production image reference. It MUST be an immutable tag
+# (a CI-computed version `vX.Y.Z` or a commit SHA) -- never `latest`.
+#
+# How this stays current:
+#   * CI (.github/workflows/ci.yml -> pin-deploy-image) rewrites `newTag` to the
+#     freshly built `v<version>` after each successful build-and-push on main,
+#     so the committed manifest always names the exact build running in prod.
+#   * To roll back, revert this line to a previous tag (or run
+#     `IMAGE_TAG=v1.0.41 ./k8s/deploy.sh`) and re-apply.
+images:
+  - name: ghcr.io/brandonmartinez/meal-planner
+    newTag: v1.0.0
