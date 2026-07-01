@@ -11,6 +11,7 @@ const {
   revokeAgentCredential,
   authenticateAgentCredential,
   recordAgentAudit,
+  safeRecordAgentAudit,
   hasScope,
   isAgentScope,
   AGENT_SCOPES,
@@ -284,6 +285,72 @@ describe("agentCredential service", () => {
           reason: null,
         }),
       });
+    });
+  });
+
+  describe("safeRecordAgentAudit", () => {
+    it("writes through to recordAgentAudit and does not log on success", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      prismaMock.agentAuditLog.create.mockResolvedValue({} as never);
+
+      await safeRecordAgentAudit({
+        credentialId: "cred-1",
+        familyId: "fam-1",
+        action: "meal_plan:read",
+        outcome: "allowed",
+      });
+
+      expect(prismaMock.agentAuditLog.create).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("swallows the error but surfaces a structured [audit] log when the write fails", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      prismaMock.agentAuditLog.create.mockRejectedValue(
+        new Error("audit db unreachable"),
+      );
+
+      // Must resolve (never throw) — auditing must not break the caller.
+      await expect(
+        safeRecordAgentAudit({
+          credentialId: "cred-9",
+          familyId: "fam-9",
+          action: "meal_plan:schedule",
+          outcome: "allowed",
+          reason: null,
+        }),
+      ).resolves.toBeUndefined();
+
+      // The drop is observable with enough context to investigate.
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      const [message, context] = consoleErrorSpy.mock.calls[0];
+      expect(message).toContain("[audit]");
+      expect(context).toEqual({
+        action: "meal_plan:schedule",
+        outcome: "allowed",
+        familyId: "fam-9",
+        credentialId: "cred-9",
+        reason: null,
+        error: "audit db unreachable",
+      });
+
+      // Only the credential id is ever logged — never a raw key/secret. The
+      // logged context carries exactly the fields above and nothing more.
+      expect(Object.keys(context as object).sort()).toEqual([
+        "action",
+        "credentialId",
+        "error",
+        "familyId",
+        "outcome",
+        "reason",
+      ]);
+
+      consoleErrorSpy.mockRestore();
     });
   });
 });

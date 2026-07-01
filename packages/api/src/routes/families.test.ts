@@ -33,6 +33,7 @@ vi.mock("../services/agentCredential.js", () => ({
   rotateAgentCredential: vi.fn(),
   revokeAgentCredential: vi.fn(),
   recordAgentAudit: vi.fn(),
+  safeRecordAgentAudit: vi.fn(),
 }));
 
 const { familyRouter } = await import("./families.js");
@@ -441,7 +442,7 @@ describe("POST /api/families/:familyId/agent-credentials (create)", () => {
       null,
     );
     // Management action audited with parent actor + concrete target.
-    expect(agentCredentialService.recordAgentAudit).toHaveBeenCalledWith(
+    expect(agentCredentialService.safeRecordAgentAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         actorType: "parent",
         credentialId: "cred-1",
@@ -622,7 +623,7 @@ describe("POST /api/families/:familyId/agent-credentials/:credentialId/rotate", 
       "cred-1",
       FAMILY_ID,
     );
-    expect(agentCredentialService.recordAgentAudit).toHaveBeenCalledWith(
+    expect(agentCredentialService.safeRecordAgentAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         actorType: "parent",
         action: "credential:rotate",
@@ -645,7 +646,7 @@ describe("POST /api/families/:familyId/agent-credentials/:credentialId/rotate", 
     );
 
     expect(res.statusCode).toBe(404);
-    expect(agentCredentialService.recordAgentAudit).not.toHaveBeenCalled();
+    expect(agentCredentialService.safeRecordAgentAudit).not.toHaveBeenCalled();
   });
 
   it("500s when the service throws", async () => {
@@ -688,7 +689,7 @@ describe("DELETE /api/families/:familyId/agent-credentials/:credentialId (revoke
       "cred-1",
       FAMILY_ID,
     );
-    expect(agentCredentialService.recordAgentAudit).toHaveBeenCalledWith(
+    expect(agentCredentialService.safeRecordAgentAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         actorType: "parent",
         action: "credential:revoke",
@@ -711,7 +712,7 @@ describe("DELETE /api/families/:familyId/agent-credentials/:credentialId (revoke
     );
 
     expect(res.statusCode).toBe(404);
-    expect(agentCredentialService.recordAgentAudit).not.toHaveBeenCalled();
+    expect(agentCredentialService.safeRecordAgentAudit).not.toHaveBeenCalled();
   });
 
   it("500s when the service throws", async () => {
