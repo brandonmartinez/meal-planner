@@ -2,6 +2,13 @@
 
 ## Active Decisions
 
+### 2026-07-01T02-16-36: Post-sprint UX fix — Meal Library UI (#70), merged & closed
+**By:** coordinator (Linus-authored web work)
+**What:** Surfaced during the live demo. Two web fixes shipped together in PR #73 (squash `f382c3e`): (1) MealPicker now renders Recent + Difficulty badges (the list DTO already carried `recentlyScheduled`/`lastScheduledOn`/`difficulty` from #27 — pure rendering gap); (2) MealsPage cards restructured into a fixed flex-column with snapped zones (Title → Badges → Description → Footer pinned via `mt-auto`; reserved 2-line min-heights; redundant placeholder kind-chip replaced with a "Built-in" tag). Design pass guided by the impeccable `layout` reference.
+**Process note:** the app `create_pull_request` tool bound PR #71 to the coordinator's SESSION branch (`brandonmartinez-sprint-1-coordination`, `.squad/` docs only) instead of the pushed worktree branch. Caught by the a11y gate (diff ≠ reviewed code). Fixed by closing #71 and opening #73 via `gh pr create --head squad/70-meal-library-ui`. **Lesson: for agent/worktree PRs, create the PR with `gh pr create --head <branch>` from the worktree, NOT the session-bound PR tool.**
+**Verification:** CI-mirror Node 22 container (web build tsc+vite, lint, 213/213 web tests); independent a11y gate APPROVE on `f382c3e` (reviewer ≠ author, posted as PR comment); CI `test` job SUCCESS; merged on owner authority; worktree/branch cleaned up.
+**References:** issue #70; PR #73 (merged); PR #71 (closed — wrong head branch); a11y gate https://github.com/brandonmartinez/meal-planner/pull/71#issuecomment-4849646508
+
 ### 2026-06-30T21-57-02: Sprint 5 batch — final backlog hardening (#42/#43/#49/#51), all merged & closed
 **By:** coordinator (logged by Scribe)
 **What:** Milestone created for the 4 remaining backlog issues; all built, gated, merged to `origin/main`, and closed. Standing rules unchanged (isolated worktree + PR per issue, CI = verification of record, independent gates via PR comment since author = `brandonmartinez`, owner-authority merge on unprotected main).

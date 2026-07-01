@@ -24,3 +24,5 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
+
+- 2026-07-01: #70 Meal Library UI (PR #73) — MealPicker Recent/Difficulty badges + MealsPage zoned card layout (impeccable layout pass). a11y gate APPROVE. Merged.
