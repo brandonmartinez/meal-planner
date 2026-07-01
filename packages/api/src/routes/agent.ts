@@ -15,11 +15,16 @@ import * as mealService from "../services/meals.js";
  * (per-operation grant). The handler records the allowed/denied audit entry
  * with concrete target resource ids; the middleware records auth/scope denials.
  *
- * Agents may ONLY read/schedule/approve meal plans (and read the family's meal
- * catalog to choose what to schedule). There is intentionally no agent route
- * for members, roles, invites, API keys, auth/session, OAuth, or secrets —
- * those surfaces live under `/api/families` and `/api/auth` behind the JWT
- * chain and are unreachable with an agent credential.
+ * Agents may read/schedule/approve meal plans and read the family's meal
+ * catalog. There is intentionally no agent route for members, roles,
+ * invites, API keys, auth/session, OAuth, or secrets — those surfaces live
+ * under `/api/families` and `/api/auth` behind the JWT chain and are
+ * unreachable with an agent credential.
+ *
+ * Routes come in two shapes: legacy `/:familyId/*` routes cross-check the path
+ * family against the credential, while the family-from-key route (`/me`)
+ * derives the family from the key alone — the basis for a hosted, multi-tenant
+ * MCP server.
  */
 export const agentRouter = Router();
 
@@ -45,6 +50,37 @@ const previousWeeksQuerySchema = z.object({
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
 }
+
+// --- Family-from-key routes (no `:familyId` segment) ----------------------
+// These derive the family from the presented agent key alone (via
+// `authenticateAgent`, which authenticates purely from the key when the route
+// carries no `:familyId`). This is what lets a HOSTED MCP server operate
+// without a family id ever being configured or passed into a tool.
+
+// GET /api/agent/me — any valid credential; no scope required.
+// Resolves the family + granted scopes for the presented key so the hosted MCP
+// server can bind its tools to that family. Authenticated purely from the key
+// (no `:familyId` in the path). The read is audited.
+agentRouter.get(
+  "/me",
+  authenticateAgent,
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    await safeRecordAgentAudit({
+      credentialId: agent.id,
+      familyId: agent.familyId,
+      action: "identify",
+      outcome: "allowed",
+      targetType: "agent",
+      targetIds: [agent.id],
+    });
+    res.json({
+      familyId: agent.familyId,
+      scopes: agent.scopes,
+      name: agent.name,
+    });
+  },
+);
 
 // GET /api/agent/:familyId/meals — scope: meal_plan:read
 // Lists the family's meals (with the #27 recently-scheduled indicator) so an

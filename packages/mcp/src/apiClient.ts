@@ -3,6 +3,7 @@ import type {
   WeekPlanDTO,
   PreviousWeeksResponseDTO,
   MealSuggestionDTO,
+  AgentIdentityDTO,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -51,6 +52,12 @@ export class MealPlannerApiClient {
   }
 
   // --- Read tools -----------------------------------------------------------
+
+  /** Resolve the family + granted scopes for the presented key. The hosted
+   *  server calls this once per request so no family id is ever configured. */
+  getAgentMe(): Promise<AgentIdentityDTO> {
+    return this.request<AgentIdentityDTO>("GET", `/api/agent/me`);
+  }
 
   /** List the family's meals, including the recently-scheduled indicator. */
   listMeals(familyId: string, search?: string): Promise<MealListItemDTO[]> {

@@ -235,3 +235,17 @@ export interface ScheduleMealRequestDTO {
   mealId: string;
   date: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Agent-credential identity contract                                         */
+/* -------------------------------------------------------------------------- */
+
+/** The response from `GET /api/agent/me` — the identity the presented agent key
+ *  resolves to. The hosted MCP server calls this once per request to learn the
+ *  family + granted scopes for the key, so no family id is ever configured or
+ *  passed into a tool. Never carries the raw key or the credential hash. */
+export interface AgentIdentityDTO {
+  familyId: string;
+  scopes: string[];
+  name: string;
+}

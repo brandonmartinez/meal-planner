@@ -176,6 +176,9 @@ export interface AuthenticatedAgent {
   id: string;
   familyId: string;
   scopes: string[];
+  /** Human-facing credential label (never a secret). Surfaced by
+   * `GET /api/agent/me` so a caller can confirm which credential it is using. */
+  name: string;
   /** The parent (User.id) who provisioned this credential. Agent-scheduled
    * suggestions are attributed to this user as `suggestedBy`, while the audit
    * trail records the agent credential as the true actor. */
@@ -245,6 +248,7 @@ export async function authenticateAgentCredential(
       id: record.id,
       familyId: record.familyId,
       scopes: record.scopes,
+      name: record.name,
       createdBy: record.createdBy,
     },
   };

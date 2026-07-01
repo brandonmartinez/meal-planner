@@ -130,6 +130,24 @@ describe("MealPlannerApiClient", () => {
     expect(url.pathname).toBe("/api/agent/fam-1/suggestions/a%2Fb%3Fx%3D1/approve");
   });
 
+  it("getAgentMe GETs /api/agent/me (no family in the path) and returns identity", async () => {
+    const identity = {
+      familyId: "fam-1",
+      scopes: ["meal:write"],
+      name: "planner-bot",
+    };
+    const { client, fetchFn } = makeClient(jsonResponse(identity));
+
+    const result = await client.getAgentMe();
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/me");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-agent-key"]).toBe(AGENT_KEY);
+    expect(result).toEqual(identity);
+  });
+
   it("maps a non-2xx response to an ApiError carrying status + message", async () => {
     const { client } = makeClient(
       jsonResponse({ error: "Insufficient scope" }, 403),

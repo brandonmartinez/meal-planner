@@ -90,6 +90,7 @@ function agentReq(
 function mockCredential(scopes: string[]) {
   prismaMock.agentCredential.findUnique.mockResolvedValue({
     id: "cred-1",
+    name: "planner-bot",
     familyId: "fam-1",
     scopes,
     createdBy: "parent-1",
@@ -291,5 +292,47 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
 
     expect(res.statusCode).toBe(401);
     expect(mealService.listMeals).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent family-from-key route (/me)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("GET /me: a valid key resolves family + scopes + name (audited), no family in path", async () => {
+    mockCredential(["meal_plan:read", "meal:write"]);
+
+    const handlers = findStack("/me");
+    const req = agentReq({}); // no :familyId param
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      familyId: "fam-1",
+      scopes: ["meal_plan:read", "meal:write"],
+      name: "planner-bot",
+    });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "identify",
+        outcome: "allowed",
+        targetType: "agent",
+        targetIds: ["cred-1"],
+      }),
+    });
+  });
+
+  it("GET /me: an unknown key is rejected with 401", async () => {
+    prismaMock.agentCredential.findUnique.mockResolvedValue(null as never);
+    prismaMock.agentAuditLog.create.mockResolvedValue({} as never);
+
+    const handlers = findStack("/me");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(401);
   });
 });

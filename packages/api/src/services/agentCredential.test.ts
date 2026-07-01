@@ -238,6 +238,7 @@ describe("agentCredential service", () => {
     it("hashes the presented key, returns scope/family, and bumps lastUsed", async () => {
       prismaMock.agentCredential.findUnique.mockResolvedValue({
         id: "cred-1",
+        name: "planner-bot",
         familyId: "fam-1",
         scopes: ["meal_plan:read", "meal_plan:approve"],
         createdBy: "parent-1",
@@ -254,6 +255,7 @@ describe("agentCredential service", () => {
           id: "cred-1",
           familyId: "fam-1",
           scopes: ["meal_plan:read", "meal_plan:approve"],
+          name: "planner-bot",
           createdBy: "parent-1",
         },
       });
