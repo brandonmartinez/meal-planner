@@ -68,6 +68,22 @@ export function parseTrustProxy(
   return value;
 }
 
+/**
+ * Recomputes whether the dev-login pass-through is enabled for a given env.
+ * Kept as a pure function so both the `config` object and the production guard
+ * evaluate the exact same rule against the same inputs.
+ *
+ * HARD rule: production ALWAYS disables it via the `NODE_ENV` gate, regardless
+ * of `ENABLE_DEV_LOGIN` — a stray env var can never expose a passwordless login
+ * in prod. In any non-prod environment it is on by default and can be turned
+ * off explicitly with `ENABLE_DEV_LOGIN=false`.
+ */
+export function isDevLoginEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.NODE_ENV !== "production" && env.ENABLE_DEV_LOGIN !== "false";
+}
+
 export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
   // How many reverse-proxy hops to trust when resolving the client IP from
@@ -89,6 +105,15 @@ export const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
     callbackUrl:
       process.env.GOOGLE_CALLBACK_URL || DEV_DEFAULTS.GOOGLE_CALLBACK_URL,
+  },
+  // Pass-through "dev login" for local development and demos. It authenticates
+  // as the fixed demo user (see config/demo.ts) with no Google round-trip.
+  // HARD-GATED: never available in production, regardless of ENABLE_DEV_LOGIN,
+  // so a stray env var can't expose a passwordless login in prod. In non-prod
+  // it is on by default and can be turned off with ENABLE_DEV_LOGIN=false.
+  // See `isDevLoginEnabled` for the single source of truth for this rule.
+  devLogin: {
+    enabled: isDevLoginEnabled(),
   },
 } as const;
 
@@ -138,6 +163,42 @@ export function findMissingProductionVars(
 }
 
 /**
+ * Defense in depth for the dev-login pass-through in production.
+ *
+ * `isDevLoginEnabled` already force-disables dev-login in production via the
+ * `NODE_ENV` gate, so a stray `ENABLE_DEV_LOGIN` cannot switch it on. This guard
+ * goes one step further and is deliberately independent of the config object:
+ *
+ *  1. Fail-closed backstop — if the gate is ever loosened such that dev-login
+ *     resolves enabled in production, refuse to boot.
+ *  2. Loud misconfiguration surfacing — if an operator (or attacker) explicitly
+ *     sets `ENABLE_DEV_LOGIN=true` in production, refuse to boot instead of
+ *     silently ignoring the request, so the intent is caught at startup.
+ *
+ * A no-op outside production. Names no secret values.
+ */
+export function assertDevLoginDisabledInProduction(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.NODE_ENV !== "production") {
+    return;
+  }
+  if (isDevLoginEnabled(env)) {
+    throw new Error(
+      "Refusing to start: the dev-login pass-through must be disabled in " +
+        "production. It is a non-production feature and cannot be enabled here.",
+    );
+  }
+  if (env.ENABLE_DEV_LOGIN === "true") {
+    throw new Error(
+      "Refusing to start: ENABLE_DEV_LOGIN=true is not permitted in " +
+        "production. The dev-login pass-through is a non-production feature; " +
+        "unset ENABLE_DEV_LOGIN.",
+    );
+  }
+}
+
+/**
  * Throws if any required production secret is missing or still a development
  * default. The error names ONLY the offending variables — never their values,
  * so secrets are never written to logs or stack traces.
@@ -153,6 +214,9 @@ export function assertProductionConfig(
         `${missing.join(", ")}. Set each to a secure production value.`,
     );
   }
+  // Defense in depth: even with every secret present, refuse to boot if the
+  // dev-login pass-through is (or is being asked to be) enabled in production.
+  assertDevLoginDisabledInProduction(env);
 }
 
 /**

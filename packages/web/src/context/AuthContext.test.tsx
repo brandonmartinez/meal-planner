@@ -80,4 +80,37 @@ describe('AuthContext', () => {
         });
         expect(result.current.user?.id).toBe('u-2');
     });
+
+    it('devLogin POSTs to the dev-login endpoint then loads the demo user', async () => {
+        const demoUser = {
+            id: 'demo-1',
+            email: 'demo@mealplanner.local',
+            name: 'Jamie Rivera',
+            avatarUrl: null,
+            memberships: [],
+        };
+        let devLoginCalled = false;
+        let signedIn = false;
+        server.use(
+            http.post('/api/auth/dev-login', () => {
+                devLoginCalled = true;
+                signedIn = true;
+                return HttpResponse.json(demoUser);
+            }),
+            http.get('/api/auth/me', () =>
+                signedIn ? HttpResponse.json(demoUser) : HttpResponse.json(null, { status: 401 }),
+            ),
+        );
+
+        const { result } = renderHook(() => useAuth(), { wrapper });
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.user).toBeNull();
+
+        await act(async () => {
+            await result.current.devLogin();
+        });
+
+        expect(devLoginCalled).toBe(true);
+        expect(result.current.user).toEqual(demoUser);
+    });
 });

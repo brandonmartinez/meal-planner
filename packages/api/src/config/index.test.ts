@@ -5,6 +5,8 @@ import {
   findMissingProductionVars,
   assertProductionConfig,
   validateConfigForEnvironment,
+  isDevLoginEnabled,
+  assertDevLoginDisabledInProduction,
 } from "./index.js";
 
 // A fully-populated production environment with real (non-default) values.
@@ -119,7 +121,6 @@ describe("config production fail-closed guard", () => {
     it("does not throw when all production secrets are present and real", () => {
       expect(() => assertProductionConfig(fullProdEnv())).not.toThrow();
     });
-
     it("throws and names the offending variable when a secret is missing", () => {
       const env = fullProdEnv();
       delete env.JWT_SECRET;
@@ -196,6 +197,68 @@ describe("config production fail-closed guard", () => {
       expect(typeof config.port).toBe("number");
       expect(config.clientUrl).toBeTruthy();
     });
+  });
+});
+
+describe("dev-login production hard gate", () => {
+  it("is enabled by default in non-production", () => {
+    expect(isDevLoginEnabled({ NODE_ENV: "development" })).toBe(true);
+    expect(isDevLoginEnabled({ NODE_ENV: "test" })).toBe(true);
+    // No NODE_ENV at all still counts as non-production.
+    expect(isDevLoginEnabled({})).toBe(true);
+  });
+
+  it("can be turned off explicitly in non-production via ENABLE_DEV_LOGIN=false", () => {
+    expect(
+      isDevLoginEnabled({ NODE_ENV: "development", ENABLE_DEV_LOGIN: "false" }),
+    ).toBe(false);
+  });
+
+  it("is ALWAYS disabled in production, regardless of ENABLE_DEV_LOGIN", () => {
+    expect(isDevLoginEnabled({ NODE_ENV: "production" })).toBe(false);
+    expect(
+      isDevLoginEnabled({ NODE_ENV: "production", ENABLE_DEV_LOGIN: "true" }),
+    ).toBe(false);
+    expect(
+      isDevLoginEnabled({ NODE_ENV: "production", ENABLE_DEV_LOGIN: "1" }),
+    ).toBe(false);
+  });
+
+  describe("assertDevLoginDisabledInProduction", () => {
+    it("is a no-op outside production", () => {
+      expect(() =>
+        assertDevLoginDisabledInProduction({ NODE_ENV: "development" }),
+      ).not.toThrow();
+      expect(() =>
+        assertDevLoginDisabledInProduction({
+          NODE_ENV: "development",
+          ENABLE_DEV_LOGIN: "true",
+        }),
+      ).not.toThrow();
+    });
+
+    it("does not throw in production when dev-login is not being forced on", () => {
+      expect(() =>
+        assertDevLoginDisabledInProduction({ NODE_ENV: "production" }),
+      ).not.toThrow();
+    });
+
+    it("refuses to boot when ENABLE_DEV_LOGIN=true is set in production", () => {
+      expect(() =>
+        assertDevLoginDisabledInProduction({
+          NODE_ENV: "production",
+          ENABLE_DEV_LOGIN: "true",
+        }),
+      ).toThrow(/ENABLE_DEV_LOGIN/);
+    });
+  });
+
+  it("is enforced by the full production guard (defense in depth)", () => {
+    const env = fullProdEnv();
+    env.ENABLE_DEV_LOGIN = "true";
+    // All secrets are real, so the only offense is the forced dev-login flag.
+    expect(() => assertProductionConfig(env)).toThrow(/ENABLE_DEV_LOGIN/);
+    expect(() => validateConfigForEnvironment(env)).toThrow(/ENABLE_DEV_LOGIN/);
   });
 });
 
