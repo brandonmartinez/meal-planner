@@ -193,12 +193,14 @@ agentRouter.post(
   async (req: Request, res: Response) => {
     const agent = req.agent!;
     const familyId = paramStr(req.params.familyId);
+    let mealId: string | undefined;
     try {
-      const { mealId, date } = scheduleMealSchema.parse(req.body);
+      const parsed = scheduleMealSchema.parse(req.body);
+      mealId = parsed.mealId;
       const suggestion = await weekPlanService.scheduleMealByDate(
         familyId,
         mealId,
-        new Date(`${date}T00:00:00Z`),
+        new Date(`${parsed.date}T00:00:00Z`),
         agent.createdBy,
       );
       await recordAgentAudit({
@@ -224,7 +226,7 @@ agentRouter.post(
           action: AGENT_SCOPES.SCHEDULE,
           outcome: "denied",
           targetType: "mealSuggestion",
-          targetIds: [mealId],
+          targetIds: mealId ? [mealId] : [],
           reason: `error_${error.status}`,
         });
         res.status(error.status).json({ error: error.message });

@@ -7,6 +7,8 @@ import { ApiError, ApiTransportError } from "./errors.js";
 export interface ToolResult {
   content: { type: "text"; text: string }[];
   isError?: boolean;
+  /** Index signature to satisfy the SDK's `CallToolResult` structural type. */
+  [key: string]: unknown;
 }
 
 function ok(data: unknown): ToolResult {
