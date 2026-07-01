@@ -23,6 +23,12 @@
 #   DEVCONTAINER_USER      user to exec as             (default: node)
 #   DEVCONTAINER_WORKDIR   working directory           (default: /workspace)
 #
+# Shell requirement: run with Bash 5.x or newer. macOS ships an ancient
+# Bash 3.2 at /bin/bash; developers here keep a modern Bash on PATH via their
+# profile, and CI runners are expected to provide Bash 5.x+. (Under `set -u`,
+# Bash < 4.4 aborts on empty-array expansion — see the TTY_FLAGS default below,
+# which is written to be safe regardless.)
+#
 set -euo pipefail
 
 # Resolve the repo root so the wrapper works from any subdirectory.
@@ -51,8 +57,11 @@ else
   exit 127
 fi
 
-# Use a TTY only when we're attached to one (so CI/non-interactive use works).
-TTY_FLAGS=()
+# Use an interactive TTY only when we're attached to one; otherwise pass -T so
+# `docker compose exec` doesn't try to allocate a pseudo-TTY (required for CI /
+# non-interactive / piped use). Defaulting the array to (-T) also keeps this
+# safe under `set -u` on older Bash, where expanding an empty array aborts.
+TTY_FLAGS=(-T)
 if [[ -t 0 && -t 1 ]]; then
   TTY_FLAGS=(-it)
 fi
