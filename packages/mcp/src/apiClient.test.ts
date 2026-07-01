@@ -184,6 +184,17 @@ describe("MealPlannerApiClient", () => {
     expect(url.pathname).toBe("/api/agent/meals/a%2Fb");
   });
 
+  it("getCurrentGroceryList GETs /api/agent/grocery/current (family-from-key)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "gl-1" }));
+
+    const result = await client.getCurrentGroceryList();
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/grocery/current");
+    expect(result).toEqual({ id: "gl-1" });
+  });
+
   it("maps a non-2xx response to an ApiError carrying status + message", async () => {
     const { client } = makeClient(
       jsonResponse({ error: "Insufficient scope" }, 403),

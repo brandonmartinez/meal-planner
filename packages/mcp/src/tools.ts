@@ -150,6 +150,9 @@ export function createToolHandlers(
       const { mealId, ...rest } = args;
       return run(() => client.updateMeal(mealId, rest));
     },
+
+    get_current_grocery_list: (): Promise<ToolResult> =>
+      run(() => client.getCurrentGroceryList()),
   };
 }
 
@@ -166,6 +169,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   approve_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
+  get_current_grocery_list: "meal_plan:read",
 };
 
 /**
@@ -342,5 +346,19 @@ export function registerTools(
       },
     },
     (args) => handlers.update_meal(args),
+  );
+
+  server.registerTool(
+    "get_current_grocery_list",
+    {
+      title: "Get current grocery list",
+      description:
+        "Get the family's grocery list for the CURRENT week (resolved in the " +
+        "family's timezone, Monday-anchored). The list is generated on demand " +
+        "from approved meal suggestions if one does not exist yet. Requires " +
+        "the meal_plan:read scope.",
+      inputSchema: {},
+    },
+    () => handlers.get_current_grocery_list(),
   );
 }

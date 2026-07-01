@@ -11,6 +11,7 @@ import {
 } from "../services/agentCredential.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as mealService from "../services/meals.js";
+import * as groceryService from "../services/grocery.js";
 
 /**
  * MCP agent surface. Mounted at `/api/agent` (NOT `/api/families`) so it has
@@ -20,16 +21,16 @@ import * as mealService from "../services/meals.js";
  * with concrete target resource ids; the middleware records auth/scope denials.
  *
  * Agents may read/schedule/approve meal plans, read the family's meal catalog,
- * and create/edit meals in that catalog (meal:write). There is intentionally
- * no agent route for members, roles, invites, API keys, auth/session, OAuth,
- * or secrets — those surfaces live under `/api/families` and `/api/auth`
- * behind the JWT chain and are unreachable with an agent credential. There is
- * deliberately no meal DELETE.
+ * create/edit meals in that catalog (meal:write), and read the current-week
+ * grocery list. There is intentionally no agent route for members, roles,
+ * invites, API keys, auth/session, OAuth, or secrets — those surfaces live
+ * under `/api/families` and `/api/auth` behind the JWT chain and are
+ * unreachable with an agent credential. There is deliberately no meal DELETE.
  *
  * Routes come in two shapes: legacy `/:familyId/*` routes cross-check the path
  * family against the credential, while the family-from-key routes (`/me`,
- * `/meals`) derive the family from the key alone — the basis for a hosted,
- * multi-tenant MCP server.
+ * `/meals`, `/grocery/current`) derive the family from the key alone — the
+ * basis for a hosted, multi-tenant MCP server.
  */
 export const agentRouter = Router();
 
@@ -206,6 +207,44 @@ agentRouter.patch(
         return;
       }
       res.status(500).json({ error: "Failed to update meal" });
+    }
+  },
+);
+
+// GET /api/agent/grocery/current — scope: meal_plan:read
+// Returns the family's CURRENT-week grocery list, resolving "this week"
+// Monday-anchored in the family timezone (same as get_current_week_plan).
+// Behavior: generates the list on demand from approved suggestions when none
+// exists yet (more useful for an agent asking "what do I need to buy"), else
+// returns the stored list.
+agentRouter.get(
+  "/grocery/current",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.READ),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    try {
+      const { monday } = await weekPlanService.getCurrentWeekStart(
+        agent.familyId,
+      );
+      let list = await groceryService.getGroceryListByWeek(
+        agent.familyId,
+        monday,
+      );
+      if (!list) {
+        list = await groceryService.generateGroceryList(agent.familyId, monday);
+      }
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.READ,
+        outcome: "allowed",
+        targetType: "groceryList",
+        targetIds: [list.id],
+      });
+      res.json(list);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch grocery list" });
     }
   },
 );

@@ -5,6 +5,7 @@ import type {
   MealSuggestionDTO,
   AgentIdentityDTO,
   Meal,
+  GroceryList,
   Difficulty,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
@@ -169,6 +170,14 @@ export class MealPlannerApiClient {
       `/api/agent/meals/${encodeURIComponent(mealId)}`,
       { body: input },
     );
+  }
+
+  // --- Grocery read (family-from-key; meal_plan:read scope) -----------------
+
+  /** Get the family's CURRENT-week grocery list (generated on demand if none
+   *  exists yet). Family + week are resolved server-side from the key. */
+  getCurrentGroceryList(): Promise<GroceryList> {
+    return this.request<GroceryList>("GET", `/api/agent/grocery/current`);
   }
 
   // --- Transport ------------------------------------------------------------

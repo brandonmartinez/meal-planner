@@ -21,6 +21,7 @@ function stubClient() {
     approveSuggestion: vi.fn(),
     createMeal: vi.fn(),
     updateMeal: vi.fn(),
+    getCurrentGroceryList: vi.fn(),
   };
 }
 
@@ -134,6 +135,19 @@ describe("createToolHandlers", () => {
     });
   });
 
+  it("get_current_grocery_list calls the family-from-key client method", async () => {
+    const client = stubClient();
+    client.getCurrentGroceryList.mockResolvedValue({ id: "gl-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.get_current_grocery_list();
+    expect(client.getCurrentGroceryList).toHaveBeenCalledWith();
+    expect(JSON.parse(textOf(result))).toEqual({ id: "gl-1" });
+  });
+
   it("surfaces an out-of-scope create_meal as a 403 tool error (never throws)", async () => {
     const client = stubClient();
     client.createMeal.mockRejectedValue(
@@ -212,6 +226,7 @@ describe("registerTools", () => {
       "approve_suggestion",
       "create_meal",
       "update_meal",
+      "get_current_grocery_list",
     ]);
     // Each registration provides a config with an inputSchema and a handler.
     for (const call of registerTool.mock.calls) {
@@ -232,6 +247,7 @@ describe("TOOL_SCOPES", () => {
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",
+      get_current_grocery_list: "meal_plan:read",
     });
   });
 });

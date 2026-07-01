@@ -32,6 +32,7 @@ vi.mock("../services/weekPlan.js", () => {
     getCurrentWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMealByDate: vi.fn(),
+    getCurrentWeekStart: vi.fn(),
   };
 });
 vi.mock("../services/meals.js", () => ({
@@ -39,10 +40,15 @@ vi.mock("../services/meals.js", () => ({
   createMeal: vi.fn(),
   updateMeal: vi.fn(),
 }));
+vi.mock("../services/grocery.js", () => ({
+  getGroceryListByWeek: vi.fn(),
+  generateGroceryList: vi.fn(),
+}));
 
 const { agentRouter } = await import("./agent.js");
 const weekPlanService = await import("../services/weekPlan.js");
 const mealService = await import("../services/meals.js");
+const groceryService = await import("../services/grocery.js");
 const { SuggestionError } = weekPlanService;
 
 type Handler = (req: any, res: any, next: (err?: unknown) => void) => unknown;
@@ -297,7 +303,7 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
   });
 });
 
-describe("agent family-from-key routes (/me, /meals)", () => {
+describe("agent family-from-key routes (/me, /meals, /grocery/current)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -473,5 +479,73 @@ describe("agent family-from-key routes (/me, /meals)", () => {
         reason: "not_found",
       }),
     });
+  });
+
+  it("GET /grocery/current: returns an existing list and audits the read", async () => {
+    mockCredential(["meal_plan:read"]);
+    vi.mocked(weekPlanService.getCurrentWeekStart).mockResolvedValue({
+      tz: "UTC",
+      monday: new Date("2026-06-29T00:00:00Z"),
+    } as never);
+    vi.mocked(groceryService.getGroceryListByWeek).mockResolvedValue({
+      id: "gl-1",
+      items: [],
+    } as never);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ id: "gl-1" });
+    expect(groceryService.generateGroceryList).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:read",
+        outcome: "allowed",
+        targetType: "groceryList",
+        targetIds: ["gl-1"],
+      }),
+    });
+  });
+
+  it("GET /grocery/current: generates the list on demand when none exists", async () => {
+    mockCredential(["meal_plan:read"]);
+    vi.mocked(weekPlanService.getCurrentWeekStart).mockResolvedValue({
+      tz: "UTC",
+      monday: new Date("2026-06-29T00:00:00Z"),
+    } as never);
+    vi.mocked(groceryService.getGroceryListByWeek).mockResolvedValue(
+      null as never,
+    );
+    vi.mocked(groceryService.generateGroceryList).mockResolvedValue({
+      id: "gl-gen",
+      items: [],
+    } as never);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(groceryService.generateGroceryList).toHaveBeenCalledWith(
+      "fam-1",
+      new Date("2026-06-29T00:00:00Z"),
+    );
+    expect(res.body).toMatchObject({ id: "gl-gen" });
+  });
+
+  it("GET /grocery/current: DENIED without meal_plan:read (403)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(groceryService.getGroceryListByWeek).not.toHaveBeenCalled();
   });
 });
