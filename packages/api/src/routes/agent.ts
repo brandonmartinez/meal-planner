@@ -3,7 +3,7 @@ import { z } from "zod";
 import { authenticateAgent, requireScope } from "../middleware/agentAuth.js";
 import {
   AGENT_SCOPES,
-  recordAgentAudit,
+  safeRecordAgentAudit,
 } from "../services/agentCredential.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as mealService from "../services/meals.js";
@@ -61,7 +61,7 @@ agentRouter.get(
       const search =
         typeof req.query.search === "string" ? req.query.search : undefined;
       const meals = await mealService.listMeals(familyId, { search });
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.READ,
@@ -90,7 +90,7 @@ agentRouter.get(
     const familyId = paramStr(req.params.familyId);
     try {
       const plan = await weekPlanService.getCurrentWeekPlan(familyId);
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.READ,
@@ -122,7 +122,7 @@ agentRouter.get(
         before: before ? new Date(`${before}T00:00:00Z`) : undefined,
         limit,
       });
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.READ,
@@ -155,7 +155,7 @@ agentRouter.get(
       const weekStart = new Date(paramStr(req.params.weekStart) + "T00:00:00Z");
       const plan = await weekPlanService.getWeekPlan(familyId, weekStart);
       if (!plan) {
-        await recordAgentAudit({
+        await safeRecordAgentAudit({
           credentialId: agent.id,
           familyId,
           action: AGENT_SCOPES.READ,
@@ -166,7 +166,7 @@ agentRouter.get(
         res.status(404).json({ error: "Week plan not found" });
         return;
       }
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.READ,
@@ -203,7 +203,7 @@ agentRouter.post(
         new Date(`${parsed.date}T00:00:00Z`),
         agent.createdBy,
       );
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.SCHEDULE,
@@ -220,7 +220,7 @@ agentRouter.post(
         return;
       }
       if (error instanceof weekPlanService.SuggestionError) {
-        await recordAgentAudit({
+        await safeRecordAgentAudit({
           credentialId: agent.id,
           familyId,
           action: AGENT_SCOPES.SCHEDULE,
@@ -257,7 +257,7 @@ agentRouter.post(
         mealId,
         agent.createdBy,
       );
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.SCHEDULE,
@@ -274,7 +274,7 @@ agentRouter.post(
         return;
       }
       if (error instanceof weekPlanService.SuggestionError) {
-        await recordAgentAudit({
+        await safeRecordAgentAudit({
           credentialId: agent.id,
           familyId,
           action: AGENT_SCOPES.SCHEDULE,
@@ -306,7 +306,7 @@ agentRouter.patch(
         suggestionId,
         { actorType: "agent", actorId: agent.id },
       );
-      await recordAgentAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.APPROVE,
@@ -317,7 +317,7 @@ agentRouter.patch(
       res.json(suggestion);
     } catch (error) {
       if (error instanceof weekPlanService.SuggestionError) {
-        await recordAgentAudit({
+        await safeRecordAgentAudit({
           credentialId: agent.id,
           familyId,
           action: AGENT_SCOPES.APPROVE,

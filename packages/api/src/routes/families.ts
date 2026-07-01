@@ -361,7 +361,7 @@ familyRouter.post(
         scopes,
         expiresAt ?? null,
       );
-      await agentCredentialService.recordAgentAudit({
+      await agentCredentialService.safeRecordAgentAudit({
         actorType: "parent",
         credentialId: credential.id,
         familyId,
@@ -423,7 +423,7 @@ familyRouter.post(
         res.status(404).json({ error: "Agent credential not found" });
         return;
       }
-      await agentCredentialService.recordAgentAudit({
+      await agentCredentialService.safeRecordAgentAudit({
         actorType: "parent",
         credentialId: rotated.id,
         familyId,
@@ -457,7 +457,7 @@ familyRouter.delete(
         res.status(404).json({ error: "Agent credential not found" });
         return;
       }
-      await agentCredentialService.recordAgentAudit({
+      await agentCredentialService.safeRecordAgentAudit({
         actorType: "parent",
         credentialId: revoked.id,
         familyId,

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import {
   authenticateAgentCredential,
-  recordAgentAudit,
+  safeRecordAgentAudit,
   hasScope,
   type AgentScope,
 } from "../services/agentCredential.js";
@@ -37,7 +37,7 @@ export async function authenticateAgent(
   const routeFamilyId = paramFamilyId(req);
 
   if (!rawKey || typeof rawKey !== "string") {
-    await safeAudit({
+    await safeRecordAgentAudit({
       credentialId: null,
       familyId: routeFamilyId || "unknown",
       action: "authenticate",
@@ -57,7 +57,7 @@ export async function authenticateAgent(
   }
 
   if (!result.ok) {
-    await safeAudit({
+    await safeRecordAgentAudit({
       credentialId: null,
       familyId: routeFamilyId || "unknown",
       action: "authenticate",
@@ -74,7 +74,7 @@ export async function authenticateAgent(
   // Cross-family denial: a valid credential is still rejected if the route
   // targets a different family than the one it is scoped to.
   if (routeFamilyId && routeFamilyId !== agent.familyId) {
-    await safeAudit({
+    await safeRecordAgentAudit({
       credentialId: agent.id,
       familyId: agent.familyId,
       action: "authenticate",
@@ -109,7 +109,7 @@ export function requireScope(scope: AgentScope) {
     }
 
     if (!hasScope(agent.scopes, scope)) {
-      await safeAudit({
+      await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId: agent.familyId,
         action: scope,
@@ -122,17 +122,4 @@ export function requireScope(scope: AgentScope) {
 
     next();
   };
-}
-
-/** Record an audit entry, swallowing storage errors so audit never 500s a
- * request path that has already been decided. */
-async function safeAudit(
-  entry: Parameters<typeof recordAgentAudit>[0],
-): Promise<void> {
-  try {
-    await recordAgentAudit(entry);
-  } catch {
-    // Intentionally ignored: an audit-write failure must not change the
-    // already-decided auth outcome.
-  }
 }
