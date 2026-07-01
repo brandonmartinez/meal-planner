@@ -2,11 +2,75 @@
 
 ## Active Decisions
 
+### 2026-07-01: Hosted MCP transport + per-request family-from-key auth (#81)
+
+Requested by Brandon Martinez. Delivered issue #81: converted the MCP server from single-tenant stdio to a **hosted, multi-tenant** server where the agent credential is presented **per request** (header `x-agent-key`) and the family is derived from the key — never configured at boot, never passed into a tool.
+
+**Transport (the key fork):** MCP SDK **Streamable HTTP** in **stateless mode** (`sessionIdGenerator: undefined`, `enableJsonResponse: true`). Each POST `/mcp`: read key -> `GET /api/agent/me` resolves `{familyId,scopes,name}` -> build a per-request `MealPlannerApiClient` + `McpServer` with handlers bound to that `familyId` -> fresh transport -> teardown on response close. No new deps (Node `http`). The **stdio** entry stays as an optional local/#77 mode; the tool/handler layer (`createToolHandlers(client, familyId)`) is transport-agnostic, so no tool logic differs between modes.
+
+**Requirements shipped:** (1) `GET /api/agent/me` family-from-key auth (audited `identify`); (2) new `meal:write` scope in both scope definitions (auto-surfaces as a Family Settings checkbox) + `POST /api/agent/meals` & `PATCH /api/agent/meals/:mealId` + MCP `create_meal`/`update_meal`; (3) `GET /api/agent/grocery/current` (generates on demand when absent) + MCP `get_current_grocery_list`. No DB migration; no meal DELETE; no OCR/vision (the calling LLM parses recipes).
+
+**Security invariants (Frank):** every call re-authenticates from the presented key; cross-family access impossible (family resolved from key; legacy `/:familyId/*` routes keep their cross-check + audit); invalid/revoked/expired keys -> uniform 401; scope denials -> 403 + audited; the raw key is never logged, serialized, or placed in an error. Verified live: with/without `meal:write` -> 201/200 vs 403 with `missing_scope` audit rows.
+
+Full gate green in-container: build clean, lint 0 errors (7 pre-existing warnings), **711 tests** (shared 4 + mcp 51 + api 425 + web 231). Shipped as 4 atomic commits on `hosted-mcp-write-tools`. Residual risk: stateless mode builds a fresh server per request (no server-initiated notifications) — by design for horizontal scalability.
+
+### 2026-07-01: Added Saul (Data / Migrations specialist) + dev-environment/demo-data sprint (#75-#79)
+
+Requested by Brandon Martinez. Added a new Squad member **Saul** (Ocean's Eleven cast) dedicated to **data**: backwards/forwards-compatible migrations (expand/contract), data-integrity guardianship (no accidental DB wipes / unguarded resets), and seed/fixtures. Charter at `.squad/agents/saul/charter.md`; roster in `team.md`; `squad:saul` label created; `casting/registry.json` gains a `data` role. **Routing change:** Database/schema/migrations/seed work now routes to **Saul (with Livingston)** — previously folded into Livingston alone. Saul and Livingston co-own the schema contract; both must be satisfied on schema PRs (Saul: compatibility/rollout ordering; Livingston: services/routes that consume it).
+
+Filed + assigned to next sprint (`priority:p2`):
+- #79 Dev login: `POST /api/auth/dev-login` (hard-gated to non-prod) pass-through to a seeded demo user, plus a secondary Dev-login button on LoginPage while keeping real Google sign-in [squad:frank].
+- #77 MCP smoke testing: verify `packages/mcp` tools + API `agent`/`agent.mcp` routes against a real API+DB with a scoped AgentCredential, asserting scope enforcement + audit logs [squad:yen].
+- #75 Rich date-relative demo seed: demo family, 5 members (2 parents + 3 kids), ~50 recipes, multiple Monday-anchored weeks computed off today, suggestions (approved+pending), grocery list; idempotent; `db:reset` reseeds [squad:saul].
+- #78 Add Saul to the team (this entry) [squad:rusty].
+- #76 Root `dev.sh` launcher: bring up the devcontainer + apps from a plain terminal (no VS Code) [squad:basher].
+
+### 2026-07-01T02-16-36: Post-sprint UX fix — Meal Library UI (#70), merged & closed
+**By:** coordinator (Linus-authored web work)
+**What:** Surfaced during the live demo. Two web fixes shipped together in PR #73 (squash `f382c3e`): (1) MealPicker now renders Recent + Difficulty badges (the list DTO already carried `recentlyScheduled`/`lastScheduledOn`/`difficulty` from #27 — pure rendering gap); (2) MealsPage cards restructured into a fixed flex-column with snapped zones (Title → Badges → Description → Footer pinned via `mt-auto`; reserved 2-line min-heights; redundant placeholder kind-chip replaced with a "Built-in" tag). Design pass guided by the impeccable `layout` reference.
+**Process note:** the app `create_pull_request` tool bound PR #71 to the coordinator's SESSION branch (`brandonmartinez-sprint-1-coordination`, `.squad/` docs only) instead of the pushed worktree branch. Caught by the a11y gate (diff ≠ reviewed code). Fixed by closing #71 and opening #73 via `gh pr create --head squad/70-meal-library-ui`. **Lesson: for agent/worktree PRs, create the PR with `gh pr create --head <branch>` from the worktree, NOT the session-bound PR tool.**
+**Verification:** CI-mirror Node 22 container (web build tsc+vite, lint, 213/213 web tests); independent a11y gate APPROVE on `f382c3e` (reviewer ≠ author, posted as PR comment); CI `test` job SUCCESS; merged on owner authority; worktree/branch cleaned up.
+**References:** issue #70; PR #73 (merged); PR #71 (closed — wrong head branch); a11y gate https://github.com/brandonmartinez/meal-planner/pull/71#issuecomment-4849646508
+
 ### 2026-06-30T22-30-00: Data-model changes must ship CSV import + export support (#72)
 **By:** coordinator
 **What:** Established a standing rule: any major data-model change that adds a user-facing persisted field to meals (or another CSV-managed entity) must also be added to CSV import AND CSV export, keeping the round trip intact.
 **References:** #72, #8
 **Why:** `Meal.difficulty` (#8) shipped as a full vertical but was never wired into CSV import, so bulk-imported meals silently lost difficulty. Documented in [prisma.instructions.md](../.github/instructions/prisma.instructions.md). Same PR also adds full "export all meals as CSV" for data portability. Export column order is owned by `mealsToCSV`/`MEALS_CSV_HEADER` in `packages/web/src/utils/csv.ts` and must match the import parser + Zod schema.
+
+### 2026-06-30T21-57-02: Sprint 5 batch — final backlog hardening (#42/#43/#49/#51), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Milestone created for the 4 remaining backlog issues; all built, gated, merged to `origin/main`, and closed. Standing rules unchanged (isolated worktree + PR per issue, CI = verification of record, independent gates via PR comment since author = `brandonmartinez`, owner-authority merge on unprotected main).
+**References:** PRs #66, #67, #68, #69; issues #42, #43, #49, #51
+**Why:** Requested by Brandon Martinez — close out the reviewed backlog and the security/infra follow-up debt from Sprints 2–4.
+- **#42 (Basher, PR #66):** CI migration validation — `prisma migrate deploy` + `migrate diff --exit-code` drift check added to the test job. Rusty infra gate → APPROVE.
+- **#43 (Livingston, PR #67):** Trust-proxy config — `app.set("trust proxy", config.trustProxy)` default `1`, `TRUST_PROXY` env, `parseTrustProxy()`. Frank gate → APPROVE.
+- **#49 (Livingston, PR #68):** Observable audit drops — `safeRecordAgentAudit` wrapper with a 6-field allowlist `console.error`, replaced 18 silent `catch {}` sites, fail-open preserved. Frank gate → APPROVE.
+- **#51 (Livingston, PR #69):** Peppered HMAC-SHA256 credential hashing — `utils/credentialHash.ts` (`hashCredential` + `legacyHashCredential`), lazy legacy-rehash on verify, `CREDENTIAL_PEPPER` fail-closed in prod, no schema change. Frank gate → APPROVE. Merged after #43/#49 with main synced in.
+- **Follow-up debt (noted, not filed):** `middleware/rateLimit.ts` `apiKeyFingerprint` is still bare SHA-256 with a stale comment (Frank N2).
+
+### 2026-06-30T21-57-01: Sprint 4 batch — k8s immutable tags, migration ordering, MCP package (#25/#26/#5), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Three issues built, gated, merged to `origin/main`, and closed. Same standing rules (isolated worktree + PR per issue, CI = verification of record, independent gate via PR comment, owner-authority merge).
+**References:** PRs #63, #64, #65; issues #25, #26, #5
+**Why:** Requested by Brandon Martinez — advance the infra/deploy hardening and land the MCP server package foundation.
+- **#25 (Basher, PR #63):** Pin k8s to immutable image tags. Rusty infra gate → APPROVE.
+- **#26 (Basher, PR #64):** Move prod migrations out of the multi-replica startup. Rusty gate initially REQUEST-CHANGES (migrate-job hardcoded `:latest`); relaunched to integrate on #25's single-source pinned tag in `kustomization.yaml`. `deploy.sh` runs the migrate Job first (fail-fast), then `apply -k`. Re-gate → APPROVE.
+- **#5 (Rusty, PR #65):** MCP server package `packages/mcp`. Frank security gate → APPROVE. Coordinator fixed 2 TS compile errors before merge (`agent.ts` `mealId` scope hoist; mcp `ToolResult` index signature) and regenerated `pnpm-lock.yaml`.
+
+### 2026-06-30T21-57-00: Sprint 3 batch — MCP endpoints, prod/infra hardening, and a11y sweep (8 issues), all merged & closed
+**By:** coordinator (logged by Scribe)
+**What:** Eight issues built in parallel, each on its own isolated worktree + PR, all merged to `origin/main` and closed. Standing rules unchanged (CI = verification of record, security/a11y work gated by an independent reviewer via PR comment since author = `brandonmartinez`, owner-authority merge).
+**References:** PRs (incl. #62); issues #7, #22, #24, #16, #6, #27, #17, #15 (also closed #50)
+**Why:** Requested by Brandon Martinez — land the MCP backend surface, harden prod/infra, and clear the accessibility backlog.
+- **#7 (Livingston):** MCP backend endpoints — current/prev week, schedule-by-date, approve-by-family, Zod, shared DTOs.
+- **#22 (Basher):** Harden prod Docker image (non-root, frozen lockfile). Security gate → PASS.
+- **#24 (Basher):** Compose drift fix (root vs devcontainer).
+- **#16 (Linus):** Accessible modals (MealPicker, ImportMealsDialog). A11y gate → PASS.
+- **#6 (Frank backend + Linus web):** Agent-credential management endpoints + UI (also closed #50). Security gate → PASS.
+- **#27 (Livingston backend + Linus web):** Recent-meal indicator (backend + web badge).
+- **#17 (Linus):** API key copy + last-used display.
+- **#15 (Linus, PR #62):** Accessible names + loading-status across web pages. A11y gate → PASS. Last to merge — de-raced 3 loading-status a11y tests before merge.
 
 ### 2026-06-30T19-26-22: Filed 22 GitHub issues from a 6-agent review + 2 requested features (#5-#26)
 **By:** coordinator
@@ -26,28 +90,45 @@ Notable review findings: #9 IDOR — nested suggestion/grocery mutations not fam
 
 Tooling: gh writes for this repo require the brandonmartinez account; the default-active brmar_microsoft is pull-only (label/issue creation 404s).
 
-### 2026-07-01: Added Saul (Data / Migrations specialist) + dev-environment/demo-data sprint (#75-#79)
+### 2026-06-30T18-32-22: Sprint 2 batch — shared/API contracts, test coverage, and the MCP credential model (#14/#8/#10/#20/#18/#19/#6)
+**By:** coordinator (logged by Scribe)
+**What:** Second implementation sprint, same standing rules: one isolated worktree + draft PR per issue, CI is verification of record (no host runs), GitHub writes via the `brandonmartinez` account, security work gated by an independent reviewer. Coordinator flipped each PR ready and squash-merged after CI went green.
+**References:** PRs #39, #40, #41, #44, #45, #46, #47, #48; issues #14, #8, #10, #20, #18, #19, #6; follow-ups #42, #43, #49, #50, #51
+**Why:** Requested by Brandon Martinez — continue implementation of the reviewed backlog, advancing the shared/API contract surface, test coverage, and the MCP security foundation.
 
-Requested by Brandon Martinez. Added a new Squad member **Saul** (Ocean's Eleven cast) dedicated to **data**: backwards/forwards-compatible migrations (expand/contract), data-integrity guardianship (no accidental DB wipes / unguarded resets), and seed/fixtures. Charter at `.squad/agents/saul/charter.md`; roster in `team.md`; `squad:saul` label created; `casting/registry.json` gains a `data` role. **Routing change:** Database/schema/migrations/seed work now routes to **Saul (with Livingston)** — previously folded into Livingston alone. Saul and Livingston co-own the schema contract; both must be satisfied on schema PRs (Saul: compatibility/rollout ordering; Livingston: services/routes that consume it).
+Shipped (merged to main unless noted):
+- **#14 (Linus, PR #39):** Centralized all `packages/web` API calls through a typed `request<T>()` + `ApiError` client (`packages/web/src/api/client.ts`); removed raw `fetch` (OAuth redirect kept as a documented exception). CLOSED.
+- **#8 (Livingston backend+shared PR #40; Linus web UI PR #44):** Nullable meal `difficulty` (EASY/MEDIUM/HARD) end-to-end — Prisma enum + nullable column (hand-authored migration), shared type/constant, Zod validation, service threading, and web display/set/clear (`DifficultyBadge` + form select). CLOSED.
+- **#10 (Frank, PR #41):** Scoped rate limits for auth / invite-join / display surfaces; the display limiter keys on IP + a SHA-256 fingerprint of the api-key (never the raw key); generic 429 with no existence oracle. Independent Rusty gate → APPROVE. CLOSED.
+- **#20 (Yen, PR #45):** Component tests for ImportMealsDialog, Layout, Navigation, ThemeToggle, WeekSelector. CLOSED.
+- **#18 (Yen, PR #46):** Route-handler tests for auth/families/grocery/health/meals/weekPlan via a new `getRouteHandler` helper; service layer mocked. CLOSED.
+- **#19 (Yen, PR #48):** Page-level tests for Login/CreateFamily/FamilySettings/GroceryList/WeekPlan (Meals/MealForm excluded — covered by #44). CLOSED.
+- **#6 (Frank, PR #47):** Scoped MCP agent credentials — a separate `AgentCredential` model (family-scoped; scopes/role, createdBy, expiresAt, lastUsed, revokedAt), `authenticateAgent` middleware, `/api/agent` routes (read/schedule/approve), an allow+deny audit log, approver capture on both JWT and agent paths, a distinct rate limiter, and rotation/revocation/expiry (hand-authored migration). Independent Rusty gate → APPROVE (all 11 criteria). **Stays OPEN** — parent-facing credential-management HTTP endpoints deferred to #50.
 
-Filed + assigned to next sprint (`priority:p2`):
-- #79 Dev login: `POST /api/auth/dev-login` (hard-gated to non-prod) pass-through to a seeded demo user, plus a secondary Dev-login button on LoginPage while keeping real Google sign-in [squad:frank].
-- #77 MCP smoke testing: verify `packages/mcp` tools + API `agent`/`agent.mcp` routes against a real API+DB with a scoped AgentCredential, asserting scope enforcement + audit logs [squad:yen].
-- #75 Rich date-relative demo seed: demo family, 5 members (2 parents + 3 kids), ~50 recipes, multiple Monday-anchored weeks computed off today, suggestions (approved+pending), grocery list; idempotent; `db:reset` reseeds [squad:saul].
-- #78 Add Saul to the team (this entry) [squad:rusty].
-- #76 Root `dev.sh` launcher: bring up the devcontainer + apps from a plain terminal (no VS Code) [squad:basher].
+Key decisions & lessons:
+- **Merge-safety rule adopted:** PRs #39/#40 were briefly closed-unmerged because branches were deleted before MERGED was confirmed. New rule: run `gh pr ready` BEFORE `gh pr merge`, and verify `state=MERGED` BEFORE deleting any branch/worktree. Both recovered from head SHAs — no work lost.
+- **Self-approval constraint:** every agent PR shares author `brandonmartinez`, so `gh pr review --approve` is blocked. Gate verdicts are posted as review comments instead; Squad-layer independence (reviewer ≠ author) is still satisfied.
+- **CI caught real bugs:** #20 had an ambiguous `/load example/i` query (also matched "Download example template") → anchored to `/^load example$/i`; #19 error-banner tests asserted a fallback string but pages surface `ApiError.message` → MSW error bodies aligned. Both fixed by coordinator.
+- **Integration ordering:** #6 changed `approveSuggestion` to take an actor arg for the audit trail; #18's route test was updated to the new 3-arg contract before merging #6 (synced main into #6's branch and re-ran CI to catch it).
+- **No-host-runs + migrations:** #6/#8 migrations were hand-authored (no DB available) and CI does not run `migrate deploy` → tracked as #42.
 
-### 2026-07-01: Hosted MCP transport + per-request family-from-key auth (#81)
+Follow-ups filed: #42 (CI migrate-deploy validation, Basher), #43 (trust proxy, Basher/infra), #49 (HMAC/KDF credential hashing, Frank), #50 (agent-credential management endpoints + UI, Frank/Linus), #51 (observable safeAudit failures, Frank).
 
-Requested by Brandon Martinez. Delivered issue #81: converted the MCP server from single-tenant stdio to a **hosted, multi-tenant** server where the agent credential is presented **per request** (header `x-agent-key`) and the family is derived from the key — never configured at boot, never passed into a tool.
+### 2026-06-30T17-04-41: Sprint 1 kickoff batch — 6 issues implemented, each isolated worktree + draft PR (#33-#38)
+**By:** coordinator (logged by Scribe)
+**What:** Executed the first implementation sprint: six issues built in parallel, each in its own isolated git worktree on a `squad/{n}-{slug}` branch off `origin/main`, each with its own draft PR. Security-touching work was gated by an independent reviewer (author cannot self-gate).
+**References:** PRs #33, #34, #35, #36, #37, #38; issues #9, #11, #12, #13, #23, #32
+**Why:** Requested by Brandon Martinez — kick off implementation of the reviewed backlog under the standing rules: no host runs (CI is verification of record), GitHub writes via the `brandonmartinez` account, one isolated worktree + draft PR per issue, security work gated.
 
-**Transport (the key fork):** MCP SDK **Streamable HTTP** in **stateless mode** (`sessionIdGenerator: undefined`, `enableJsonResponse: true`). Each POST `/mcp`: read key -> `GET /api/agent/me` resolves `{familyId,scopes,name}` -> build a per-request `MealPlannerApiClient` + `McpServer` with handlers bound to that `familyId` -> fresh transport -> teardown on response close. No new deps (Node `http`). The **stdio** entry stays as an optional local/#77 mode; the tool/handler layer (`createToolHandlers(client, familyId)`) is transport-agnostic, so no tool logic differs between modes.
+Durable decisions captured this batch:
+- **#32 (Basher, `squad/32-devcontainer-default`, PR #33):** The devcontainer is now the documented default dev/test/run environment; the no-host-runs rule is codified in `CONTRIBUTING.md`. Two approved containerized run paths only — the local devcontainer and CI. Added `scripts/dc-exec.sh` to exec commands inside the running compose `app` service.
+- **#9 (Livingston, `squad/9-family-scope-mutations`, PR #37):** Fixed the P1 IDOR on nested suggestion/grocery mutations by enforcing family ownership in the Prisma `where` predicate (non-owned id → 404 before any write), with domain error types mapped to 400/403/404 and Zod on mutation bodies. Frank's independent security gate APPROVED; PR flipped ready-for-review. TOCTOU two-query window accepted as unexploitable (no cross-family re-parent path); atomic updateMany/deleteMany noted as non-blocking defense-in-depth follow-up.
+- **#11 (Frank, `squad/11-fail-closed-secrets`, PR #34, draft):** Production fail-closed guard — the API refuses to boot on missing JWT/OAuth secrets in prod. Rusty (Lead) runs the independent security gate (in review) because Frank can't self-gate.
+- **#12 (Rusty, `squad/12-shared-dtos`, PR #38, draft):** `@meal-planner/shared` is the single source of truth for serialized API response DTOs (new `src/types/dto.ts`), distinct from Prisma domain shapes. These DTOs are the wire contract MCP must reuse — the foundational MCP contract surface — so no third hand-rolled contract layer grows. Services keep returning Prisma shapes (serialize at the `res.json()` boundary); api-key secret-once invariant preserved.
+- **#23 (Basher, `squad/23-ci-lint`, PR #35, draft):** CI now runs lint — added repo-wide `pnpm -r run lint` to the `test` job, fail-fast before build/test, existing build order preserved.
+- **#13 (Basher, `squad/13-align-node-version`, PR #36, draft):** Node engine pinned/aligned to `>=22` across the monorepo.
 
-**Requirements shipped:** (1) `GET /api/agent/me` family-from-key auth (audited `identify`); (2) new `meal:write` scope in both scope definitions (auto-surfaces as a Family Settings checkbox) + `POST /api/agent/meals` & `PATCH /api/agent/meals/:mealId` + MCP `create_meal`/`update_meal`; (3) `GET /api/agent/grocery/current` (generates on demand when absent) + MCP `get_current_grocery_list`. No DB migration; no meal DELETE; no OCR/vision (the calling LLM parses recipes).
-
-**Security invariants (Frank):** every call re-authenticates from the presented key; cross-family access impossible (family resolved from key; legacy `/:familyId/*` routes keep their cross-check + audit); invalid/revoked/expired keys -> uniform 401; scope denials -> 403 + audited; the raw key is never logged, serialized, or placed in an error. Verified live: with/without `meal:write` -> 201/200 vs 403 with `missing_scope` audit rows.
-
-Full gate green in-container: build clean, lint 0 errors (7 pre-existing warnings), **711 tests** (shared 4 + mcp 51 + api 425 + web 231). Shipped as 4 atomic commits on `hosted-mcp-write-tools`. Residual risk: stateless mode builds a fresh server per request (no server-initiated notifications) — by design for horizontal scalability.
+Gate status at hand-off: #9 APPROVED + ready; #11 Lead gate in review; all other PRs remain draft pending review.
 
 ## Governance
 
