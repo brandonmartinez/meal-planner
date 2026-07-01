@@ -1,11 +1,34 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.js';
+import { getAuthConfig } from '../api/auth';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function LoginPage() {
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, devLogin } = useAuth();
   const navigate = useNavigate();
+  // Whether the backend advertises the dev pass-through login. Defaults to
+  // false so the button stays hidden unless the capability probe explicitly
+  // reports it on (and it is hard-gated off in production server-side).
+  const [devLoginEnabled, setDevLoginEnabled] = useState(false);
+  const [devLoginPending, setDevLoginPending] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Probe the backend for available sign-in options. If the probe fails for
+    // any reason, we simply leave the dev button hidden — never block the page
+    // or surface an error, since Google sign-in always works regardless.
+    getAuthConfig()
+      .then((cfg) => {
+        if (!cancelled) setDevLoginEnabled(cfg.devLoginEnabled);
+      })
+      .catch(() => {
+        if (!cancelled) setDevLoginEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -23,6 +46,17 @@ export default function LoginPage() {
       navigate(target, { replace: true });
     }
   }, [user, loading, navigate]);
+
+  const handleDevLogin = async () => {
+    setDevLoginPending(true);
+    try {
+      await devLogin();
+    } catch {
+      // The dev button is a local-only convenience; on failure just re-enable
+      // it so the user can retry. Google sign-in remains available regardless.
+      setDevLoginPending(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -61,6 +95,28 @@ export default function LoginPage() {
           </svg>
           Sign in with Google
         </button>
+
+        {devLoginEnabled && (
+          <div className="mt-6">
+            <div className="relative mb-4">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white dark:bg-gray-800 px-3 text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                  For local development
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleDevLogin}
+              disabled={devLoginPending}
+              className="w-full rounded-lg border border-dashed border-gray-300 dark:border-gray-600 px-6 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {devLoginPending ? 'Signing in…' : 'Dev sign-in (demo)'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

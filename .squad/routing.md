@@ -8,7 +8,7 @@ How to decide who handles what.
 |-----------|----------|----------|
 | Frontend / UI | Linus | React components, pages, hooks, Tailwind, web API client, web tests (MSW) |
 | Backend / API | Livingston | Express routes, services, middleware, Prisma/data access, Zod validation, auth chain |
-| Database / schema | Livingston | Prisma schema edits, migrations (with schema-migrator), seed data |
+| Database / schema | Saul (with Livingston) | Prisma schema edits, migrations (with schema-migrator), migration compatibility, seed data & fixtures, data integrity |
 | Security / Auth | Frank | Auth chain review, JWT/OAuth, API key lifecycle, secret handling, vuln triage |
 | Infra / DevOps | Basher | Docker, k8s, CI workflow, build pipeline, env config, Postgres ops |
 | Testing | Yen | Write tests, find edge cases, verify fixes (Vitest, prismaMock, MSW) |

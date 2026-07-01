@@ -6,6 +6,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   login: () => void;
+  devLogin: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -36,6 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/api/auth/google';
   };
 
+  const devLogin = useCallback(async () => {
+    // Pass-through login for local dev/demo. Sets the auth cookie server-side,
+    // then re-fetches the current user so the app transitions to signed-in.
+    await request('/api/auth/dev-login', { method: 'POST' });
+    await fetchUser();
+  }, [fetchUser]);
+
   const logout = async () => {
     try {
       await request<void>('/api/auth/logout', { method: 'POST' });
@@ -50,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, login, devLogin, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

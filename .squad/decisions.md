@@ -26,6 +26,17 @@ Notable review findings: #9 IDOR — nested suggestion/grocery mutations not fam
 
 Tooling: gh writes for this repo require the brandonmartinez account; the default-active brmar_microsoft is pull-only (label/issue creation 404s).
 
+### 2026-07-01: Added Saul (Data / Migrations specialist) + dev-environment/demo-data sprint (#75-#79)
+
+Requested by Brandon Martinez. Added a new Squad member **Saul** (Ocean's Eleven cast) dedicated to **data**: backwards/forwards-compatible migrations (expand/contract), data-integrity guardianship (no accidental DB wipes / unguarded resets), and seed/fixtures. Charter at `.squad/agents/saul/charter.md`; roster in `team.md`; `squad:saul` label created; `casting/registry.json` gains a `data` role. **Routing change:** Database/schema/migrations/seed work now routes to **Saul (with Livingston)** — previously folded into Livingston alone. Saul and Livingston co-own the schema contract; both must be satisfied on schema PRs (Saul: compatibility/rollout ordering; Livingston: services/routes that consume it).
+
+Filed + assigned to next sprint (`priority:p2`):
+- #79 Dev login: `POST /api/auth/dev-login` (hard-gated to non-prod) pass-through to a seeded demo user, plus a secondary Dev-login button on LoginPage while keeping real Google sign-in [squad:frank].
+- #77 MCP smoke testing: verify `packages/mcp` tools + API `agent`/`agent.mcp` routes against a real API+DB with a scoped AgentCredential, asserting scope enforcement + audit logs [squad:yen].
+- #75 Rich date-relative demo seed: demo family, 5 members (2 parents + 3 kids), ~50 recipes, multiple Monday-anchored weeks computed off today, suggestions (approved+pending), grocery list; idempotent; `db:reset` reseeds [squad:saul].
+- #78 Add Saul to the team (this entry) [squad:rusty].
+- #76 Root `dev.sh` launcher: bring up the devcontainer + apps from a plain terminal (no VS Code) [squad:basher].
+
 ## Governance
 
 - All meaningful changes require team consensus
