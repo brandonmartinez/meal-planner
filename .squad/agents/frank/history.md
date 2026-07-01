@@ -30,3 +30,4 @@ Security / Auth Engineer. Owns the security posture: auth chain (`authenticateJW
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 📌 Team update (2026-07-01T17-12-00Z): #87/#88 security review hit REQUEST-CHANGES on auth-param injection, then APPROVE after remediation. — decided by Frank
 📌 Team update (2026-07-01T14:01:24-04:00): #89 introduced a mounted `/mcp` credential path for Frank's security review focus: raw key handling/logging, Morgan exposure, limiter ordering, loopback auth, and body parsing. — decided by Rusty
+📌 Team update (2026-07-01T14:57:00-04:00): PR #90 merge-conflict resolution preserved upstream #88 Bearer/WWW-Authenticate support alongside the `createMcpCoreHandler` extraction; Rusty fixed Frank's post-merge finding so `agentKeyGenerator` keys on Bearer token or `x-agent-key` for the same per-credential rate-limit bucket. — decided by Frank and Rusty

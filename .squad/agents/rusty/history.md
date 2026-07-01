@@ -28,3 +28,4 @@ Lead / Architect. Owns cross-package contracts, scope, and code review. Build/CI
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 📌 Team update (2026-07-01T17-12-00Z): #87/#88 host-trust fix closed the reviewer-flagged injection issue and passed the final gate. — decided by Rusty
 📌 Team update (2026-07-01T14:01:24-04:00): #89 mounted the hosted MCP core handler inside the API at `POST /mcp`, preserving per-request family-from-key auth while shipping through the existing production image and ingress. — decided by Rusty
+📌 Team update (2026-07-01T14:57:00-04:00): PR #90 merge-conflict resolution preserved upstream #88 Bearer/WWW-Authenticate support alongside the `createMcpCoreHandler` extraction; Rusty fixed Frank's post-merge finding so `agentKeyGenerator` keys on Bearer token or `x-agent-key` for the same per-credential rate-limit bucket. — decided by Frank and Rusty
