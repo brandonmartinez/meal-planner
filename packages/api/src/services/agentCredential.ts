@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import prisma from "../config/database.js";
+import { hashCredential, legacyHashCredential } from "../utils/credentialHash.js";
 
 /**
  * Per-operation scopes an MCP agent credential may be granted. Deliberately
@@ -28,12 +29,13 @@ export function hasScope(scopes: readonly string[], scope: AgentScope): boolean 
 }
 
 /**
- * SHA-256 of the raw key. The credential is stored hashed-only — mirrors
- * `services/apiKey.ts`. The raw key is returned exactly once (on creation or
- * rotation) and is never logged or persisted in raw form.
+ * Peppered keyed hash of the raw key. The credential is stored hashed-only —
+ * mirrors `services/apiKey.ts`. The raw key is returned exactly once (on
+ * creation or rotation) and is never logged or persisted in raw form. See
+ * `utils/credentialHash.ts` for why we use a keyed HMAC over a bare SHA-256.
  */
 function hashKey(raw: string): string {
-  return crypto.createHash("sha256").update(raw).digest("hex");
+  return hashCredential(raw);
 }
 
 function generateRawKey(): string {
@@ -189,6 +191,13 @@ export type AgentAuthResult =
  * rejects unknown / revoked / expired credentials. On success it bumps
  * `lastUsed` and returns the credential's family scope + granted scopes.
  *
+ * Backward compatibility (lazy migration): rows created before the pepper hold
+ * a legacy unpeppered SHA-256 hash that the HMAC lookup will not match. When
+ * the primary (HMAC) lookup misses, we fall back to the legacy SHA-256 hash;
+ * on a legacy hit we transparently re-hash to the peppered HMAC and persist it
+ * in the SAME write that bumps `lastUsed`, so credentials migrate on next use
+ * without ever invalidating a live key. The raw key is never stored.
+ *
  * Returns a discriminated result rather than throwing so the middleware can
  * map each failure mode to an audit entry + 401/403 without re-querying.
  */
@@ -196,9 +205,21 @@ export async function authenticateAgentCredential(
   rawKey: string,
 ): Promise<AgentAuthResult> {
   const hashedKey = hashKey(rawKey);
-  const record = await prisma.agentCredential.findUnique({
+  let record = await prisma.agentCredential.findUnique({
     where: { hashedKey },
   });
+
+  // Legacy fallback: a pre-pepper row is keyed by unpeppered SHA-256.
+  let needsRehash = false;
+  if (!record) {
+    const legacyKey = legacyHashCredential(rawKey);
+    record = await prisma.agentCredential.findUnique({
+      where: { hashedKey: legacyKey },
+    });
+    if (record) {
+      needsRehash = true;
+    }
+  }
 
   if (!record) {
     return { ok: false, reason: "unknown" };
@@ -212,7 +233,10 @@ export async function authenticateAgentCredential(
 
   await prisma.agentCredential.update({
     where: { id: record.id },
-    data: { lastUsed: new Date() },
+    // Lazy upgrade the legacy hash alongside the lastUsed bump (single write).
+    data: needsRehash
+      ? { lastUsed: new Date(), hashedKey }
+      : { lastUsed: new Date() },
   });
 
   return {

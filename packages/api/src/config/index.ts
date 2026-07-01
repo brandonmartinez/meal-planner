@@ -17,6 +17,10 @@ const DEV_DEFAULTS = {
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/meal_planner",
   JWT_SECRET: "dev-secret-change-in-production",
   GOOGLE_CALLBACK_URL: "http://localhost:3001/api/auth/google/callback",
+  // Server-side pepper for keyed credential hashing (agent credentials +
+  // display API keys). Like JWT_SECRET, this dev value MUST be overridden in
+  // production — the guard below fails closed if it is still the default.
+  CREDENTIAL_PEPPER: "dev-pepper-change-in-production",
 } as const;
 
 export const config = {
@@ -27,6 +31,10 @@ export const config = {
     secret: process.env.JWT_SECRET || DEV_DEFAULTS.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
+  // Never logged. Consumed by utils/credentialHash.ts to key the HMAC used for
+  // agent-credential and display-API-key hashing.
+  credentialPepper:
+    process.env.CREDENTIAL_PEPPER || DEV_DEFAULTS.CREDENTIAL_PEPPER,
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
@@ -52,6 +60,7 @@ interface RequiredVar {
  */
 const PRODUCTION_REQUIRED_VARS: readonly RequiredVar[] = [
   { name: "JWT_SECRET", devDefault: DEV_DEFAULTS.JWT_SECRET },
+  { name: "CREDENTIAL_PEPPER", devDefault: DEV_DEFAULTS.CREDENTIAL_PEPPER },
   { name: "DATABASE_URL", devDefault: DEV_DEFAULTS.DATABASE_URL },
   { name: "GOOGLE_CLIENT_ID" },
   { name: "GOOGLE_CLIENT_SECRET" },
