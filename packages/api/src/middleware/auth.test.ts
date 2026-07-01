@@ -3,6 +3,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { prismaMock } from "../../tests/helpers/prisma.js";
 import { buildReq, buildRes, buildNext } from "../../tests/helpers/express.js";
+import { config } from "../config/index.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
@@ -15,6 +16,14 @@ function makeToken(id = "u-1") {
     process.env.JWT_SECRET!,
     { expiresIn: "1h" },
   );
+}
+
+// The current (peppered) API-key hash used by the display-key resolver.
+function hmac(s: string) {
+  return crypto
+    .createHmac("sha256", config.credentialPepper)
+    .update(s)
+    .digest("hex");
 }
 
 describe("authenticateJWT", () => {
@@ -188,8 +197,6 @@ describe("authenticateApiKey", () => {
     const lookup = prismaMock.apiKey.findUnique.mock.calls[0][0] as {
       where: { key: string };
     };
-    expect(lookup.where.key).toBe(
-      crypto.createHash("sha256").update(rawKey).digest("hex"),
-    );
+    expect(lookup.where.key).toBe(hmac(rawKey));
   });
 });

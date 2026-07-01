@@ -1,12 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
 import crypto from "crypto";
 import { prismaMock } from "../../tests/helpers/prisma.js";
+import { config } from "../config/index.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
 const { createApiKey, listApiKeys, revokeApiKey, validateApiKey } =
   await import("./apiKey.js");
 
+// The current (peppered) API-key hash and the legacy (pre-pepper) one.
+function hmac(s: string) {
+  return crypto
+    .createHmac("sha256", config.credentialPepper)
+    .update(s)
+    .digest("hex");
+}
 function sha256(s: string) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -32,7 +40,7 @@ describe("apiKey service", () => {
       const result = await createApiKey("fam-1", "user-1", "CI Bot");
 
       expect(result.key).toMatch(/^[a-f0-9]{64}$/);
-      expect(stored.key).toBe(sha256(result.key));
+      expect(stored.key).toBe(hmac(result.key));
       expect(stored.key).not.toBe(result.key);
       expect(result.name).toBe("CI Bot");
     });
@@ -68,6 +76,8 @@ describe("apiKey service", () => {
       prismaMock.apiKey.findUnique.mockResolvedValue(null);
       const out = await validateApiKey("does-not-exist");
       expect(out).toBeNull();
+      // Attempted both the peppered HMAC and the legacy-fallback lookup.
+      expect(prismaMock.apiKey.findUnique).toHaveBeenCalledTimes(2);
     });
 
     it("returns null on expired key", async () => {
@@ -95,10 +105,47 @@ describe("apiKey service", () => {
       const lookup = prismaMock.apiKey.findUnique.mock.calls[0][0] as {
         where: { key: string };
       };
-      expect(lookup.where.key).toBe(sha256("rawkey"));
+      expect(lookup.where.key).toBe(hmac("rawkey"));
       expect(prismaMock.apiKey.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "k-1" },
+          data: { lastUsed: expect.any(Date) },
+        }),
+      );
+    });
+
+    it("verifies a legacy SHA-256 key and lazily rehashes it to HMAC", async () => {
+      // Primary (peppered HMAC) lookup misses; legacy SHA-256 lookup hits.
+      prismaMock.apiKey.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: "k-legacy",
+          familyId: "fam-1",
+          expiresAt: null,
+        } as never);
+      prismaMock.apiKey.update.mockResolvedValue({} as never);
+
+      const out = await validateApiKey("legacy-raw");
+
+      expect(out).toEqual({ familyId: "fam-1" });
+      const firstLookup = prismaMock.apiKey.findUnique.mock.calls[0][0] as {
+        where: { key: string };
+      };
+      const secondLookup = prismaMock.apiKey.findUnique.mock.calls[1][0] as {
+        where: { key: string };
+      };
+      expect(firstLookup.where.key).toBe(hmac("legacy-raw"));
+      expect(secondLookup.where.key).toBe(sha256("legacy-raw"));
+      // Lazy upgrade write (migrate to HMAC) then the lastUsed bump.
+      expect(prismaMock.apiKey.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "k-legacy" },
+          data: { key: hmac("legacy-raw") },
+        }),
+      );
+      expect(prismaMock.apiKey.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "k-legacy" },
           data: { lastUsed: expect.any(Date) },
         }),
       );

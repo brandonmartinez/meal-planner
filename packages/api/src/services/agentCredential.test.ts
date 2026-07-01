@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import crypto from "crypto";
 import { prismaMock } from "../../tests/helpers/prisma.js";
+import { config } from "../config/index.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
@@ -17,6 +18,13 @@ const {
   AGENT_SCOPES,
 } = await import("./agentCredential.js");
 
+// The current (peppered) credential hash and the legacy (pre-pepper) one.
+function hmac(s: string) {
+  return crypto
+    .createHmac("sha256", config.credentialPepper)
+    .update(s)
+    .digest("hex");
+}
 function sha256(s: string) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -78,7 +86,7 @@ describe("agentCredential service", () => {
       );
 
       expect(result.key).toMatch(/^[a-f0-9]{64}$/);
-      expect(stored.hashedKey).toBe(sha256(result.key));
+      expect(stored.hashedKey).toBe(hmac(result.key));
       expect(stored.hashedKey).not.toBe(result.key);
       expect(stored.scopes).toEqual(["meal_plan:read", "meal_plan:schedule"]);
       expect(stored.familyId).toBe("fam-1");
@@ -126,7 +134,7 @@ describe("agentCredential service", () => {
 
       expect(result).not.toBeNull();
       expect(result!.key).toMatch(/^[a-f0-9]{64}$/);
-      expect(updatedHash).toBe(sha256(result!.key));
+      expect(updatedHash).toBe(hmac(result!.key));
     });
 
     it("refuses to rotate a revoked credential", async () => {
@@ -252,13 +260,64 @@ describe("agentCredential service", () => {
       const lookup = prismaMock.agentCredential.findUnique.mock.calls[0][0] as {
         where: { hashedKey: string };
       };
-      expect(lookup.where.hashedKey).toBe(sha256("rawkey"));
+      expect(lookup.where.hashedKey).toBe(hmac("rawkey"));
       expect(prismaMock.agentCredential.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: "cred-1" },
           data: { lastUsed: expect.any(Date) },
         }),
       );
+    });
+
+    it("verifies a legacy SHA-256 credential and lazily rehashes it to HMAC", async () => {
+      const rawKey = "legacy-raw-key";
+      // Primary (peppered HMAC) lookup misses; legacy SHA-256 lookup hits.
+      prismaMock.agentCredential.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: "cred-legacy",
+          familyId: "fam-1",
+          scopes: ["meal_plan:read"],
+          createdBy: "parent-1",
+          revokedAt: null,
+          expiresAt: null,
+        } as never);
+      prismaMock.agentCredential.update.mockResolvedValue({} as never);
+
+      const out = await authenticateAgentCredential(rawKey);
+
+      expect(out).toEqual({
+        ok: true,
+        credential: {
+          id: "cred-legacy",
+          familyId: "fam-1",
+          scopes: ["meal_plan:read"],
+          createdBy: "parent-1",
+        },
+      });
+      // First lookup uses the peppered HMAC, second falls back to legacy SHA-256.
+      const firstLookup = prismaMock.agentCredential.findUnique.mock
+        .calls[0][0] as { where: { hashedKey: string } };
+      const secondLookup = prismaMock.agentCredential.findUnique.mock
+        .calls[1][0] as { where: { hashedKey: string } };
+      expect(firstLookup.where.hashedKey).toBe(hmac(rawKey));
+      expect(secondLookup.where.hashedKey).toBe(sha256(rawKey));
+      // Lazy upgrade: the stored hash is migrated to HMAC alongside lastUsed.
+      expect(prismaMock.agentCredential.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "cred-legacy" },
+          data: { lastUsed: expect.any(Date), hashedKey: hmac(rawKey) },
+        }),
+      );
+    });
+
+    it("rejects a wrong key that matches neither HMAC nor legacy hash", async () => {
+      prismaMock.agentCredential.findUnique.mockResolvedValue(null);
+      const out = await authenticateAgentCredential("wrong-key");
+      expect(out).toEqual({ ok: false, reason: "unknown" });
+      // Both the HMAC and the legacy-fallback lookups were attempted.
+      expect(prismaMock.agentCredential.findUnique).toHaveBeenCalledTimes(2);
+      expect(prismaMock.agentCredential.update).not.toHaveBeenCalled();
     });
   });
 

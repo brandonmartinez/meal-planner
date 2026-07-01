@@ -13,6 +13,7 @@ function fullProdEnv(): NodeJS.ProcessEnv {
   return {
     NODE_ENV: "production",
     JWT_SECRET: "a-real-strong-production-secret",
+    CREDENTIAL_PEPPER: "a-real-strong-production-pepper",
     DATABASE_URL: "postgresql://prod:prodpw@db.internal:5432/meal_planner",
     GOOGLE_CLIENT_ID: "real-client-id.apps.googleusercontent.com",
     GOOGLE_CLIENT_SECRET: "real-google-client-secret",
@@ -23,6 +24,7 @@ function fullProdEnv(): NodeJS.ProcessEnv {
 
 // The repo-known development defaults the guard must reject in production.
 const DEV_JWT_SECRET = "dev-secret-change-in-production";
+const DEV_CREDENTIAL_PEPPER = "dev-pepper-change-in-production";
 const DEV_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/meal_planner";
 const DEV_CLIENT_URL = "http://localhost:5173";
@@ -44,6 +46,24 @@ describe("config production fail-closed guard", () => {
       const env = fullProdEnv();
       env.JWT_SECRET = DEV_JWT_SECRET;
       expect(findMissingProductionVars(env)).toContain("JWT_SECRET");
+    });
+
+    it("flags CREDENTIAL_PEPPER when unset", () => {
+      const env = fullProdEnv();
+      delete env.CREDENTIAL_PEPPER;
+      expect(findMissingProductionVars(env)).toContain("CREDENTIAL_PEPPER");
+    });
+
+    it("flags CREDENTIAL_PEPPER when it equals the development default", () => {
+      const env = fullProdEnv();
+      env.CREDENTIAL_PEPPER = DEV_CREDENTIAL_PEPPER;
+      expect(findMissingProductionVars(env)).toContain("CREDENTIAL_PEPPER");
+    });
+
+    it("flags CREDENTIAL_PEPPER when empty (default-equivalent)", () => {
+      const env = fullProdEnv();
+      env.CREDENTIAL_PEPPER = "";
+      expect(findMissingProductionVars(env)).toContain("CREDENTIAL_PEPPER");
     });
 
     it("flags DATABASE_URL when unset or still the dev default", () => {
@@ -104,6 +124,25 @@ describe("config production fail-closed guard", () => {
       const env = fullProdEnv();
       delete env.JWT_SECRET;
       expect(() => assertProductionConfig(env)).toThrow(/JWT_SECRET/);
+    });
+
+    it("throws and names CREDENTIAL_PEPPER when the pepper is missing", () => {
+      const env = fullProdEnv();
+      delete env.CREDENTIAL_PEPPER;
+      expect(() => assertProductionConfig(env)).toThrow(/CREDENTIAL_PEPPER/);
+    });
+
+    it("never includes the pepper value in the error message", () => {
+      const env = fullProdEnv();
+      env.CREDENTIAL_PEPPER = DEV_CREDENTIAL_PEPPER;
+      let message = "";
+      try {
+        assertProductionConfig(env);
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message).toContain("CREDENTIAL_PEPPER");
+      expect(message).not.toContain(DEV_CREDENTIAL_PEPPER);
     });
 
     it("never includes the secret value in the error message", () => {

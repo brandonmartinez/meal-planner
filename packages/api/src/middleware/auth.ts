@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.js';
 import prisma from '../config/database.js';
-import crypto from 'crypto';
+import { findApiKeyByRawKey } from '../services/apiKey.js';
 import { isDisplayRequest, sendDisplayError } from '../utils/displayError.js';
 
 export async function authenticateJWT(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -76,10 +76,9 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
   }
 
   try {
-    const hashedKey = crypto.createHash('sha256').update(apiKey).digest('hex');
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { key: hashedKey },
-    });
+    // Delegate hashing + legacy-hash migration to the shared apiKey resolver so
+    // the middleware, validateApiKey, and agent auth all agree on one scheme.
+    const keyRecord = await findApiKeyByRawKey(apiKey);
 
     if (!keyRecord) {
       if (useDisplayEnvelope) {
