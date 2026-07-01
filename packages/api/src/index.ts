@@ -94,16 +94,28 @@ app.use("/api/agent", agentLimiter, agentRouter);
 // Static file serving for production
 const webDistPath = path.resolve(__dirname, "../../web/dist");
 const publicPath = path.resolve(__dirname, "../public");
+const staticRoot = existsSync(webDistPath)
+  ? webDistPath
+  : existsSync(publicPath)
+    ? publicPath
+    : null;
 
-if (existsSync(webDistPath)) {
-  app.use(express.static(webDistPath));
-  app.get("{*splat}", (_req, res) => {
-    res.sendFile(path.join(webDistPath, "index.html"));
-  });
-} else if (existsSync(publicPath)) {
-  app.use(express.static(publicPath));
-  app.get("{*splat}", (_req, res) => {
-    res.sendFile(path.join(publicPath, "index.html"));
+if (staticRoot) {
+  app.use(express.static(staticRoot));
+  app.get("{*splat}", (req, res) => {
+    // Requests under /assets/* that reach this catch-all are hashed build
+    // artifacts express.static could not find — almost always a stale chunk
+    // from a browser holding a previous deploy's index.html after a rollout
+    // swapped the pods. Return a real 404 instead of the SPA shell: otherwise
+    // the client receives index.html (200, text/html) for a .css/.js request,
+    // which surfaces as "non CSS MIME types are not allowed" or a module MIME
+    // error in the console. SPA navigation routes (extensionless) still fall
+    // through to index.html below.
+    if (req.path.startsWith("/assets/")) {
+      res.status(404).end();
+      return;
+    }
+    res.sendFile(path.join(staticRoot, "index.html"));
   });
 }
 
