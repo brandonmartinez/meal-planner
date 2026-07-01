@@ -1,30 +1,20 @@
 ---
-updated_at: 2026-06-30T23:42:00.000Z
-focus_area: Sprint 1+2 SHIPPED. Sprint 3 nearly done — #15 (last) running. Then Sprint 4. Goal: finish through Sprint 4.
-active_issues: [6, 7, 15, 16, 17, 22, 24, 27, 5, 25, 26]
+updated_at: 2026-07-01T00:05:00.000Z
+focus_area: Sprint 1+2+3 SHIPPED. Sprint 4 in flight — #25/#26 gated (PRs #63/#64, overlap to integrate), #5 MCP running. Goal: finish through Sprint 4.
+active_issues: [5, 25, 26]
 ---
 
 # What We're Focused On
 
-## Running now — Sprint 3 (8 issues: #6 #7 #15 #16 #17 #22 #24 #27)
-Plan: `~/.copilot/session-state/.../plan.md`. Conflict rule: parallel across disjoint files, serialize within shared files (FamilySettingsPage: #17→#6-web→#15; Meals/ImportDialog: #16→#27-web→#15; shared/services: #7→#27-be).
+## Sprint 3 — ✅ 8/8 SHIPPED, MERGED & CLOSED
+#24(PR52) · #22(PR53,sec) · #7(PR55) · #16(PR56,a11y) · #6-mgmt+#50(PR54,sec) · #17(PR57,sec) · #27-be(PR58) · #27-web(PR59→#27 CLOSED) · #6-web(PR60→#6 CLOSED) · **#15(PR62, Yen a11y-gate APPROVE, de-raced 3 loading-status tests → CI green → #15 CLOSED)**. Main green.
 
-### Wave 1 ✅ MERGED & CLOSED
-- #24 (PR52) · #22 (PR53, sec-gate) · #7 (PR55) · #16 (PR56, a11y-gate) · #6-mgmt+#50 (PR54, sec-gate).
-
-### Wave 2 ✅ MERGED & CLOSED
-- #17 (PR57, sec-gate APPROVE) · #27-be (PR58, Part of #27).
-
-### Wave 3 ✅ MERGED & CLOSED
-- #27-web (PR59) → #27 CLOSED · #6-web (PR60, sec-gate; fixed 3 CI test-assertion bugs) → #6 CLOSED.
-
-### Wave 4 (running)
-- **#15** Linus — accessible names + status semantics for forms/loaders (all web pages) — `squad/15-accessible-forms-loaders` → a11y gate → Closes #15. LAST Sprint 3 item.
-Close on merge: #7 #22 #24 #16 #17 #27 #15; #6(+#50) when mgmt be+web both land.
-
-## Then — Sprint 4 (#5 #25 #26)
-- #25 Basher — pin k8s immutable image tags; #26 Basher — migrations out of multi-replica startup (both infra, independent)
-- #5 Rusty/Livingston — `packages/mcp` MCP server (DEPENDS on #7 + #6); stdio v1, HTTP API client, Zod tools, mocked-API tests → Rusty design + Frank security gate
+## Running now — Sprint 4 (#5 #25 #26)
+Plan: `~/.copilot/session-state/.../plan.md`.
+- **#25** Basher — pin k8s immutable image tags → **PR #63 (draft)**. Independent Rusty infra gate running.
+- **#26** Basher — migrations out of multi-replica startup (one-shot k8s Job) → **PR #64 (draft)**. Independent Rusty infra gate running.
+  - ⚠️ #63 & #64 OVERLAP: both rewrite `k8s/deploy.sh`, modify `k8s/deployment.yaml`, add `k8s/README.md`. Integration: merge one, sync main into the other, reconcile deploy.sh (enforce pinned non-latest tag AND run migrate Job first, migrate Job shares pinned image via kustomization images[].newTag), single README, re-run CI, then merge.
+- **#5** Rusty/Livingston — `packages/mcp` MCP server (deps #7+#6 DONE); stdio v1, HTTP API client (no Prisma import), Zod tools, mocked-API tests → Rusty design + Frank security gate. RUNNING.
 
 ## Sprint 1+2 — ✅ SHIPPED
 S1: #9/#11/#12/#13/#23/#32. S2: #14/#8/#10/#20/#18/#19/#6(core). All merged, main green, logged.
