@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, screen, waitFor } from '../test-utils/render';
+import { renderWithProviders, screen, waitFor, within } from '../test-utils/render';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { http, HttpResponse } from 'msw';
@@ -98,6 +98,34 @@ describe('ImportMealsDialog', () => {
         expect(onImported).not.toHaveBeenCalled();
         // Import action remains available to retry.
         expect(screen.getByRole('button', { name: /import 2 meals/i })).toBeInTheDocument();
+    });
+
+    it('submits parsed difficulty values in the import request body', async () => {
+        const user = userEvent.setup();
+        let body: { meals: { name: string; difficulty?: string | null }[] } | undefined;
+        server.use(
+            http.post(IMPORT_URL, async ({ request }) => {
+                body = (await request.json()) as typeof body;
+                return HttpResponse.json({ created: 2, updated: 0, skipped: 0, errors: [] });
+            }),
+        );
+        renderDialog();
+
+        await user.click(screen.getByRole('button', { name: /^load example$/i }));
+        // Preview surfaces the difficulty parsed from the sample CSV (scoped to
+        // each meal's list row so we don't match the column-docs chips above).
+        const bologneseRow = screen.getByText('Spaghetti Bolognese').closest('li')!;
+        const tacoRow = screen.getByText('Taco Tuesday').closest('li')!;
+        expect(within(bologneseRow).getByText('MEDIUM')).toBeInTheDocument();
+        expect(within(tacoRow).getByText('EASY')).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: /import 2 meals/i }));
+
+        await waitFor(() => expect(body).toBeDefined());
+        const bolognese = body!.meals.find((m) => m.name === 'Spaghetti Bolognese');
+        const taco = body!.meals.find((m) => m.name === 'Taco Tuesday');
+        expect(bolognese?.difficulty).toBe('MEDIUM');
+        expect(taco?.difficulty).toBe('EASY');
     });
 
     describe('accessibility', () => {

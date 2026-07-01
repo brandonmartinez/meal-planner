@@ -1,3 +1,5 @@
+import { MEAL_DIFFICULTIES, type Difficulty } from '@meal-planner/shared';
+
 // Minimal RFC 4180-ish CSV parser. Handles quoted fields, embedded
 // commas/newlines, and "" -> " escapes. Returns an array of rows of strings.
 export function parseCSV(input: string): string[][] {
@@ -54,6 +56,7 @@ export function parseCSV(input: string): string[][] {
 export interface ParsedImportMeal {
   name: string;
   description?: string;
+  difficulty?: Difficulty;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -69,15 +72,18 @@ export interface ParseMealsCSVResult {
 
 /**
  * Parse a CSV of meals. Expected columns (header row required, case-insensitive):
- *   meal, description, ingredient, quantity, unit, category
+ *   meal, description, difficulty, ingredient, quantity, unit, category
  *
  * Multiple rows sharing the same meal name are grouped into one meal with
- * multiple ingredients. The first non-empty description wins. Rows where
- * `meal` is empty are skipped with a warning.
+ * multiple ingredients. The first non-empty description/difficulty wins. Rows
+ * where `meal` is empty are skipped with a warning. `difficulty` must be one of
+ * EASY, MEDIUM, HARD (case-insensitive); an unrecognized value is ignored with
+ * a warning.
  *
  * Aliases supported for header names:
  *   meal       <- name, mealName
  *   ingredient <- ingredientName, item
+ *   difficulty <- diff, effort
  */
 export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const rows = parseCSV(input);
@@ -90,6 +96,7 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const aliases: Record<string, string[]> = {
     meal: ["meal", "name", "mealname", "meal name"],
     description: ["description", "desc"],
+    difficulty: ["difficulty", "diff", "effort"],
     ingredient: ["ingredient", "ingredientname", "ingredient name", "item"],
     quantity: ["quantity", "qty", "amount"],
     unit: ["unit", "units"],
@@ -137,6 +144,18 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       meal.description = description;
     }
 
+    const difficultyRaw = get(row, "difficulty");
+    if (difficultyRaw && !meal.difficulty) {
+      const normalized = difficultyRaw.toUpperCase();
+      if ((MEAL_DIFFICULTIES as readonly string[]).includes(normalized)) {
+        meal.difficulty = normalized as Difficulty;
+      } else {
+        warnings.push(
+          `Row ${i + 1}: ignored unknown difficulty "${difficultyRaw}" (expected EASY, MEDIUM, or HARD)`,
+        );
+      }
+    }
+
     const ingredient = get(row, "ingredient");
     if (ingredient) {
       const ing: ParsedImportMeal["ingredients"] extends (infer U)[] | undefined
@@ -156,4 +175,75 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
   }
 
   return { meals: Array.from(byName.values()), warnings };
+}
+
+/** Column order used by both the import templates and {@link mealsToCSV}, so an
+ *  exported file re-imports cleanly (round-trip). */
+export const MEALS_CSV_HEADER = [
+  "meal",
+  "description",
+  "difficulty",
+  "ingredient",
+  "quantity",
+  "unit",
+  "category",
+] as const;
+
+export interface ExportMeal {
+  name: string;
+  description?: string | null;
+  difficulty?: Difficulty | null;
+  ingredients?: {
+    name: string;
+    quantity?: string | null;
+    unit?: string | null;
+    category?: string | null;
+  }[];
+}
+
+/** Quote a single CSV field per RFC 4180 when it contains a comma, quote, or
+ *  newline; escape embedded quotes by doubling them. */
+function csvField(value: string | null | undefined): string {
+  const s = value ?? "";
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+/**
+ * Serialize meals to a CSV string using {@link MEALS_CSV_HEADER}. One row per
+ * ingredient; a meal with no ingredients emits a single row with empty
+ * ingredient columns. The meal-level `description`/`difficulty` are repeated on
+ * every row of that meal so the output round-trips through {@link parseMealsCSV}.
+ */
+export function mealsToCSV(meals: ExportMeal[]): string {
+  const lines: string[] = [MEALS_CSV_HEADER.join(",")];
+
+  const pushRow = (
+    meal: ExportMeal,
+    ing?: NonNullable<ExportMeal["ingredients"]>[number],
+  ) => {
+    lines.push(
+      [
+        csvField(meal.name),
+        csvField(meal.description),
+        csvField(meal.difficulty),
+        csvField(ing?.name),
+        csvField(ing?.quantity),
+        csvField(ing?.unit),
+        csvField(ing?.category),
+      ].join(","),
+    );
+  };
+
+  for (const meal of meals) {
+    if (meal.ingredients && meal.ingredients.length > 0) {
+      for (const ing of meal.ingredients) pushRow(meal, ing);
+    } else {
+      pushRow(meal);
+    }
+  }
+
+  return lines.join("\n") + "\n";
 }

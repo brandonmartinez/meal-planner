@@ -1,6 +1,6 @@
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../tests/msw/server';
-import { renderWithProviders, screen } from '../test-utils/render';
+import { renderWithProviders, screen, fireEvent, waitFor } from '../test-utils/render';
 import MealsPage from './MealsPage';
 
 const FAMILY_ID = 'fam-1';
@@ -70,6 +70,89 @@ describe('MealsPage difficulty', () => {
     expect(screen.queryByText('Easy')).not.toBeInTheDocument();
     expect(screen.queryByText('Medium')).not.toBeInTheDocument();
     expect(screen.queryByText('Hard')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealsPage export', () => {
+  it('downloads a CSV of all meals when Export CSV is clicked', async () => {
+    let capturedBlob: Blob | undefined;
+    const revokeObjectURL = vi.fn();
+    // jsdom doesn't implement object URLs; stub them for the download path.
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: (b: Blob) => {
+        capturedBlob = b;
+        return 'blob:mock';
+      },
+      configurable: true,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: revokeObjectURL,
+      configurable: true,
+    });
+    // Prevent jsdom "navigation not implemented" noise from the anchor click.
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos', difficulty: 'EASY' })]),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals/export`, () =>
+        HttpResponse.json({
+          meals: [
+            {
+              name: 'Tacos',
+              description: 'Yum',
+              difficulty: 'EASY',
+              ingredients: [
+                { name: 'Tortillas', quantity: '6', unit: null, category: 'produce' },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    const exportBtn = await screen.findByRole('button', { name: 'Export CSV' });
+    fireEvent.click(exportBtn);
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    expect(capturedBlob).toBeInstanceOf(Blob);
+    expect(capturedBlob!.type).toBe('text/csv;charset=utf-8');
+    // jsdom's Blob has no .text(); read it via FileReader.
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(capturedBlob!);
+    });
+    expect(text.split('\n')[0]).toBe(
+      'meal,description,difficulty,ingredient,quantity,unit,category',
+    );
+    expect(text).toContain('Tacos,Yum,EASY,Tortillas,6,,produce');
+
+    clickSpy.mockRestore();
+  });
+
+  it('surfaces an error when there are no meals to export', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json([])),
+      http.get(`/api/families/${FAMILY_ID}/meals/export`, () =>
+        HttpResponse.json({ meals: [] }),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    const exportBtn = await screen.findByRole('button', { name: 'Export CSV' });
+    fireEvent.click(exportBtn);
+
+    expect(await screen.findByText('No meals to export yet.')).toBeInTheDocument();
   });
 });
 

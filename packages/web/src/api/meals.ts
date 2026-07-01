@@ -3,6 +3,7 @@ import type {
   MealIngredient,
   MealListItemDTO,
   ImportMealsResultDTO,
+  ExportMealsResponseDTO,
   Difficulty,
 } from "@meal-planner/shared";
 import { request } from "./client";
@@ -13,6 +14,7 @@ import { request } from "./client";
 export type {
   MealListItemDTO,
   ImportMealsResultDTO,
+  ExportMealsResponseDTO,
 } from "@meal-planner/shared";
 
 const BASE = "/api/families";
@@ -79,6 +81,7 @@ export async function importMeals(
   meals: {
     name: string;
     description?: string;
+    difficulty?: Difficulty | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   }[],
   mode: "skip" | "replace" = "skip",
@@ -87,4 +90,10 @@ export async function importMeals(
     method: "POST",
     body: JSON.stringify({ meals, mode }),
   });
+}
+
+export async function exportMeals(
+  familyId: string,
+): Promise<ExportMealsResponseDTO> {
+  return request<ExportMealsResponseDTO>(`${BASE}/${familyId}/meals/export`);
 }

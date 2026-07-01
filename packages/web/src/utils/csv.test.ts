@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCSV, parseMealsCSV } from "./csv";
+import { parseCSV, parseMealsCSV, mealsToCSV } from "./csv";
 
 describe("parseCSV", () => {
   it("parses a simple comma-separated CSV", () => {
@@ -106,9 +106,112 @@ Tacos,Tortillas,Produce`;
     expect(r.meals[0].ingredients?.[0].category).toBe("produce");
   });
 
+  it("parses a difficulty column (case-insensitive)", () => {
+    const csv = `meal,difficulty
+Tacos,easy
+Stew,HARD`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals.find((m) => m.name === "Tacos")?.difficulty).toBe("EASY");
+    expect(r.meals.find((m) => m.name === "Stew")?.difficulty).toBe("HARD");
+  });
+
+  it("keeps the first non-empty difficulty across grouped rows", () => {
+    const csv = `meal,difficulty,ingredient
+Tacos,MEDIUM,Tortillas
+Tacos,,Salsa`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals).toHaveLength(1);
+    expect(r.meals[0].difficulty).toBe("MEDIUM");
+  });
+
+  it("warns and ignores an unrecognized difficulty value", () => {
+    const csv = `meal,difficulty
+Tacos,EXTREME`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].difficulty).toBeUndefined();
+    expect(r.warnings.some((w) => /unknown difficulty "EXTREME"/.test(w))).toBe(
+      true,
+    );
+  });
+
+  it("supports the difficulty header alias", () => {
+    const csv = `meal,diff
+Soup,easy`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].difficulty).toBe("EASY");
+  });
+
   it("handles empty input gracefully", () => {
     const r = parseMealsCSV("");
     expect(r.meals).toEqual([]);
     expect(r.warnings).toContain("CSV is empty");
+  });
+});
+
+describe("mealsToCSV", () => {
+  it("emits the canonical header", () => {
+    const csv = mealsToCSV([]);
+    expect(csv.split("\n")[0]).toBe(
+      "meal,description,difficulty,ingredient,quantity,unit,category",
+    );
+  });
+
+  it("emits one row per ingredient, repeating meal-level fields", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        description: "Yum",
+        difficulty: "EASY",
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+          { name: "Salsa", quantity: "1", unit: "cup", category: "condiments" },
+        ],
+      },
+    ]);
+    const lines = csv.trim().split("\n");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments");
+  });
+
+  it("emits a single row for a meal with no ingredients", () => {
+    const csv = mealsToCSV([
+      { name: "Cereal", description: null, difficulty: null },
+    ]);
+    const lines = csv.trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Cereal,,,,,,");
+  });
+
+  it("quotes fields containing commas, quotes, or newlines", () => {
+    const csv = mealsToCSV([
+      { name: 'Mac, Cheese', description: 'He said "hi"', difficulty: null },
+    ]);
+    expect(csv).toContain('"Mac, Cheese"');
+    expect(csv).toContain('"He said ""hi"""');
+  });
+
+  it("round-trips through parseMealsCSV", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        description: "Yum",
+        difficulty: "MEDIUM",
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+        ],
+      },
+      { name: "Cereal", description: null, difficulty: null },
+    ]);
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.difficulty).toBe("MEDIUM");
+    expect(tacos?.description).toBe("Yum");
+    expect(tacos?.ingredients).toEqual([
+      { name: "Tortillas", quantity: "6", category: "produce" },
+    ]);
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.difficulty).toBeUndefined();
+    expect(cereal?.ingredients).toBeUndefined();
   });
 });

@@ -10,6 +10,7 @@ const {
   updateMeal,
   deleteMeal,
   importMeals,
+  exportMeals,
 } = await import("./meals.js");
 
 // Route-level Zod schemas (validation lives at the route boundary).
@@ -453,6 +454,18 @@ describe("meals service", () => {
       expect(result.skipped).toBe(0);
     });
 
+    it("persists difficulty on a newly created meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
+
+      await importMeals("fam-1", [{ name: "Tacos", difficulty: "HARD" }]);
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBe("HARD");
+    });
+
     it("skips an existing meal in skip mode", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
@@ -485,6 +498,23 @@ describe("meals service", () => {
       });
     });
 
+    it("persists difficulty when replacing an existing meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+
+      await importMeals("fam-1", [{ name: "Tacos", difficulty: "MEDIUM" }], {
+        mode: "replace",
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { difficulty?: unknown };
+      };
+      expect(arg.data.difficulty).toBe("MEDIUM");
+    });
+
     it("reports per-meal errors without aborting subsequent meals", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValueOnce(null);
@@ -496,6 +526,50 @@ describe("meals service", () => {
       expect(result.created).toBe(1);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].name).toBe("A");
+    });
+  });
+
+  describe("exportMeals", () => {
+    it("returns only non-placeholder meals mapped to the export shape", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        {
+          name: "Tacos",
+          description: "Yum",
+          difficulty: "EASY",
+          ingredients: [
+            {
+              name: "salsa",
+              quantity: "1",
+              unit: "cup",
+              category: "condiments",
+            },
+          ],
+        },
+      ] as never);
+
+      const result = await exportMeals("fam-1");
+
+      expect(prismaMock.meal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { familyId: "fam-1", placeholderKind: null },
+          orderBy: { name: "asc" },
+        }),
+      );
+      expect(result).toEqual([
+        {
+          name: "Tacos",
+          description: "Yum",
+          difficulty: "EASY",
+          ingredients: [
+            {
+              name: "salsa",
+              quantity: "1",
+              unit: "cup",
+              category: "condiments",
+            },
+          ],
+        },
+      ]);
     });
   });
 });

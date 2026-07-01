@@ -225,6 +225,7 @@ export async function importMeals(
   meals: {
     name: string;
     description?: string;
+    difficulty?: Difficulty | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -269,6 +270,7 @@ export async function importMeals(
             where: { id: existing.id },
             data: {
               description: data.description,
+              difficulty: data.difficulty,
               ingredients: data.ingredients?.length
                 ? { create: data.ingredients }
                 : undefined,
@@ -282,6 +284,7 @@ export async function importMeals(
           data: {
             name: data.name,
             description: data.description,
+            difficulty: data.difficulty,
             familyId,
             ingredients: data.ingredients?.length
               ? { create: data.ingredients }
@@ -299,6 +302,31 @@ export async function importMeals(
   }
 
   return result;
+}
+
+/**
+ * Return every real (non-placeholder) meal for a family with its ingredients,
+ * ordered by name — the source data for a portable CSV export. Placeholder
+ * meals (Free Day, Leftovers, …) are excluded: they are reserved rows the
+ * import flow rejects, so they must never appear in an exported file.
+ */
+export async function exportMeals(familyId: string) {
+  const meals = await prisma.meal.findMany({
+    where: { familyId, placeholderKind: null },
+    include: {
+      ingredients: {
+        select: { name: true, quantity: true, unit: true, category: true },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return meals.map((meal) => ({
+    name: meal.name,
+    description: meal.description,
+    difficulty: meal.difficulty,
+    ingredients: meal.ingredients,
+  }));
 }
 
 export async function ensurePlaceholderMeals(familyId: string) {

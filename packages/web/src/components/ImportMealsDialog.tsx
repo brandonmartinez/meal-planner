@@ -9,16 +9,16 @@ interface Props {
     onImported: () => void;
 }
 
-const TEMPLATE_CSV = `meal,description,ingredient,quantity,unit,category
+const TEMPLATE_CSV = `meal,description,difficulty,ingredient,quantity,unit,category
 `;
 
-const SAMPLE_CSV = `meal,description,ingredient,quantity,unit,category
-Spaghetti Bolognese,Classic Italian pasta,spaghetti,1,lb,pantry
-Spaghetti Bolognese,,ground beef,1,lb,meat
-Spaghetti Bolognese,,tomato sauce,24,oz,pantry
-Taco Tuesday,Family favorite,ground beef,1,lb,meat
-Taco Tuesday,,taco shells,12,,pantry
-Taco Tuesday,,shredded cheese,8,oz,dairy`;
+const SAMPLE_CSV = `meal,description,difficulty,ingredient,quantity,unit,category
+Spaghetti Bolognese,Classic Italian pasta,MEDIUM,spaghetti,1,lb,pantry
+Spaghetti Bolognese,,,ground beef,1,lb,meat
+Spaghetti Bolognese,,,tomato sauce,24,oz,pantry
+Taco Tuesday,Family favorite,EASY,ground beef,1,lb,meat
+Taco Tuesday,,,taco shells,12,,pantry
+Taco Tuesday,,,shredded cheese,8,oz,dairy`;
 
 function downloadCSV(filename: string, contents: string) {
     const blob = new Blob([contents], { type: 'text/csv;charset=utf-8' });
@@ -110,6 +110,7 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                             Upload or paste a CSV with these columns (header row required):{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">meal</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">description</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">difficulty</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">ingredient</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">quantity</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">unit</code>,{' '}
@@ -117,7 +118,11 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                         </p>
                         <p className="mb-2">
                             Use one row per ingredient. Repeat the meal name to add multiple ingredients to the
-                            same meal. Only <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">meal</code> is required.
+                            same meal. Only <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">meal</code> is required.{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">difficulty</code> is optional and must be{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">EASY</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">MEDIUM</code>, or{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">HARD</code>.
                         </p>
                         <button
                             type="button"
@@ -217,7 +222,14 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                             <ul className="divide-y divide-gray-200 dark:divide-gray-700 max-h-48 overflow-y-auto text-sm">
                                 {preview.map((m, i) => (
                                     <li key={i} className="px-3 py-2">
-                                        <div className="font-medium">{m.name}</div>
+                                        <div className="font-medium">
+                                            {m.name}
+                                            {m.difficulty && (
+                                                <span className="ml-2 text-xs uppercase tracking-wide bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded">
+                                                    {m.difficulty}
+                                                </span>
+                                            )}
+                                        </div>
                                         {m.description && <div className="text-gray-600 dark:text-gray-400 text-xs">{m.description}</div>}
                                         {m.ingredients && m.ingredients.length > 0 && (
                                             <div className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">

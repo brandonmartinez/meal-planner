@@ -18,7 +18,7 @@
  */
 
 import type { Meal } from "./index.js";
-import type { AgentScope } from "../constants/index.js";
+import type { AgentScope, Difficulty } from "../constants/index.js";
 
 /**
  * The actor type recorded when a suggestion is approved. A family member
@@ -141,6 +141,27 @@ export interface ImportMealsResultDTO {
   updated: number;
   skipped: number;
   errors: { name: string; error: string }[];
+}
+
+/** A single meal in the CSV-export payload — a real (non-placeholder) meal with
+ *  its ingredients. Nullable Prisma columns serialize as `T | null`. Column
+ *  order for the CSV is owned by the web `mealsToCSV` serializer so the file
+ *  round-trips through the import parser. */
+export interface ExportMealDTO {
+  name: string;
+  description: string | null;
+  difficulty: Difficulty | null;
+  ingredients: {
+    name: string;
+    quantity: string | null;
+    unit: string | null;
+    category: string | null;
+  }[];
+}
+
+/** The response from `GET /families/:id/meals/export`. */
+export interface ExportMealsResponseDTO {
+  meals: ExportMealDTO[];
 }
 
 /* -------------------------------------------------------------------------- */
