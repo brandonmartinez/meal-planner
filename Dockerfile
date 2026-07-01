@@ -15,6 +15,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/api/package.json ./packages/api/
 COPY packages/web/package.json ./packages/web/
+COPY packages/mcp/package.json ./packages/mcp/
 # Strict, reproducible install: fail on a stale/missing lockfile (no unlocked fallback).
 # BuildKit cache mount keeps the pnpm content-addressable store warm across builds
 # without affecting what gets installed (the lockfile remains the source of truth).
