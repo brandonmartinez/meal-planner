@@ -15,6 +15,8 @@ applyTo: "packages/api/prisma/**"
 3. Update affected services in [src/services](../../packages/api/src/services) and any shared types in [packages/shared](../../packages/shared).
 4. Run `pnpm -r run test` and `pnpm -r run build`.
 
+> **Data-model → CSV rule.** Any time a major data-model change adds a user-facing, persisted field to a meal (or another CSV-managed entity), it MUST also be surfaced as a **CSV import** column *and* included in the **CSV export**. Keep the round trip intact: the export column order lives in `mealsToCSV`/`MEALS_CSV_HEADER` ([packages/web/src/utils/csv.ts](../../packages/web/src/utils/csv.ts)) and must match what `parseMealsCSV` accepts, the import Zod schema in [meals route](../../packages/api/src/routes/meals.ts), and the `importMeals`/`exportMeals` services. Update the Import dialog docs + templates too. (Origin: `Meal.difficulty` shipped without CSV support — issue #72.)
+
 For production / CI, `pnpm db:migrate` runs `prisma migrate deploy` (no schema diffing, applies pending migrations only).
 
 ## Client Regeneration

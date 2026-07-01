@@ -52,6 +52,7 @@ const importMealsSchema = z.object({
       z.object({
         name: z.string().min(1),
         description: z.string().optional(),
+        difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
         ingredients: z
           .array(
             z.object({
@@ -129,6 +130,22 @@ mealsRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to import meals" });
+    }
+  },
+);
+
+// Export all (non-placeholder) meals with ingredients for CSV download
+mealsRouter.get(
+  "/:familyId/meals/export",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const meals = await mealService.exportMeals(familyId);
+      res.json({ meals });
+    } catch {
+      res.status(500).json({ error: "Failed to export meals" });
     }
   },
 );

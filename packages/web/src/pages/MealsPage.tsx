@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { listMeals, deleteMeal } from '../api/meals';
+import { listMeals, deleteMeal, exportMeals } from '../api/meals';
+import { mealsToCSV } from '../utils/csv';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import ImportMealsDialog from '../components/ImportMealsDialog';
@@ -19,6 +20,7 @@ export default function MealsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
   const isParent = currentMembership?.role === 'PARENT';
@@ -47,6 +49,33 @@ export default function MealsPage() {
     }
   };
 
+  const handleExport = async () => {
+    if (!familyId) return;
+    setExporting(true);
+    setError('');
+    try {
+      const { meals: exported } = await exportMeals(familyId);
+      if (exported.length === 0) {
+        setError('No meals to export yet.');
+        return;
+      }
+      const csv = mealsToCSV(exported);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'meals.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export meals');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   if (loading) {
@@ -58,6 +87,13 @@ export default function MealsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Meal Library</h1>
         <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
           <button
             onClick={() => setShowImport(true)}
             className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600"

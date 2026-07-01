@@ -2,6 +2,12 @@
 
 ## Active Decisions
 
+### 2026-06-30T22-30-00: Data-model changes must ship CSV import + export support (#72)
+**By:** coordinator
+**What:** Established a standing rule: any major data-model change that adds a user-facing persisted field to meals (or another CSV-managed entity) must also be added to CSV import AND CSV export, keeping the round trip intact.
+**References:** #72, #8
+**Why:** `Meal.difficulty` (#8) shipped as a full vertical but was never wired into CSV import, so bulk-imported meals silently lost difficulty. Documented in [prisma.instructions.md](../.github/instructions/prisma.instructions.md). Same PR also adds full "export all meals as CSV" for data portability. Export column order is owned by `mealsToCSV`/`MEALS_CSV_HEADER` in `packages/web/src/utils/csv.ts` and must match the import parser + Zod schema.
+
 ### 2026-06-30T19-26-22: Filed 22 GitHub issues from a 6-agent review + 2 requested features (#5-#26)
 **By:** coordinator
 **What:** Filed 22 GitHub issues from a 6-agent review + 2 requested features (#5-#26)

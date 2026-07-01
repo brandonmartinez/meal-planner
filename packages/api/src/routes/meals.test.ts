@@ -8,6 +8,7 @@ vi.mock("../services/meals.js", () => ({
   listMeals: vi.fn(),
   createMeal: vi.fn(),
   importMeals: vi.fn(),
+  exportMeals: vi.fn(),
   getMealById: vi.fn(),
   updateMeal: vi.fn(),
   deleteMeal: vi.fn(),
@@ -160,6 +161,41 @@ describe("POST /:familyId/meals/import (bulk)", () => {
     expect(mealService.importMeals).not.toHaveBeenCalled();
   });
 
+  it("forwards a valid difficulty through to the service", async () => {
+    vi.mocked(mealService.importMeals).mockResolvedValue({
+      created: 1,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { meals: [{ name: "Tacos", difficulty: "EASY" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.importMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      [{ name: "Tacos", difficulty: "EASY" }],
+      { mode: undefined },
+    );
+  });
+
+  it("400s on an invalid difficulty value in a meal row", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { meals: [{ name: "Tacos", difficulty: "IMPOSSIBLE" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.importMeals).not.toHaveBeenCalled();
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.importMeals).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
@@ -172,6 +208,29 @@ describe("POST /:familyId/meals/import (bulk)", () => {
       buildNext(),
     );
     expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("GET /:familyId/meals/export", () => {
+  const handler = getRouteHandler(mealsRouter, "get", "/:familyId/meals/export");
+
+  it("200s with the exported meals wrapped in { meals }", async () => {
+    vi.mocked(mealService.exportMeals).mockResolvedValue([
+      { name: "Tacos", description: null, difficulty: "EASY", ingredients: [] },
+    ] as never);
+    const res = buildFullRes();
+    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    expect(mealService.exportMeals).toHaveBeenCalledWith(FAMILY_ID);
+    expect((res.body as { meals: unknown[] }).meals).toHaveLength(1);
+  });
+
+  it("500s when the service throws", async () => {
+    vi.mocked(mealService.exportMeals).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "Failed to export meals" });
   });
 });
 
