@@ -7,26 +7,59 @@ meal-planner HTTP API** — it never touches the database or imports any
 rate-limiting continue to live in the API.
 
 Default transport: **stdio** (for local agents such as Claude Desktop, editors,
-and CLI hosts).
+and CLI hosts). A second, **hosted Streamable HTTP** transport (for
+multi-tenant/remote deployments) is also provided — see
+[Transports](#transports).
 
-## How it works
+## Transports
+
+This package ships **two** transports that share the exact same
+transport-agnostic tool layer (`createToolHandlers` / `registerTools`):
+
+### stdio (local, single-tenant)
 
 ```
 AI agent  ──stdio──▶  @meal-planner/mcp  ──HTTP (x-agent-key)──▶  meal-planner API
 ```
 
-- The agent talks to this server over stdio.
-- This server calls the API's **agent surface** (`/api/agent/*`) over HTTP,
-  authenticating with a **scoped agent credential** (issue #6) sent in the
-  `x-agent-key` header.
-- The API validates the credential, enforces per-operation **scopes**, checks
-  that the credential belongs to the target family, and writes an **audit**
-  entry for every read and write.
+The agent key **and** family are supplied at boot via environment variables
+(`MEAL_PLANNER_AGENT_KEY`, `MEAL_PLANNER_FAMILY_ID`). One process serves one
+family. Entry point: `dist/index.js` (`meal-planner-mcp` bin).
 
-The MCP server never sees a user JWT or a parent session, and it never imports
-Prisma or API services.
+### Hosted Streamable HTTP (remote, multi-tenant)
+
+```
+AI agent ──HTTP POST /mcp (x-agent-key per request)──▶ @meal-planner/mcp (hosted)
+                                                          │
+                                          per request:    ▼
+                                    GET /api/agent/me  ──▶ meal-planner API
+                                    (resolve family + scopes from the key)
+```
+
+The hosted server holds **no** ambient credential and **no** family id. Every
+request must carry its own scoped key in the `x-agent-key` header. For each
+request the server:
+
+1. Reads `x-agent-key` (missing → `401`).
+2. Calls `GET /api/agent/me` to resolve `{ familyId, scopes, name }` from that
+   key (unknown/revoked/expired → `401`; the key is never echoed).
+3. Binds a fresh, per-request MCP server + tool handlers to the **resolved**
+   family and serves the JSON-RPC request through a stateless
+   `StreamableHTTPServerTransport` (`sessionIdGenerator: undefined`,
+   `enableJsonResponse: true`), then tears it down.
+
+A request carrying family A's key can only ever operate on family A — the family
+is derived from the key, never from the URL or client input. There is no shared
+session state between requests; every call re-authenticates. Entry point:
+`dist/http.js` (`meal-planner-mcp-http` bin), default port `3100`, MCP endpoint
+`POST /mcp`, plus an unauthenticated `GET /health` liveness probe.
 
 ## Tools
+
+Read/schedule tools take the family in the path (stdio binds it from
+`MEAL_PLANNER_FAMILY_ID`; hosted binds it from the resolved key). The
+**family-from-key** write/grocery tools do NOT put the family in the path — the
+API resolves it from the presented key.
 
 | Tool | API call | Required scope |
 | --- | --- | --- |
@@ -36,11 +69,34 @@ Prisma or API services.
 | `get_previous_week_plans` | `GET /api/agent/:familyId/weeks` | `meal_plan:read` |
 | `schedule_meal` | `POST /api/agent/:familyId/schedule` | `meal_plan:schedule` |
 | `approve_suggestion` | `PATCH /api/agent/:familyId/suggestions/:id/approve` | `meal_plan:approve` |
+| `create_meal` | `POST /api/agent/meals` | `meal:write` |
+| `update_meal` | `PATCH /api/agent/meals/:mealId` | `meal:write` |
+| `get_current_grocery_list` | `GET /api/agent/grocery/current` | `meal_plan:read` |
 
 `schedule_meal` creates an **unapproved** suggestion. Approving it is a
 separate, privileged action (`approve_suggestion`) that requires the
 `meal_plan:approve` scope. An agent only ever holds the scopes a parent
 explicitly granted when the credential was created.
+
+### Meal write tools (`meal:write`)
+
+`create_meal` and `update_meal` accept a **structured** recipe — `name`,
+optional `description`, optional `difficulty` (`EASY`|`MEDIUM`|`HARD`), and an
+`ingredients[]` list (`name`, optional `quantity`, `unit`, and `category` from
+the shared `INGREDIENT_CATEGORIES`). They are designed for a model that has
+**already parsed** a recipe from a CSV, scan, or photo: the LLM does the
+parsing/OCR, and these tools expose only the validated structured write. There
+is **no** OCR/vision in the API or MCP server. `update_meal` cannot edit a
+placeholder meal (the API returns `403`), and there is intentionally **no**
+delete tool.
+
+### `get_current_grocery_list` (`meal_plan:read`)
+
+Returns the family's **current-week** grocery list, with "this week" resolved
+Monday-anchored in the family's timezone (identical to `get_current_week_plan`).
+If no list exists yet for the current week it is **generated on demand** from the
+week's scheduled meals and returned, so the tool is always useful rather than
+returning an empty/absent result.
 
 All tool inputs are validated with [Zod](https://zod.dev) before a request is
 made; the API performs the authoritative validation and authorization
@@ -51,12 +107,26 @@ server-side.
 All configuration comes from environment variables. **Secrets are never
 hardcoded and never logged.**
 
+### stdio (single-tenant)
+
 | Variable | Required | Description |
 | --- | --- | --- |
 | `MEAL_PLANNER_API_BASE_URL` | yes | Base URL of the API, e.g. `http://localhost:3001`. |
 | `MEAL_PLANNER_AGENT_KEY` | yes | The raw scoped agent credential (shown once at creation). Sent as `x-agent-key`. **Secret.** |
 | `MEAL_PLANNER_FAMILY_ID` | yes | The family the credential is scoped to. All tools operate within this family. |
 | `MEAL_PLANNER_REQUEST_TIMEOUT_MS` | no | Per-request timeout in ms (default `15000`). |
+
+### Hosted HTTP (multi-tenant)
+
+The hosted server reads **neither** an agent key **nor** a family id at boot —
+both arrive per request in the `x-agent-key` header and the family is resolved
+from the key.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `MEAL_PLANNER_API_BASE_URL` | yes | Base URL of the API, e.g. `http://localhost:3001`. |
+| `MEAL_PLANNER_MCP_PORT` | no | TCP port to listen on (default `3100`). |
+| `MEAL_PLANNER_REQUEST_TIMEOUT_MS` | no | Per-request timeout in ms for API calls (default `15000`). |
 
 Create an agent credential (with the scopes you want to grant) from the API's
 parent-facing endpoints or the web Family Settings UI (issue #6). The raw key is
@@ -83,6 +153,48 @@ MEAL_PLANNER_AGENT_KEY=your-agent-key \
 MEAL_PLANNER_FAMILY_ID=your-family-id \
 pnpm --filter @meal-planner/mcp run dev
 ```
+
+### Hosted HTTP server
+
+Start the multi-tenant hosted server (no key/family at boot):
+
+```bash
+pnpm --filter @meal-planner/mcp run build
+
+MEAL_PLANNER_API_BASE_URL=http://localhost:3001 \
+MEAL_PLANNER_MCP_PORT=3100 \
+node packages/mcp/dist/http.js
+# or, from source:  pnpm --filter @meal-planner/mcp run dev:http
+```
+
+Clients then POST JSON-RPC to `http://<host>:3100/mcp`, passing their scoped key
+in the `x-agent-key` header on **every** request (and an
+`Accept: application/json, text/event-stream` header, per the Streamable HTTP
+spec). No family id is ever sent by the client — the server resolves it from the
+key. Example round-trip with `curl`:
+
+```bash
+KEY=your-agent-key
+ACCEPT="application/json, text/event-stream"
+
+# initialize (per-request auth: valid key -> 200, missing/invalid -> 401)
+curl -s -H "x-agent-key: $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"c","version":"0"}}}' \
+  http://localhost:3100/mcp
+
+# call a family-from-key tool — the family is derived from the key
+curl -s -H "x-agent-key: $KEY" -H "content-type: application/json" -H "accept: $ACCEPT" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_current_grocery_list","arguments":{}}}' \
+  http://localhost:3100/mcp
+
+# liveness probe (no auth)
+curl -s http://localhost:3100/health
+```
+
+The transport runs **stateless** (a fresh MCP server + transport per request),
+so each POST is self-contained and independently authenticated; an out-of-scope
+tool call comes back as a tool error (`isError: true`,
+`API error 403: Insufficient scope`) rather than a protocol error.
 
 ### Example MCP host config
 
@@ -230,8 +342,10 @@ The audit entry only ever stores the credential **id** — never the raw key.
 | Script | Description |
 | --- | --- |
 | `build` | Type-check and emit to `dist/`. |
-| `dev` | Run from source with `tsx watch`. |
-| `start` | Run the built server (`dist/index.js`). |
+| `dev` | Run the stdio server from source with `tsx watch`. |
+| `dev:http` | Run the hosted HTTP server from source with `tsx watch`. |
+| `start` | Run the built stdio server (`dist/index.js`). |
+| `start:http` | Run the built hosted HTTP server (`dist/http.js`). |
 | `lint` | ESLint over `src/`. |
 | `test` | Run the Vitest suite (API mocked; no real network, no Prisma). |
 
