@@ -1,0 +1,13 @@
+# Extra published ports for the no-VS-Code dev flow (`./dev.sh`).
+#
+# The devcontainer's `forwardPorts` in devcontainer.json only apply when VS Code
+# or the devcontainer CLI manages the container. When we bring the stack up with
+# plain `docker compose` (as dev.sh does), nothing forwards the app ports — so we
+# publish them here. Layered on top of .devcontainer/docker-compose.yml; `ports`
+# entries are additive, so this keeps the existing SSH (2222) mapping and adds
+# the API and web dev-server ports.
+services:
+  app:
+    ports:
+      - "127.0.0.1:3001:3001" # API (Express)
+      - "127.0.0.1:5173:5173" # Web (Vite dev server)

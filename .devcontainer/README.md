@@ -12,6 +12,33 @@ There are exactly two approved, containerized run paths:
 
 ## Quick start
 
+### Fastest path: `./dev.sh` (no VS Code)
+
+From a plain terminal at the repo root, with Docker running:
+
+```sh
+./dev.sh            # up the stack, install, migrate, generate, run API + web
+./dev.sh --seed     # same, plus seed the demo dataset first
+./dev.sh --fresh    # force a clean `pnpm install`
+./dev.sh --no-apps  # bootstrap only (no dev servers) — CI-style
+./dev.sh --down     # stop the whole stack
+```
+
+It brings up the devcontainer (app + Postgres) with plain Docker Compose,
+ensures deps/Prisma client/migrations are in place, then runs the dev servers
+**inside the container** and streams their logs:
+
+- Web app: <http://localhost:5173>
+- API: <http://localhost:3001>
+
+Press Ctrl-C to stop the dev servers (containers stay up for a fast restart);
+`./dev.sh --down` stops everything. The extra host port publishing that makes
+this work without VS Code lives in
+`.devcontainer/docker-compose.dev-ports.yml` (layered on automatically by
+`dev.sh`).
+
+### VS Code
+
 1. **Open in the container.** In VS Code with the Dev Containers extension,
    run **"Dev Containers: Reopen in Container"**. Or from the CLI:
 
