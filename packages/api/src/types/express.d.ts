@@ -6,7 +6,7 @@ declare global {
       user?: PrismaUser & { memberships?: (FamilyMember & { family: { id: string; name: string } })[] };
       familyId?: string;
       /** Populated by `authenticateAgent` for MCP agent-credential routes. */
-      agent?: { id: string; familyId: string; scopes: string[]; createdBy: string };
+      agent?: { id: string; familyId: string; scopes: string[]; name: string; createdBy: string };
     }
   }
 }

@@ -31,10 +31,11 @@ function sha256(s: string) {
 
 describe("agentCredential service", () => {
   describe("scope helpers", () => {
-    it("recognizes only the three known scopes", () => {
+    it("recognizes only the four known scopes", () => {
       expect(isAgentScope("meal_plan:read")).toBe(true);
       expect(isAgentScope("meal_plan:schedule")).toBe(true);
       expect(isAgentScope("meal_plan:approve")).toBe(true);
+      expect(isAgentScope("meal:write")).toBe(true);
       expect(isAgentScope("members:write")).toBe(false);
       expect(isAgentScope("meal_plan:delete")).toBe(false);
     });
@@ -42,6 +43,8 @@ describe("agentCredential service", () => {
     it("hasScope checks membership", () => {
       expect(hasScope(["meal_plan:read"], AGENT_SCOPES.READ)).toBe(true);
       expect(hasScope(["meal_plan:read"], AGENT_SCOPES.APPROVE)).toBe(false);
+      expect(hasScope(["meal:write"], AGENT_SCOPES.WRITE)).toBe(true);
+      expect(hasScope(["meal_plan:read"], AGENT_SCOPES.WRITE)).toBe(false);
     });
   });
 
@@ -238,6 +241,7 @@ describe("agentCredential service", () => {
     it("hashes the presented key, returns scope/family, and bumps lastUsed", async () => {
       prismaMock.agentCredential.findUnique.mockResolvedValue({
         id: "cred-1",
+        name: "planner-bot",
         familyId: "fam-1",
         scopes: ["meal_plan:read", "meal_plan:approve"],
         createdBy: "parent-1",
@@ -254,6 +258,7 @@ describe("agentCredential service", () => {
           id: "cred-1",
           familyId: "fam-1",
           scopes: ["meal_plan:read", "meal_plan:approve"],
+          name: "planner-bot",
           createdBy: "parent-1",
         },
       });

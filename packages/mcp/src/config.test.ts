@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig } from "./config.js";
+import { loadConfig, loadHttpConfig } from "./config.js";
 
 const BASE_ENV = {
   MEAL_PLANNER_API_BASE_URL: "http://localhost:3001",
@@ -56,5 +56,58 @@ describe("loadConfig", () => {
       message = err instanceof Error ? err.message : String(err);
     }
     expect(message).not.toContain("super-secret-agent-key");
+  });
+});
+
+describe("loadHttpConfig (hosted, multi-tenant)", () => {
+  it("requires NEITHER an agent key NOR a family id at boot", () => {
+    const config = loadHttpConfig({
+      MEAL_PLANNER_API_BASE_URL: "http://localhost:3001",
+    } as NodeJS.ProcessEnv);
+
+    expect(config).toEqual({
+      apiBaseUrl: "http://localhost:3001",
+      port: 3100,
+      requestTimeoutMs: 15_000,
+    });
+  });
+
+  it("still parses cleanly even if a key/family are present (they are ignored)", () => {
+    const config = loadHttpConfig({
+      MEAL_PLANNER_API_BASE_URL: "http://localhost:3001",
+      MEAL_PLANNER_AGENT_KEY: "should-be-ignored",
+      MEAL_PLANNER_FAMILY_ID: "fam-1",
+    } as NodeJS.ProcessEnv);
+
+    expect(config).not.toHaveProperty("agentKey");
+    expect(config).not.toHaveProperty("familyId");
+  });
+
+  it("strips a trailing slash from the base URL", () => {
+    const config = loadHttpConfig({
+      MEAL_PLANNER_API_BASE_URL: "https://api.example.com/",
+    } as NodeJS.ProcessEnv);
+    expect(config.apiBaseUrl).toBe("https://api.example.com");
+  });
+
+  it("honors a custom port and request timeout", () => {
+    const config = loadHttpConfig({
+      MEAL_PLANNER_API_BASE_URL: "http://localhost:3001",
+      MEAL_PLANNER_MCP_PORT: "8080",
+      MEAL_PLANNER_REQUEST_TIMEOUT_MS: "5000",
+    } as NodeJS.ProcessEnv);
+    expect(config.port).toBe(8080);
+    expect(config.requestTimeoutMs).toBe(5000);
+  });
+
+  it("throws when the base URL is missing or invalid", () => {
+    expect(() => loadHttpConfig({} as NodeJS.ProcessEnv)).toThrow(
+      /MEAL_PLANNER_API_BASE_URL/,
+    );
+    expect(() =>
+      loadHttpConfig({
+        MEAL_PLANNER_API_BASE_URL: "not-a-url",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/MEAL_PLANNER_API_BASE_URL/);
   });
 });

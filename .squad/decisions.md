@@ -37,6 +37,18 @@ Filed + assigned to next sprint (`priority:p2`):
 - #78 Add Saul to the team (this entry) [squad:rusty].
 - #76 Root `dev.sh` launcher: bring up the devcontainer + apps from a plain terminal (no VS Code) [squad:basher].
 
+### 2026-07-01: Hosted MCP transport + per-request family-from-key auth (#81)
+
+Requested by Brandon Martinez. Delivered issue #81: converted the MCP server from single-tenant stdio to a **hosted, multi-tenant** server where the agent credential is presented **per request** (header `x-agent-key`) and the family is derived from the key — never configured at boot, never passed into a tool.
+
+**Transport (the key fork):** MCP SDK **Streamable HTTP** in **stateless mode** (`sessionIdGenerator: undefined`, `enableJsonResponse: true`). Each POST `/mcp`: read key -> `GET /api/agent/me` resolves `{familyId,scopes,name}` -> build a per-request `MealPlannerApiClient` + `McpServer` with handlers bound to that `familyId` -> fresh transport -> teardown on response close. No new deps (Node `http`). The **stdio** entry stays as an optional local/#77 mode; the tool/handler layer (`createToolHandlers(client, familyId)`) is transport-agnostic, so no tool logic differs between modes.
+
+**Requirements shipped:** (1) `GET /api/agent/me` family-from-key auth (audited `identify`); (2) new `meal:write` scope in both scope definitions (auto-surfaces as a Family Settings checkbox) + `POST /api/agent/meals` & `PATCH /api/agent/meals/:mealId` + MCP `create_meal`/`update_meal`; (3) `GET /api/agent/grocery/current` (generates on demand when absent) + MCP `get_current_grocery_list`. No DB migration; no meal DELETE; no OCR/vision (the calling LLM parses recipes).
+
+**Security invariants (Frank):** every call re-authenticates from the presented key; cross-family access impossible (family resolved from key; legacy `/:familyId/*` routes keep their cross-check + audit); invalid/revoked/expired keys -> uniform 401; scope denials -> 403 + audited; the raw key is never logged, serialized, or placed in an error. Verified live: with/without `meal:write` -> 201/200 vs 403 with `missing_scope` audit rows.
+
+Full gate green in-container: build clean, lint 0 errors (7 pre-existing warnings), **711 tests** (shared 4 + mcp 51 + api 425 + web 231). Shipped as 4 atomic commits on `hosted-mcp-write-tools`. Residual risk: stateless mode builds a fresh server per request (no server-initiated notifications) — by design for horizontal scalability.
+
 ## Governance
 
 - All meaningful changes require team consensus

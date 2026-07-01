@@ -7,7 +7,11 @@ export const SERVER_VERSION = "0.1.0";
 
 /**
  * Builds the MCP server and registers the meal-planning tool surface. The
- * transport (stdio) is attached by the caller so this stays unit-testable.
+ * transport is attached by the caller — stdio (`index.ts`) for a local,
+ * single-tenant process, or a per-request Streamable HTTP transport
+ * (`httpServer.ts`) for the hosted, multi-tenant server — so this stays
+ * unit-testable and transport-agnostic. In hosted mode a fresh server is built
+ * per request with `familyId` resolved from the caller's key.
  */
 export function createServer(
   client: MealPlannerApiClient,

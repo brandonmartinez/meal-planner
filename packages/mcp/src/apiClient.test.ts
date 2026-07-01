@@ -130,6 +130,71 @@ describe("MealPlannerApiClient", () => {
     expect(url.pathname).toBe("/api/agent/fam-1/suggestions/a%2Fb%3Fx%3D1/approve");
   });
 
+  it("getAgentMe GETs /api/agent/me (no family in the path) and returns identity", async () => {
+    const identity = {
+      familyId: "fam-1",
+      scopes: ["meal:write"],
+      name: "planner-bot",
+    };
+    const { client, fetchFn } = makeClient(jsonResponse(identity));
+
+    const result = await client.getAgentMe();
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/me");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-agent-key"]).toBe(AGENT_KEY);
+    expect(result).toEqual(identity);
+  });
+
+  it("createMeal POSTs the structured meal to /api/agent/meals (family-from-key)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-new" }, 201));
+    const input = {
+      name: "Tacos",
+      difficulty: "EASY" as const,
+      ingredients: [{ name: "tortillas", category: "bakery" }],
+    };
+
+    await client.createMeal(input);
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("POST");
+    expect(url.pathname).toBe("/api/agent/meals");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual(input);
+  });
+
+  it("updateMeal PATCHes /api/agent/meals/:mealId with the patch body", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
+
+    await client.updateMeal("meal-1", { name: "Better Tacos" });
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("PATCH");
+    expect(url.pathname).toBe("/api/agent/meals/meal-1");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "Better Tacos" });
+  });
+
+  it("updateMeal encodes the mealId path segment", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "x" }));
+    await client.updateMeal("a/b", { name: "X" });
+    const { url } = lastCall(fetchFn);
+    expect(url.pathname).toBe("/api/agent/meals/a%2Fb");
+  });
+
+  it("getCurrentGroceryList GETs /api/agent/grocery/current (family-from-key)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "gl-1" }));
+
+    const result = await client.getCurrentGroceryList();
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/grocery/current");
+    expect(result).toEqual({ id: "gl-1" });
+  });
+
   it("maps a non-2xx response to an ApiError carrying status + message", async () => {
     const { client } = makeClient(
       jsonResponse({ error: "Insufficient scope" }, 403),

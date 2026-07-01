@@ -32,15 +32,23 @@ vi.mock("../services/weekPlan.js", () => {
     getCurrentWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMealByDate: vi.fn(),
+    getCurrentWeekStart: vi.fn(),
   };
 });
 vi.mock("../services/meals.js", () => ({
   listMeals: vi.fn(),
+  createMeal: vi.fn(),
+  updateMeal: vi.fn(),
+}));
+vi.mock("../services/grocery.js", () => ({
+  getGroceryListByWeek: vi.fn(),
+  generateGroceryList: vi.fn(),
 }));
 
 const { agentRouter } = await import("./agent.js");
 const weekPlanService = await import("../services/weekPlan.js");
 const mealService = await import("../services/meals.js");
+const groceryService = await import("../services/grocery.js");
 const { SuggestionError } = weekPlanService;
 
 type Handler = (req: any, res: any, next: (err?: unknown) => void) => unknown;
@@ -90,6 +98,7 @@ function agentReq(
 function mockCredential(scopes: string[]) {
   prismaMock.agentCredential.findUnique.mockResolvedValue({
     id: "cred-1",
+    name: "planner-bot",
     familyId: "fam-1",
     scopes,
     createdBy: "parent-1",
@@ -291,5 +300,252 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
 
     expect(res.statusCode).toBe(401);
     expect(mealService.listMeals).not.toHaveBeenCalled();
+  });
+});
+
+describe("agent family-from-key routes (/me, /meals, /grocery/current)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("GET /me: a valid key resolves family + scopes + name (audited), no family in path", async () => {
+    mockCredential(["meal_plan:read", "meal:write"]);
+
+    const handlers = findStack("/me");
+    const req = agentReq({}); // no :familyId param
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      familyId: "fam-1",
+      scopes: ["meal_plan:read", "meal:write"],
+      name: "planner-bot",
+    });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "identify",
+        outcome: "allowed",
+        targetType: "agent",
+        targetIds: ["cred-1"],
+      }),
+    });
+  });
+
+  it("GET /me: an unknown key is rejected with 401", async () => {
+    prismaMock.agentCredential.findUnique.mockResolvedValue(null as never);
+    prismaMock.agentAuditLog.create.mockResolvedValue({} as never);
+
+    const handlers = findStack("/me");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("POST /meals: create with meal:write succeeds and audits the new meal id", async () => {
+    mockCredential(["meal:write"]);
+    vi.mocked(mealService.createMeal).mockResolvedValue({
+      id: "meal-new",
+      name: "Tacos",
+      ingredients: [],
+    } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      {
+        body: {
+          name: "Tacos",
+          difficulty: "EASY",
+          ingredients: [{ name: "tortillas", category: "bakery" }],
+        },
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    expect(mealService.createMeal).toHaveBeenCalledWith("fam-1", {
+      name: "Tacos",
+      difficulty: "EASY",
+      ingredients: [{ name: "tortillas", category: "bakery" }],
+    });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "allowed",
+        targetType: "meal",
+        targetIds: ["meal-new"],
+      }),
+    });
+  });
+
+  it("POST /meals: DENIED without meal:write (403 + audited, service untouched)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { body: { name: "Tacos" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
+  });
+
+  it("POST /meals: invalid body is a 400 (bad difficulty)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { body: { name: "X", difficulty: "SPICY" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
+  it("PATCH /meals/:mealId: edit with meal:write succeeds and audits", async () => {
+    mockCredential(["meal:write"]);
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: "meal-1",
+      name: "Better Tacos",
+    } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq({ mealId: "meal-1" }, { body: { name: "Better Tacos" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith("meal-1", "fam-1", {
+      name: "Better Tacos",
+    });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "allowed",
+        targetIds: ["meal-1"],
+      }),
+    });
+  });
+
+  it("PATCH /meals/:mealId: a placeholder meal cannot be edited (403 + audited)", async () => {
+    mockCredential(["meal:write"]);
+    vi.mocked(mealService.updateMeal).mockRejectedValue(
+      new Error("Cannot modify placeholder meal"),
+    );
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq({ mealId: "ph-1" }, { body: { name: "Nope" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "denied",
+        reason: "placeholder",
+        targetIds: ["ph-1"],
+      }),
+    });
+  });
+
+  it("PATCH /meals/:mealId: a meal from another family is 404 (no existence leak)", async () => {
+    mockCredential(["meal:write"]);
+    vi.mocked(mealService.updateMeal).mockRejectedValue(
+      new Error("Meal not found"),
+    );
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq({ mealId: "other" }, { body: { name: "X" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "denied",
+        reason: "not_found",
+      }),
+    });
+  });
+
+  it("GET /grocery/current: returns an existing list and audits the read", async () => {
+    mockCredential(["meal_plan:read"]);
+    vi.mocked(weekPlanService.getCurrentWeekStart).mockResolvedValue({
+      tz: "UTC",
+      monday: new Date("2026-06-29T00:00:00Z"),
+    } as never);
+    vi.mocked(groceryService.getGroceryListByWeek).mockResolvedValue({
+      id: "gl-1",
+      items: [],
+    } as never);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ id: "gl-1" });
+    expect(groceryService.generateGroceryList).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:read",
+        outcome: "allowed",
+        targetType: "groceryList",
+        targetIds: ["gl-1"],
+      }),
+    });
+  });
+
+  it("GET /grocery/current: generates the list on demand when none exists", async () => {
+    mockCredential(["meal_plan:read"]);
+    vi.mocked(weekPlanService.getCurrentWeekStart).mockResolvedValue({
+      tz: "UTC",
+      monday: new Date("2026-06-29T00:00:00Z"),
+    } as never);
+    vi.mocked(groceryService.getGroceryListByWeek).mockResolvedValue(
+      null as never,
+    );
+    vi.mocked(groceryService.generateGroceryList).mockResolvedValue({
+      id: "gl-gen",
+      items: [],
+    } as never);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(groceryService.generateGroceryList).toHaveBeenCalledWith(
+      "fam-1",
+      new Date("2026-06-29T00:00:00Z"),
+    );
+    expect(res.body).toMatchObject({ id: "gl-gen" });
+  });
+
+  it("GET /grocery/current: DENIED without meal_plan:read (403)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/grocery/current");
+    const req = agentReq({});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(groceryService.getGroceryListByWeek).not.toHaveBeenCalled();
   });
 });

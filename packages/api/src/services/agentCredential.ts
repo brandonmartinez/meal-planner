@@ -8,11 +8,13 @@ import { hashCredential, legacyHashCredential } from "../utils/credentialHash.js
  *  - `meal_plan:read`     — read week plans / suggestions for the family.
  *  - `meal_plan:schedule` — add (schedule) meal suggestions onto day plans.
  *  - `meal_plan:approve`  — approve a suggestion (PARENT-equivalent action).
+ *  - `meal:write`         — create/edit meals in the family's catalog.
  */
 export const AGENT_SCOPES = {
   READ: "meal_plan:read",
   SCHEDULE: "meal_plan:schedule",
   APPROVE: "meal_plan:approve",
+  WRITE: "meal:write",
 } as const;
 
 export type AgentScope = (typeof AGENT_SCOPES)[keyof typeof AGENT_SCOPES];
@@ -176,6 +178,9 @@ export interface AuthenticatedAgent {
   id: string;
   familyId: string;
   scopes: string[];
+  /** Human-facing credential label (never a secret). Surfaced by
+   * `GET /api/agent/me` so a caller can confirm which credential it is using. */
+  name: string;
   /** The parent (User.id) who provisioned this credential. Agent-scheduled
    * suggestions are attributed to this user as `suggestedBy`, while the audit
    * trail records the agent credential as the true actor. */
@@ -245,6 +250,7 @@ export async function authenticateAgentCredential(
       id: record.id,
       familyId: record.familyId,
       scopes: record.scopes,
+      name: record.name,
       createdBy: record.createdBy,
     },
   };
