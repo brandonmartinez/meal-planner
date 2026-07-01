@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   config,
+  parseTrustProxy,
   findMissingProductionVars,
   assertProductionConfig,
   validateConfigForEnvironment,
@@ -156,5 +157,52 @@ describe("config production fail-closed guard", () => {
       expect(typeof config.port).toBe("number");
       expect(config.clientUrl).toBeTruthy();
     });
+  });
+});
+
+describe("parseTrustProxy", () => {
+  it("defaults to a single ingress hop when TRUST_PROXY is unset", () => {
+    expect(parseTrustProxy(undefined)).toBe(1);
+  });
+
+  it("defaults to a single hop for empty/whitespace values", () => {
+    expect(parseTrustProxy("")).toBe(1);
+    expect(parseTrustProxy("   ")).toBe(1);
+  });
+
+  it("parses a bare integer as a finite hop count", () => {
+    expect(parseTrustProxy("1")).toBe(1);
+    expect(parseTrustProxy("2")).toBe(2);
+    expect(parseTrustProxy(" 3 ")).toBe(3);
+  });
+
+  it("never blanket-trusts by default (finite hop count, not `true`)", () => {
+    // The default must be a finite number so X-Forwarded-For cannot be fully
+    // client-controlled and so express-rate-limit does not raise its
+    // permissive-trust error.
+    const value = parseTrustProxy(undefined);
+    expect(typeof value).toBe("number");
+    expect(value).not.toBe(true);
+    expect(Number.isFinite(value as number)).toBe(true);
+  });
+
+  it("supports Express presets and subnet lists verbatim", () => {
+    expect(parseTrustProxy("loopback")).toBe("loopback");
+    expect(parseTrustProxy("10.0.0.0/8, 127.0.0.1")).toBe(
+      "10.0.0.0/8, 127.0.0.1",
+    );
+  });
+
+  it("supports explicit boolean opt-in/opt-out forms", () => {
+    // `true` is accepted for completeness but discouraged; `false` disables
+    // proxy trust entirely (req.ip == socket address).
+    expect(parseTrustProxy("true")).toBe(true);
+    expect(parseTrustProxy("false")).toBe(false);
+  });
+
+  it("resolves config.trustProxy to the safe single-hop default under test", () => {
+    // TRUST_PROXY is unset in the test env, so the live config must use the
+    // finite single-hop default rather than any permissive value.
+    expect(config.trustProxy).toBe(1);
   });
 });

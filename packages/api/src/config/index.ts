@@ -19,8 +19,57 @@ const DEV_DEFAULTS = {
   GOOGLE_CALLBACK_URL: "http://localhost:3001/api/auth/google/callback",
 } as const;
 
+/**
+ * Parse the Express `trust proxy` setting from `TRUST_PROXY`.
+ *
+ * The app runs behind a SINGLE reverse-proxy hop — the Traefik Kubernetes
+ * ingress (see `k8s/ingress.yaml`) terminates TLS and forwards to the pod,
+ * appending the real client address to `X-Forwarded-For`. Express must be told
+ * how many hops to trust so `req.ip` (and therefore the IP-keyed rate
+ * limiters) resolve the real client instead of the proxy's address.
+ *
+ * We deliberately DO NOT default to the blanket `true`: trusting every proxy
+ * makes `X-Forwarded-For` fully client-controlled, letting an attacker spoof
+ * their IP to dodge rate limits. A finite hop count only trusts the
+ * infrastructure directly in front of us, and also avoids express-rate-limit's
+ * permissive-trust validation error (`ERR_ERL_PERMISSIVE_TRUST_PROXY`).
+ *
+ * Supported `TRUST_PROXY` forms (matching what Express accepts):
+ *  - a hop count, e.g. `"1"` (default), `"2"`
+ *  - a preset or subnet list, e.g. `"loopback"`, `"10.0.0.0/8, 127.0.0.1"`
+ *  - `"false"` to disable proxy trust entirely (`req.ip` = socket address)
+ *  - `"true"` is accepted for completeness but STRONGLY discouraged (see above)
+ *
+ * Default when unset: `1` — the single ingress hop.
+ */
+export function parseTrustProxy(
+  raw: string | undefined = process.env.TRUST_PROXY,
+): boolean | number | string {
+  if (raw === undefined || raw.trim() === "") {
+    return 1;
+  }
+  const value = raw.trim();
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  // A bare non-negative integer is a hop count.
+  if (/^\d+$/.test(value)) {
+    return parseInt(value, 10);
+  }
+  // Otherwise treat it as an Express preset ("loopback", "linklocal",
+  // "uniquelocal") or a comma-separated list of trusted IPs/subnets.
+  return value;
+}
+
 export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
+  // How many reverse-proxy hops to trust when resolving the client IP from
+  // `X-Forwarded-For`. Behind the single Traefik ingress hop this is `1`.
+  // See `parseTrustProxy` for the security rationale (never blanket-`true`).
+  trustProxy: parseTrustProxy(),
   clientUrl: process.env.CLIENT_URL || DEV_DEFAULTS.CLIENT_URL,
   databaseUrl: process.env.DATABASE_URL || DEV_DEFAULTS.DATABASE_URL,
   jwt: {
