@@ -363,3 +363,195 @@ force-push.
 **By:** Yen (QA), Coordinator
 **What:** PR #129 added `docs/testing/v0.4.0-test-matrix.md` with 75 per-cell ✅/🟡/❌ status markers and CSV-portable-vs-not callouts. Coordinator selected the committed docs path (Option A) and requested live per-cell status markers plus CSV portability callouts.
 **Why:** The v0.4.0 recipe-metadata wave needs a visible test matrix that distinguishes current coverage from planned/blocked cells and makes CSV round-trip expectations portable for later agents.
+
+### 2026-07-02T15:19:00Z: v0.4.0 test-matrix authoring approach
+**By:** Yen (QA/Test)
+**Requested by:** @brandonmartinez
+**Status:** Executed (test matrix committed)
+
+**What:** Authored a v0.4.0 **test matrix** — a planning/doc artifact mapping each shipped/planned recipe-metadata feature (v0.4.0 issues) to its test surfaces, acceptance-criteria cases, edge cases, and current coverage gaps. Structure = one matrix section per issue, rows keyed to the 11-row parity checklist from `parity.instructions.md`, plus feature-independent cross-cutting invariant sections.
+
+**Scope (v0.4.0):** Merged foundation: #96, #111, #112, #118, #97 (core metadata). Merged in Waves 4-6: #98 (favorite/rating), #99 (last-cooked), #100 (instructions), #101 (detail page), #103 (external imageUrl), #107/#108 (tags+categories).
+
+**Why:** Features touch up to 11 parity surfaces; without a per-feature × per-surface coverage map it's easy to land a feature REST-only, skip non-skippable MCP surfaces (rows 4/7/8), or miss edge cases (nullable fields, placeholder un-editability, SSRF, CSV round-trip). The matrix makes coverage auditable before merge.
+
+**References:** #129 (test matrix doc committed with live status markers)
+
+### 2026-07-02T16:38:43-04:00: Family-scoped Tags & Categories backend (#107) — schema, migration, parity, CSV
+**By:** Saul (Data / Migrations)
+**Requested by:** @brandonmartinez
+**Issue:** #107 (Sprint 2 keystone, ran SOLO to keep schema/migration churn conflict-free)
+**Merge:** PR #134, SHA 49343e7
+
+**What:** Adds two **family-scoped** taxonomies (Tag + Category) with many-to-many meal assignment, threaded through REST + agent + MCP at parity, plus CSV round-trip by name.
+
+**Surfaces threaded:**
+- **Schema** — new `Tag`, `Category`, `MealTag`, `MealCategory` models; back-relations on `Meal` and `Family`.
+- **Migration** (`20260702190000_add_tags_categories`) — offline-authored via `prisma migrate diff --script`.
+- **Service** — new `services/taxonomy.ts` (resolve-or-create by name, list, sync/assign — all family-scoped).
+- **REST Zod** — `tags`/`categories` on create/update/import + list filter facets.
+- **Agent route** (**parity row 4**) — assign + filter mirror REST; reuses `meal:write` scope.
+- **MCP** (**parity rows 7/8**) — create/update/list threaded; `list_meals` tool description updated.
+- **CSV round-trip** (**#72 lockstep**) — semicolon-delimited name list; round-trip by name.
+- **Shared types** — `Tag`/`Category` interfaces; NOT on `DisplayMealEntry` (Magic Mirror deny-by-default).
+
+**Key decisions:**
+1. **Case-insensitive uniqueness:** normalized `nameNormalized` column + `@@unique([familyId, nameNormalized])`.
+2. **Explicit join models + cascade** (`MealTag`, `MealCategory`), matching `MealIngredient` pattern.
+3. **Distinct models** (not shared table + discriminator) so a tag and category coexist without collision.
+4. **Filter semantics:** OR-within-facet, AND-across-facets (multiple tags OR'd, multiple categories OR'd, then AND'd together).
+
+**Hard constraints honored:** Family-scoped IDOR-safe queries; CSV lockstep; parity rows 4/7/8; deny-by-default; Zod at boundaries.
+
+**Verify:** Detached worktree, prismaMock, inside devcontainer. All 5 builds green; **958 tests pass** (shared 4 / mcp 75 / api 590 / web 289); eslint **0 errors**. Test matrix: duplicate/case-collision names, cross-family isolation, placeholder rejection, filter composition, CSV round-trip, REST/agent/MCP parity.
+
+### 2026-07-02T17:30:00Z: Declare pg_trgm GIN index in schema.prisma to fix CI drift gate
+**By:** Livingston (Backend)
+**Requested by:** @brandonmartinez
+**Artifact:** packages/api/prisma/schema.prisma (schema-only; NO new migration)
+
+**What:** Made schema.prisma declarative to match the already-migrated DB state:
+1. `generator client`: added `previewFeatures = ["postgresqlExtensions"]`
+2. `datasource db`: added `extensions = [pg_trgm]`
+3. `Meal` model: declared `@@index([name(ops: raw("gin_trgm_ops"))], map: "Meal_name_trgm_idx", type: Gin)`
+
+**Why:** main was RED on the CI drift gate. Root cause: #111's migration created `Meal_name_trgm_idx` (pg_trgm GIN index on Meal.name) via raw SQL, but the index was NOT declared in schema.prisma, so `prisma migrate diff --exit-code` reported drift → gate FAILED on every PR, blocking the Sprint 2 wave.
+
+**Reverses #94:** This turns ON the postgresqlExtensions preview feature that #94 avoided. @brandonmartinez approved the reversal — the drift gate makes the raw-SQL-only approach untenable under branch protection.
+
+**Verification (READ-ONLY):** Isolated build, pnpm install (frozen), `prisma validate` + `prisma generate` OK, offline drift proof shows schema-derived SQL matches `20260702165418_meal_search_indexes/migration.sql` byte-for-byte, api tsc GREEN, **472 api tests passed**.
+
+**In-lane:** Only schema.prisma changed. No new migration. No source/web files touched.
+
+### 2026-07-02T18:16:00-04:00: Recipe instructions child model (#100)
+**By:** Saul (Data/Migrations)
+**Issue:** #100 (last Sprint 2 migration item)
+**Merge:** PR #136, SHA 233597b
+
+**What:**
+1. **CSV encoding — ordered steps in one cell.** Single `instructions` column, **newline-delimited** ordered steps inside the quoted cell (optionally numbered). Export orders by `position asc`; import splits on `\n`, strips optional enumerator, trims, drops blanks, reindexes `position` 0-based.
+   **Why:** comma is the field delimiter; semicolon claimed by tags/categories; steps contain both, so newline is unambiguous.
+
+2. **Instruction shape — RESOLVED by #92.** `text: String` + `timerMinutes: Int?` only. NO ingredient references (deferred to v0.5+).
+
+3. **Ordering column:** Explicit `position: Int` **0-based**. Replace-all-on-update recreates rows with `position = arrayIndex` (dense, gap-free). `@@index([mealId])`; NO `@@unique([mealId, position])` (replace-all guarantees uniqueness; omitting avoids transient-collision risk).
+
+**Cross-cutting constraints honored:**
+- Family-scoped THROUGH `Meal.familyId` (cascade on Meal; IDOR-safe).
+- CSV lockstep: wired into BOTH import and export.
+- Parity rows 4/7/8: agent route + MCP tools; reuse `meal:write` scope.
+- Deny-by-default: instructions kept OFF `DisplayMealEntry`.
+- Placeholder guard: instructions rejected on placeholder meals.
+- **replace-all-on-update** semantics (documented in service).
+
+**Migration discipline:** Authored offline via `prisma migrate diff --script` (shared dev DB locked — `migrate dev` FORBIDDEN). Hand-placed at `20260702200000_add_recipe_instructions`.
+
+### 2026-07-02: Sprint-2 migration workflow + servings type (issue #97)
+**By:** Saul (Data/Migrations)
+**Requested by:** Brandon (@brandonmartinez)
+**Merge:** PR #127, SHA TBD
+
+**Decision 1 — `servings` is `Int?`.**
+Modeled as `Int?` (nullable), matching `prepTimeMinutes`/`cookTimeMinutes`. Ranges ("4–6") explicitly out of scope. Zod: `z.number().int().min(1)`.
+
+**Decision 2 — all 5 metadata fields nullable, reuse `meal:write`.**
+`prepTimeMinutes Int?`, `cookTimeMinutes Int?`, `servings Int?`, `sourceUrl String?`, `notes String?`. Nullable for safe migration. No new scope — all use existing `meal:write`. `sourceUrl` STORED ONLY (SSRF guard): `z.string().url()`, never fetched server-side.
+
+**Decision 3 (CROSS-CUTTING) — Sprint-2 migration workflow under shared devcontainer + shared dev DB.**
+INCIDENT: running `prisma migrate dev` against shared dev DB from a worktree produced DESTRUCTIVE spurious migration that dropped `Meal_name_trgm_idx`.
+Root causes: (a) devcontainer binds the MAIN checkout (stuck on main), NOT the agent worktree — worktree schema edits invisible to container. (b) ~13 worktrees share ONE `.git`, ONE devcontainer, ONE dev Postgres — any `migrate dev` racy/destructive across agents.
+
+**SANCTIONED STANDARD (coordinator sign-off 2026-07-02)** — required for #97 and EVERY later Sprint-2 field migration:
+- **`prisma migrate dev` against shared dev DB is FORBIDDEN.**
+- **MIGRATION AUTHORING:** `prisma migrate diff --from-schema-datamodel <main schema> --to-schema-datamodel <worktree schema> --script` → yields clean `ALTER TABLE` statements. Generate schema inputs race-free from git branch refs (`git show main:packages/api/prisma/schema.prisma`), NOT from `/workspace` (swapped concurrently). Hand-place resulting SQL in properly-named migration folder committed to the agent's BRANCH.
+- **VALIDATION:** for #97 the hand-placed `20260702173523_add_core_recipe_metadata/migration.sql` was confirmed BYTE-IDENTICAL to fresh `migrate diff` output.
+
+**Decision 4 (coordinator-refined 2026-07-02) — verify via detached git worktree, NOT docker cp.**
+- `git worktree add --detach /tmp/verify-<issue> <committed-sha>`. Shared `.git` object store, detached = no branch-conflict, no main-tree writes, shared Postgres untouched.
+- Run db:generate + shared/mcp/api builds + lint + test inside `/tmp/verify-<issue>` (prismaMock/no-DB).
+- Cleanup: `git worktree remove /tmp/verify-<issue>`.
+
+**MAIN-RED DRIFT GATE:** #111's raw-SQL pg_trgm GIN index undeclared in schema.prisma causes every PR to fail the drift gate. Fix in flight: Livingston's hotfix (above). MERGE ORDER: hotfix → main green → #126 (Linus) → #97 (Saul).
+
+### 2026-07-02: Issue #99 — derive `timesCooked` in the same query as `lastCookedOn`
+**By:** Livingston (Backend)
+**Requested by:** @brandonmartinez
+**Merge:** PR #132, SHA bc6eae9
+
+**What:**
+- `timesCooked` counts **all-time** approved MealSuggestions for a meal (no recency window), mirroring `lastCookedOn`'s semantics. Empty history ⇒ `timesCooked: 0`, `lastCookedOn: null`.
+- Single-query derivation: extended `getLastCookedMap` to return `Map<mealId, { lastCookedOn: string; timesCooked: number }>`, folding the count into the SAME `mealSuggestion.findMany` reduce loop (avoids second identical query).
+- Both fields are **derived read-only** at query time — no schema change, no migration, not a CSV field, not on `DisplayMealEntry`.
+
+**Why:**
+- All-time count matches the issue text and existing last-cooked semantics; both stay consistent.
+- Same-query derivation avoids redundant DB round-trip; count + latest date come from identical family-scoped approved-suggestion rows (filtered on BOTH `meal.familyId` AND `dayPlan.weekPlan.familyId`, #9 IDOR direction), so cross-family cook-history leakage is structurally impossible.
+
+### 2026-07-02T16:12:00Z: External recipe image URLs (#103) — wiring, CSP broadening, and scheme allowlist
+**By:** Linus (Frontend/full-stack)
+**Requested by:** @brandonmartinez
+**Merge:** PR #133, SHA ba7b628
+
+**What:** Threads the **existing** `Meal.imageUrl String?` field (external URL, display-only) through every unhandled surface. **No schema change, no migration** — the column already exists.
+
+**Surfaces threaded:**
+- REST Zod — new shared `imageUrlSchema`, wired into create/update/import.
+- Service — imageUrl on create/update/import + export.
+- Agent route (**parity row 4**) — imageUrl on create + update.
+- MCP apiClient + tools (**parity rows 7/8**) — imageUrl on create_meal/update_meal input, Zod, descriptions.
+- Web client, form, render surfaces (card, picker, detail page) — all via new shared `MealThumbnail` component.
+- CSV round-trip (**#72 lockstep**) — web `utils/csv.ts` parser alias + `MEALS_CSV_HEADER` + export service.
+
+**Decision 1 — shared `imageUrlSchema` + scheme allowlist:**
+Introduced `imageUrlSchema = z.string().trim().url().refine(/^https?:\/\//i)`, `.nullable().optional()`, exported once and reused by agent route + CSV import Zod. Empty string → `null` (converted at form + CSV layers). `http` accepted at storage but only `https:` renders under new CSP. Not retrofitting `sourceUrl` — separate concern, avoids merge risk.
+
+**Decision 2 — broaden Helmet CSP `img-src`:**
+`packages/api/src/index.ts` `img-src` changed from `["'self'", "data:", "https://*.googleusercontent.com"]` to `["'self'", "data:", "https:"]`. Rationale: arbitrary https hosts; enumerating infeasible.
+- **Tradeoff:** any https host may be a tracking pixel (leaks viewer IP/timestamp). **Mitigated by:** (a) URL validation + scheme allowlist, (b) authoring gated behind family membership, (c) display-only usage — no script execution. `object-src 'none'` and `frame-ancestors 'none'` untouched.
+- `script-src` stays `'self'` (no `unsafe-inline`/nonce/hash). Form/connect/style unchanged.
+- http URLs degrade gracefully via `MealThumbnail`'s `onError`.
+
+**Decision 3 — `MealThumbnail` shared render backbone:**
+New `packages/web/src/components/MealThumbnail.tsx` renders `null` when `!src` or image errors, resets on `src` change, uses `loading="lazy"`. Centralizes graceful missing-image + broken-URL fallback behavior; list/picker/detail all identical, covered by one component's tests.
+
+**Decision 4 — `ExportMealDTO` shared-type fix:**
+`ExportMealDTO` (shared `dto.ts`) is standalone, so needed manual `imageUrl: string | null` addition for export type-check. `MealListItemDTO extends Meal` and `DisplayMealEntry` already carry imageUrl — no change needed.
+
+**Why:** Finishing imageUrl support for external URLs. Threading existing scalar through all persisted/user-facing surfaces (REST+MCP parity, CSV lockstep) keeps field consistent/portable. Minimal CSP change lets external thumbnails render without weakening script/style/connect/form.
+
+**Parallel wave:** Running concurrently with Livingston #99. Shared edits (web `meals.ts`, `MealsPage.tsx`, `MealPicker`, MCP) all additive; `MealThumbnail.tsx` new (conflict-safe). At merge: rebase on green main, keep both.
+
+### 2026-07-02: Tags & categories UI — create-on-assign, no CRUD screens
+**By:** Linus (Frontend/Web)
+**Issue:** #108
+**Merge:** PR #135, SHA b16810d
+
+**What:** For Issue #108 web layer assigns tags/categories by typing a name (resolve-or-create happens server-side via #107). Built NO tag/category management/CRUD screens.
+
+**Why:** Issue says "don't over-build"; create-on-assign sufficient. Web READS taxonomy list endpoints (populate suggestions + filters); all mutation flows through existing meal create/update payload.
+
+**Component surfaces:**
+
+1. **TokenField for assignment input:** Reusable `TokenField` component — removable pills + text input backed by native `<datalist>` of existing names. Two instances on MealFormPage (Tags, Categories). Adds on Enter/blur/Add; case-insensitive dedupe.
+   **Why:** Native `<datalist>` gives typeahead without inline JS (strict CSP `script-src 'self'`). Pills make selections obvious. Explicit arrays always sent on update so removals persist.
+
+2. **Filter controls mirror difficulty pill group:** MealsPage and MealPicker gain tag/category filter groups = `aria-pressed` pill toggles (blue = tags, purple = categories), populated from taxonomy list endpoints. Multi-select within a facet = OR; combined with difficulty/search = AND. Filter groups render ONLY when family has ≥1 tag/category.
+   **Why:** Consistency with #126 difficulty filter. Hiding empty groups keeps new/empty families uncluttered.
+
+3. **Compact display via MealTagList:** Shared `MealTagList` renders non-interactive pills (tags blue, categories purple), capped (`max=3` on cards, `max=2` in picker) with `+N` overflow chip + truncation. Cards reserve min-height for fixed-zone alignment.
+   **Why:** Issue calls out avoiding noisy cards. Capping + truncation keeps display compact; non-interactive spans avoid nested-interactive a11y issues inside picker option `<button>` rows.
+
+4. **useTaxonomy hook (single code path for two GETs):** `useTaxonomy(familyId)` loads tags + categories once per mount (`Promise.all`), reused by MealFormPage, MealsPage, MealPicker. Fails soft (empty lists on error) so taxonomy fetch failure never blocks meal list or form.
+   **Why:** DRY — one place owns taxonomy fetch/unwrap. Failing soft keeps core flows resilient; taxonomy is enhancement, not hard dependency.
+
+5. **Backend contract confirmed — empty array = clear-all:** Verified in merged #107 code that `updateMeal` → `syncMealTaxonomy` treats explicit empty `tags: []` / `categories: []` as CLEAR-ALL; `undefined` as LEAVE-UNTOUCHED. `assignTags`/`assignCategories` run `deleteMany({ mealId })` unconditionally, then `createMany` only when length > 0. Load-bearing contract for removal UX; MealFormPage always submits explicit arrays, never `undefined`, on both create and update — removals persist server-side. No backend gap; read-only verification — stayed in web lane.
+
+### 2026-07-02T12:19:29-04:00: Parity instructions file created
+**By:** Rusty (Lead / Architect)
+**Requested by:** brandonmartinez (Sprint 2, Task 0)
+**Status:** Completed
+
+**What:** Created `.github/instructions/parity.instructions.md` — the enforcement artifact for recipe API/MCP parity, operationalizing the design approved on issue #96. Transcribes the 11-row parity checklist (§1), CSV sub-checklist (§1b), scope-change sub-checklist (§1c), scope decision (§2a: reuse `meal:write` for all recipe metadata incl. rating + external imageUrl; `meal:image` deferred to #103/#104; no agent DELETE), display deny-by-default (§3), placeholder limitations (§4), and the HARD RULE (§5).
+
+**Why:** Sprint 2 gate — this file auto-governs all P2 recipe build issues (#97–#112) via `applyTo` globs before any build PR opens.
+

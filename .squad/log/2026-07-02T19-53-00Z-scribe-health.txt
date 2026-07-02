@@ -1,0 +1,5 @@
+decisions_before=30262
+decisions_after=45486
+inbox_processed=9
+archive_actions=archive gate checked at 30262 bytes; no entries older than 30 days
+histories_summarized=none
