@@ -4,9 +4,10 @@ import {
   MEAL_PLACEHOLDERS,
   PLACEHOLDER_NAMES_LOWER,
 } from "@meal-planner/shared";
-import type { Difficulty } from "@meal-planner/shared";
+import type { Difficulty, MealListResponseDTO } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
+import type { ListMealsQuery } from "../schemas/meals.js";
 
 /** Calendar-date label (YYYY-MM-DD) of a stored DayPlan/WeekPlan date. Week and
  *  day dates are persisted at UTC midnight, so the UTC slice IS the intended
@@ -18,31 +19,101 @@ function dateLabel(date: Date): string {
 
 export async function listMeals(
   familyId: string,
-  options?: { search?: string },
-) {
+  opts: ListMealsQuery = { sort: "name", order: "asc", limit: 25, offset: 0 },
+): Promise<MealListResponseDTO> {
+  const { search, difficulty, sort, order, limit, offset } = opts;
+
+  const hasFilter = Boolean(search || difficulty?.length);
+
   const where: Prisma.MealWhereInput = { familyId };
-  if (options?.search) {
-    where.name = { contains: options.search, mode: "insensitive" };
+
+  // Placeholders are excluded whenever any search/filter is active.
+  // Unfiltered pagination keeps them so MealPicker continues to work as before.
+  if (hasFilter) {
+    where.placeholderKind = null;
   }
 
-  const meals = await prisma.meal.findMany({
-    where,
-    include: {
-      _count: { select: { ingredients: true } },
-    },
-    orderBy: { name: "asc" },
-  });
+  if (search) {
+    where.name = { contains: search, mode: "insensitive" };
+  }
 
+  if (difficulty?.length) {
+    where.difficulty = { in: difficulty };
+  }
+
+  // lastCooked sort is derived — fetch all, enrich, sort app-side, then slice.
+  if (sort === "lastCooked") {
+    const allMeals = await prisma.meal.findMany({
+      where,
+      include: { _count: { select: { ingredients: true } } },
+    });
+
+    const mealIds = allMeals.map((m) => m.id);
+    const recentByMeal = await getRecentlyScheduledMap(familyId);
+    const lastCookedByMeal = await getLastCookedMap(familyId, mealIds);
+
+    const enriched = allMeals.map((meal) => {
+      const last = recentByMeal.get(meal.id);
+      return {
+        ...meal,
+        recentlyScheduled: last !== undefined,
+        lastScheduledOn: last ?? null,
+        lastCookedOn: lastCookedByMeal.get(meal.id) ?? null,
+      };
+    });
+
+    // Nulls-last; tiebreak name asc regardless of order direction.
+    enriched.sort((a, b) => {
+      if (a.lastCookedOn === null && b.lastCookedOn === null)
+        return a.name.localeCompare(b.name);
+      if (a.lastCookedOn === null) return 1;
+      if (b.lastCookedOn === null) return -1;
+      const cmp = a.lastCookedOn.localeCompare(b.lastCookedOn);
+      if (cmp !== 0) return order === "asc" ? cmp : -cmp;
+      return a.name.localeCompare(b.name);
+    });
+
+    const total = enriched.length;
+    const items = enriched.slice(offset, offset + limit).map((m) => ({
+      ...m,
+      description: m.description ?? undefined,
+      imageUrl: m.imageUrl ?? undefined,
+    }));
+    return { items, total, limit, offset, hasMore: offset + items.length < total };
+  }
+
+  // DB-side sort + pagination for name / created.
+  const orderBy: Prisma.MealOrderByWithRelationInput =
+    sort === "created" ? { createdAt: order } : { name: order };
+
+  const [total, meals] = await prisma.$transaction([
+    prisma.meal.count({ where }),
+    prisma.meal.findMany({
+      where,
+      include: { _count: { select: { ingredients: true } } },
+      orderBy,
+      skip: offset,
+      take: limit,
+    }),
+  ]);
+
+  const mealIds = meals.map((m) => m.id);
   const recentByMeal = await getRecentlyScheduledMap(familyId);
+  const lastCookedByMeal = await getLastCookedMap(familyId, mealIds);
 
-  return meals.map((meal) => {
+  const items = meals.map((meal) => {
     const last = recentByMeal.get(meal.id);
     return {
       ...meal,
+      description: meal.description ?? undefined,
+      imageUrl: meal.imageUrl ?? undefined,
       recentlyScheduled: last !== undefined,
       lastScheduledOn: last ?? null,
+      lastCookedOn: lastCookedByMeal.get(meal.id) ?? null,
     };
   });
+
+  return { items, total, limit, offset, hasMore: offset + items.length < total };
 }
 
 /**
@@ -92,6 +163,48 @@ async function getRecentlyScheduledMap(
     const existing = latest.get(s.mealId);
     if (!existing || scheduledOn.getTime() > existing.getTime()) {
       latest.set(s.mealId, scheduledOn);
+    }
+  }
+
+  const result = new Map<string, string>();
+  for (const [mealId, date] of latest) {
+    result.set(mealId, dateLabel(date));
+  }
+  return result;
+}
+
+/**
+ * Builds a `Map<mealId, lastCookedOn>` of the most recent **approved**
+ * `MealSuggestion` date for each of the given meal IDs, family-scoped on
+ * **both** sides — `meal.familyId` AND `dayPlan.weekPlan.familyId` — enforcing
+ * the #9 IDOR direction. Absent keys mean the meal has never been approved onto
+ * a week plan. Exported for reuse by downstream features (issue #99).
+ */
+export async function getLastCookedMap(
+  familyId: string,
+  mealIds: string[],
+): Promise<Map<string, string>> {
+  if (mealIds.length === 0) return new Map();
+
+  const suggestions = await prisma.mealSuggestion.findMany({
+    where: {
+      mealId: { in: mealIds },
+      approved: true,
+      meal: { familyId },
+      dayPlan: { weekPlan: { familyId } },
+    },
+    select: {
+      mealId: true,
+      dayPlan: { select: { date: true } },
+    },
+  });
+
+  const latest = new Map<string, Date>();
+  for (const s of suggestions) {
+    const d = s.dayPlan.date;
+    const existing = latest.get(s.mealId);
+    if (!existing || d.getTime() > existing.getTime()) {
+      latest.set(s.mealId, d);
     }
   }
 

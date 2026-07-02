@@ -128,11 +128,30 @@ export interface RevokedAgentCredentialDTO {
  *  least one **approved** `MealSuggestion` scheduled in the family's current or
  *  immediately previous week, resolved in `Family.timezone`. `lastScheduledOn`
  *  is the calendar date (`YYYY-MM-DD`) of the most recent such approved
- *  suggestion, or `null` when the meal is not recent. */
+ *  suggestion, or `null` when the meal is not recent.
+ *
+ *  Last-cooked seam (issue #111): `lastCookedOn` is the calendar date of the
+ *  most recent **approved** suggestion for this meal (family-scoped), or `null`
+ *  when the meal has never been approved onto a week plan. This seam enables the
+ *  `lastCooked` sort key and surfaces the value to UI in follow-up issues. */
 export interface MealListItemDTO extends Meal {
   _count: { ingredients: number };
   recentlyScheduled: boolean;
   lastScheduledOn: string | null;
+  lastCookedOn: string | null;
+}
+
+/** Paginated meal list response — the envelope returned by
+ *  `GET /families/:familyId/meals` (REST) and
+ *  `GET /api/agent/:familyId/meals` (agent route) as of v0.4.0.
+ *  Replaces the previous bare-array wire shape. All consumers must unwrap
+ *  `.items`; `hasMore` is a convenience flag (`offset + items.length < total`). */
+export interface MealListResponseDTO {
+  items: MealListItemDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 /** The response from `POST /families/:id/meals/import`. */

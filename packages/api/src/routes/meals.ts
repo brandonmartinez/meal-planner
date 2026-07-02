@@ -4,6 +4,7 @@ import { MEAL_DIFFICULTIES } from "@meal-planner/shared";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as mealService from "../services/meals.js";
+import { listMealsQuerySchema } from "../schemas/meals.js";
 
 export const mealsRouter = Router();
 
@@ -77,9 +78,13 @@ mealsRouter.get(
   async (req: Request, res: Response) => {
     try {
       const familyId = paramStr(req.params.familyId);
-      const search = req.query.search ? String(req.query.search) : undefined;
-      const meals = await mealService.listMeals(familyId, { search });
-      res.json(meals);
+      const parsed = listMealsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Validation failed", details: parsed.error.errors });
+        return;
+      }
+      const result = await mealService.listMeals(familyId, parsed.data);
+      res.json(result);
     } catch {
       res.status(500).json({ error: "Failed to fetch meals" });
     }

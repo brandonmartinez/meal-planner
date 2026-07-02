@@ -12,6 +12,7 @@ import {
 import * as weekPlanService from "../services/weekPlan.js";
 import * as mealService from "../services/meals.js";
 import * as groceryService from "../services/grocery.js";
+import { listMealsQuerySchema } from "../schemas/meals.js";
 
 /**
  * MCP agent surface. Mounted at `/api/agent` (NOT `/api/families`) so it has
@@ -234,6 +235,10 @@ agentRouter.get(
       if (!list) {
         list = await groceryService.generateGroceryList(agent.familyId, monday);
       }
+      if (!list) {
+        res.status(404).json({ error: "No grocery list available for this week" });
+        return;
+      }
       await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId: agent.familyId,
@@ -261,18 +266,21 @@ agentRouter.get(
     const agent = req.agent!;
     const familyId = paramStr(req.params.familyId);
     try {
-      const search =
-        typeof req.query.search === "string" ? req.query.search : undefined;
-      const meals = await mealService.listMeals(familyId, { search });
+      const parsed = listMealsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Validation failed", details: parsed.error.errors });
+        return;
+      }
+      const result = await mealService.listMeals(familyId, parsed.data);
       await safeRecordAgentAudit({
         credentialId: agent.id,
         familyId,
         action: AGENT_SCOPES.READ,
         outcome: "allowed",
         targetType: "meal",
-        targetIds: meals.map((m) => m.id),
+        targetIds: result.items.map((m) => m.id),
       });
-      res.json(meals);
+      res.json(result);
     } catch {
       res.status(500).json({ error: "Failed to fetch meals" });
     }

@@ -114,12 +114,15 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
     vi.clearAllMocks();
   });
 
-  it("list_meals: GET /meals returns meals and audits an allowed read", async () => {
+  it("list_meals: GET /meals returns the envelope and audits an allowed read", async () => {
     mockCredential(["meal_plan:read"]);
-    vi.mocked(mealService.listMeals).mockResolvedValue([
-      { id: "meal-1" },
-      { id: "meal-2" },
-    ] as never);
+    vi.mocked(mealService.listMeals).mockResolvedValue({
+      items: [{ id: "meal-1" }, { id: "meal-2" }],
+      total: 2,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    } as never);
 
     const handlers = findStack("/:familyId/meals");
     const req = agentReq({ familyId: "fam-1" }, { query: { search: "taco" } });
@@ -129,16 +132,46 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
     expect(res.statusCode).toBe(200);
     expect(mealService.listMeals).toHaveBeenCalledWith("fam-1", {
       search: "taco",
+      sort: "name",
+      order: "asc",
+      limit: 25,
+      offset: 0,
     });
-    expect(Array.isArray(res.body)).toBe(true);
+    // Response body is the envelope, not a bare array.
+    expect(res.body).toMatchObject({ items: expect.any(Array), total: 2 });
     expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: "meal_plan:read",
         outcome: "allowed",
         targetType: "meal",
+        // targetIds is derived from result.items.map(m => m.id).
         targetIds: ["meal-1", "meal-2"],
       }),
     });
+  });
+
+  it("list_meals: 400 when query params fail validation (limit > 100)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/meals");
+    const req = agentReq({ familyId: "fam-1" }, { query: { limit: "999" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(mealService.listMeals).not.toHaveBeenCalled();
+  });
+
+  it("list_meals: 400 when offset is negative", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/meals");
+    const req = agentReq({ familyId: "fam-1" }, { query: { offset: "-1" } });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(mealService.listMeals).not.toHaveBeenCalled();
   });
 
   it("get_current_week_plan: GET /weeks/current returns the plan and audits read", async () => {

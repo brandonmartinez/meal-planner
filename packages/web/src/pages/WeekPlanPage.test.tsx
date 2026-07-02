@@ -140,17 +140,23 @@ describe('WeekPlanPage', () => {
         HttpResponse.json(weekPlan([])),
       ),
       http.get('/api/families/:familyId/meals', () =>
-        HttpResponse.json([
-          {
-            id: 'meal-9',
-            name: 'Pizza',
-            description: '',
-            placeholderKind: null,
-            difficulty: null,
-            familyId: FAMILY_ID,
-            _count: { ingredients: 0 },
-          },
-        ]),
+        HttpResponse.json({
+          items: [
+            {
+              id: 'meal-9',
+              name: 'Pizza',
+              description: '',
+              placeholderKind: null,
+              difficulty: null,
+              familyId: FAMILY_ID,
+              _count: { ingredients: 0 },
+            },
+          ],
+          total: 1,
+          limit: 25,
+          offset: 0,
+          hasMore: false,
+        }),
       ),
       http.post('/api/families/:familyId/days/:dayPlanId/suggestions', async ({ request, params }) => {
         const body = (await request.json()) as { mealId?: unknown };

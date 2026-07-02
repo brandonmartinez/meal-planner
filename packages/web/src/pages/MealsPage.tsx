@@ -28,8 +28,8 @@ export default function MealsPage() {
   const loadMeals = useCallback(async () => {
     if (!familyId) return;
     try {
-      const data = await listMeals(familyId, search || undefined);
-      setMeals(data);
+      const data = await listMeals(familyId, search ? { search } : undefined);
+      setMeals(data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load meals');
     } finally {

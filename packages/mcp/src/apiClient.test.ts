@@ -44,24 +44,43 @@ describe("MealPlannerApiClient", () => {
   });
 
   it("never places the agent key in the URL or query string", async () => {
-    const { client, fetchFn } = makeClient(jsonResponse([]));
-    await client.listMeals("fam-1", "taco");
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
+    await client.listMeals("fam-1", { search: "taco" });
 
     const { url } = lastCall(fetchFn);
     expect(url.toString()).not.toContain(AGENT_KEY);
   });
 
-  it("listMeals GETs the agent meals endpoint with a search query", async () => {
-    const meals = [{ id: "meal-1" }];
-    const { client, fetchFn } = makeClient(jsonResponse(meals));
+  it("listMeals GETs the agent meals endpoint with a search query and returns the envelope", async () => {
+    const envelope = { items: [{ id: "meal-1" }], total: 1, limit: 25, offset: 0, hasMore: false };
+    const { client, fetchFn } = makeClient(jsonResponse(envelope));
 
-    const result = await client.listMeals("fam-1", "taco");
+    const result = await client.listMeals("fam-1", { search: "taco" });
 
     const { url, init } = lastCall(fetchFn);
     expect(init.method).toBe("GET");
     expect(url.pathname).toBe("/api/agent/fam-1/meals");
     expect(url.searchParams.get("search")).toBe("taco");
-    expect(result).toEqual(meals);
+    expect(result).toEqual(envelope);
+  });
+
+  it("listMeals serialises difficulty as repeated query params", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
+    await client.listMeals("fam-1", { difficulty: ["EASY", "HARD"] });
+
+    const { url } = lastCall(fetchFn);
+    expect(url.searchParams.getAll("difficulty")).toEqual(["EASY", "HARD"]);
+  });
+
+  it("listMeals serialises sort, order, limit, offset as query params", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 10, offset: 5, hasMore: false }));
+    await client.listMeals("fam-1", { sort: "lastCooked", order: "desc", limit: 10, offset: 5 });
+
+    const { url } = lastCall(fetchFn);
+    expect(url.searchParams.get("sort")).toBe("lastCooked");
+    expect(url.searchParams.get("order")).toBe("desc");
+    expect(url.searchParams.get("limit")).toBe("10");
+    expect(url.searchParams.get("offset")).toBe("5");
   });
 
   it("listMeals omits the search param when not provided", async () => {

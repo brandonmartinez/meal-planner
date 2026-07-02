@@ -88,8 +88,24 @@ export function createToolHandlers(
   familyId: string,
 ) {
   return {
-    list_meals: (args: { search?: string }): Promise<ToolResult> =>
-      run(() => client.listMeals(familyId, args.search)),
+    list_meals: (args: {
+      search?: string;
+      difficulty?: string[];
+      sort?: string;
+      order?: string;
+      limit?: number;
+      offset?: number;
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.listMeals(familyId, {
+          search: args.search,
+          difficulty: args.difficulty,
+          sort: args.sort,
+          order: args.order,
+          limit: args.limit,
+          offset: args.offset,
+        }),
+      ),
 
     get_current_week_plan: (): Promise<ToolResult> =>
       run(() => client.getCurrentWeekPlan(familyId)),
@@ -190,7 +206,9 @@ export function registerTools(
       title: "List meals",
       description:
         "List the family's meal catalog, including a recently-scheduled " +
-        "indicator. Optionally filter by a name search term. Requires the " +
+        "indicator and last-cooked date. Supports name search, difficulty " +
+        "filter, sort (name|lastCooked|created), pagination " +
+        "(limit/offset), and sort order (asc|desc). Requires the " +
         "meal_plan:read scope.",
       inputSchema: {
         search: z
@@ -198,6 +216,31 @@ export function registerTools(
           .min(1)
           .optional()
           .describe("Case-insensitive substring to filter meal names by."),
+        difficulty: z
+          .array(z.enum(["EASY", "MEDIUM", "HARD"]))
+          .optional()
+          .describe("Filter by one or more difficulty levels."),
+        sort: z
+          .enum(["name", "lastCooked", "created"])
+          .optional()
+          .describe("Sort field. Defaults to 'name'."),
+        order: z
+          .enum(["asc", "desc"])
+          .optional()
+          .describe("Sort direction. Defaults to 'asc'."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum number of results to return (1–100, default 25)."),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Number of results to skip for pagination (default 0)."),
       },
     },
     (args) => handlers.list_meals(args),

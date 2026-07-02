@@ -1,7 +1,7 @@
 import type {
   Meal,
   MealIngredient,
-  MealListItemDTO,
+  MealListResponseDTO,
   ImportMealsResultDTO,
   ExportMealsResponseDTO,
   Difficulty,
@@ -13,6 +13,7 @@ import { request } from "./client";
 // in `@meal-planner/shared`.
 export type {
   MealListItemDTO,
+  MealListResponseDTO,
   ImportMealsResultDTO,
   ExportMealsResponseDTO,
 } from "@meal-planner/shared";
@@ -21,10 +22,28 @@ const BASE = "/api/families";
 
 export async function listMeals(
   familyId: string,
-  search?: string,
-): Promise<MealListItemDTO[]> {
-  const params = search ? `?search=${encodeURIComponent(search)}` : "";
-  return request<MealListItemDTO[]>(`${BASE}/${familyId}/meals${params}`);
+  opts?: {
+    search?: string;
+    difficulty?: string[];
+    sort?: string;
+    order?: string;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<MealListResponseDTO> {
+  const params = new URLSearchParams();
+  if (opts?.search) params.set("search", opts.search);
+  if (opts?.difficulty?.length) {
+    for (const d of opts.difficulty) params.append("difficulty", d);
+  }
+  if (opts?.sort) params.set("sort", opts.sort);
+  if (opts?.order) params.set("order", opts.order);
+  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  const qs = params.toString();
+  return request<MealListResponseDTO>(
+    `${BASE}/${familyId}/meals${qs ? `?${qs}` : ""}`,
+  );
 }
 
 export async function getMeal(
