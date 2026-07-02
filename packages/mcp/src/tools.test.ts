@@ -147,6 +147,11 @@ describe("createToolHandlers", () => {
     const input = {
       name: "Tacos",
       difficulty: "EASY" as const,
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 20,
+      servings: 4,
+      sourceUrl: "https://example.com/tacos",
+      notes: "Use fresh cilantro",
       ingredients: [{ name: "tortillas", category: "bakery" }],
     };
     const result = await handlers.create_meal(input);
@@ -167,6 +172,31 @@ describe("createToolHandlers", () => {
     await handlers.update_meal({ mealId: "meal-1", name: "Better Tacos" });
     expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
       name: "Better Tacos",
+    });
+  });
+
+  it("update_meal forwards core metadata and null-clearing (mealId stripped)", async () => {
+    const client = stubClient();
+    client.updateMeal.mockResolvedValue({ id: "meal-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.update_meal({
+      mealId: "meal-1",
+      prepTimeMinutes: 15,
+      cookTimeMinutes: null,
+      servings: 6,
+      sourceUrl: null,
+      notes: "Simmer low",
+    });
+    expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
+      prepTimeMinutes: 15,
+      cookTimeMinutes: null,
+      servings: 6,
+      sourceUrl: null,
+      notes: "Simmer low",
     });
   });
 

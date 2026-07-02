@@ -36,6 +36,11 @@ export interface CreateMealInput {
   name: string;
   description?: string;
   difficulty?: Difficulty;
+  prepTimeMinutes?: number;
+  cookTimeMinutes?: number;
+  servings?: number;
+  sourceUrl?: string;
+  notes?: string;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -50,6 +55,11 @@ export interface UpdateMealInput {
   name?: string;
   description?: string;
   difficulty?: Difficulty | null;
+  prepTimeMinutes?: number | null;
+  cookTimeMinutes?: number | null;
+  servings?: number | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
   ingredients?: {
     name: string;
     quantity?: string;

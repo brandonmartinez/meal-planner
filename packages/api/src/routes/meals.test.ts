@@ -158,6 +158,67 @@ describe("POST /:familyId/meals (create)", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("forwards core metadata through to the service", async () => {
+    vi.mocked(mealService.createMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: {
+          name: "Tacos",
+          prepTimeMinutes: 10,
+          cookTimeMinutes: 20,
+          servings: 4,
+          sourceUrl: "https://example.com/tacos",
+          notes: "Use fresh cilantro",
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(mealService.createMeal).toHaveBeenCalledWith(
+      FAMILY_ID,
+      expect.objectContaining({
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+      }),
+    );
+  });
+
+  it("400s on a malformed sourceUrl (validated, never fetched)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", sourceUrl: "not-a-url" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a negative servings value", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", servings: 0 },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.createMeal).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
@@ -337,6 +398,50 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     const res = buildFullRes();
     await handler(req({ params, body: { name: "New" } }), res, buildNext());
     expect(res.statusCode).toBe(200);
+  });
+
+  it("forwards core metadata and null-clearing through to the service", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          prepTimeMinutes: 15,
+          cookTimeMinutes: null,
+          servings: 6,
+          sourceUrl: "https://example.com/stew",
+          notes: null,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({
+        prepTimeMinutes: 15,
+        cookTimeMinutes: null,
+        servings: 6,
+        sourceUrl: "https://example.com/stew",
+        notes: null,
+      }),
+    );
+  });
+
+  it("400s on a malformed sourceUrl", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { sourceUrl: "not-a-url" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
   });
 
   it("400s on Zod failure (empty name)", async () => {

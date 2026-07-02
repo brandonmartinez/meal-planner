@@ -229,6 +229,11 @@ export async function createMeal(
     description?: string;
     imageUrl?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -244,6 +249,11 @@ export async function createMeal(
         description: data.description,
         imageUrl: data.imageUrl,
         difficulty: data.difficulty,
+        prepTimeMinutes: data.prepTimeMinutes,
+        cookTimeMinutes: data.cookTimeMinutes,
+        servings: data.servings,
+        sourceUrl: data.sourceUrl,
+        notes: data.notes,
         familyId,
         ingredients: data.ingredients?.length
           ? { create: data.ingredients }
@@ -263,6 +273,11 @@ export async function updateMeal(
     description?: string;
     imageUrl?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -293,6 +308,11 @@ export async function updateMeal(
         description: data.description,
         imageUrl: data.imageUrl,
         difficulty: data.difficulty,
+        prepTimeMinutes: data.prepTimeMinutes,
+        cookTimeMinutes: data.cookTimeMinutes,
+        servings: data.servings,
+        sourceUrl: data.sourceUrl,
+        notes: data.notes,
         ingredients:
           data.ingredients !== undefined
             ? { create: data.ingredients }
@@ -339,6 +359,11 @@ export async function importMeals(
     name: string;
     description?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -384,6 +409,11 @@ export async function importMeals(
             data: {
               description: data.description,
               difficulty: data.difficulty,
+              prepTimeMinutes: data.prepTimeMinutes,
+              cookTimeMinutes: data.cookTimeMinutes,
+              servings: data.servings,
+              sourceUrl: data.sourceUrl,
+              notes: data.notes,
               ingredients: data.ingredients?.length
                 ? { create: data.ingredients }
                 : undefined,
@@ -398,6 +428,11 @@ export async function importMeals(
             name: data.name,
             description: data.description,
             difficulty: data.difficulty,
+            prepTimeMinutes: data.prepTimeMinutes,
+            cookTimeMinutes: data.cookTimeMinutes,
+            servings: data.servings,
+            sourceUrl: data.sourceUrl,
+            notes: data.notes,
             familyId,
             ingredients: data.ingredients?.length
               ? { create: data.ingredients }
@@ -438,6 +473,11 @@ export async function exportMeals(familyId: string) {
     name: meal.name,
     description: meal.description,
     difficulty: meal.difficulty,
+    prepTimeMinutes: meal.prepTimeMinutes,
+    cookTimeMinutes: meal.cookTimeMinutes,
+    servings: meal.servings,
+    sourceUrl: meal.sourceUrl,
+    notes: meal.notes,
     ingredients: meal.ingredients,
   }));
 }

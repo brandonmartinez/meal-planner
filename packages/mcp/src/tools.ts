@@ -143,6 +143,11 @@ export function createToolHandlers(
       name: string;
       description?: string;
       difficulty?: "EASY" | "MEDIUM" | "HARD";
+      prepTimeMinutes?: number;
+      cookTimeMinutes?: number;
+      servings?: number;
+      sourceUrl?: string;
+      notes?: string;
       ingredients?: {
         name: string;
         quantity?: string;
@@ -156,6 +161,11 @@ export function createToolHandlers(
       name?: string;
       description?: string;
       difficulty?: "EASY" | "MEDIUM" | "HARD" | null;
+      prepTimeMinutes?: number | null;
+      cookTimeMinutes?: number | null;
+      servings?: number | null;
+      sourceUrl?: string | null;
+      notes?: string | null;
       ingredients?: {
         name: string;
         quantity?: string;
@@ -355,6 +365,35 @@ export function registerTools(
         difficulty: difficultyEnum
           .optional()
           .describe("Optional difficulty: EASY, MEDIUM, or HARD."),
+        prepTimeMinutes: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Optional prep time in minutes."),
+        cookTimeMinutes: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe("Optional cook time in minutes."),
+        servings: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe("Optional number of servings the recipe yields."),
+        sourceUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe(
+            "Optional source URL for the recipe. Stored only — never fetched.",
+          ),
+        notes: z
+          .string()
+          .optional()
+          .describe("Optional free-form recipe notes."),
         ingredients: z
           .array(ingredientSchema)
           .optional()
@@ -382,6 +421,40 @@ export function registerTools(
           .nullable()
           .optional()
           .describe("New difficulty, or null to clear it."),
+        prepTimeMinutes: z
+          .number()
+          .int()
+          .min(0)
+          .nullable()
+          .optional()
+          .describe("New prep time in minutes, or null to clear it."),
+        cookTimeMinutes: z
+          .number()
+          .int()
+          .min(0)
+          .nullable()
+          .optional()
+          .describe("New cook time in minutes, or null to clear it."),
+        servings: z
+          .number()
+          .int()
+          .min(1)
+          .nullable()
+          .optional()
+          .describe("New number of servings, or null to clear it."),
+        sourceUrl: z
+          .string()
+          .url()
+          .nullable()
+          .optional()
+          .describe(
+            "New source URL, or null to clear it. Stored only — never fetched.",
+          ),
+        notes: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("New recipe notes, or null to clear them."),
         ingredients: z
           .array(ingredientSchema)
           .optional()

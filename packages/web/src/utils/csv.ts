@@ -57,6 +57,11 @@ export interface ParsedImportMeal {
   name: string;
   description?: string;
   difficulty?: Difficulty;
+  prepTimeMinutes?: number;
+  cookTimeMinutes?: number;
+  servings?: number;
+  sourceUrl?: string;
+  notes?: string;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -97,6 +102,25 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     meal: ["meal", "name", "mealname", "meal name"],
     description: ["description", "desc"],
     difficulty: ["difficulty", "diff", "effort"],
+    prepTimeMinutes: [
+      "preptimeminutes",
+      "prep",
+      "preptime",
+      "prep time",
+      "prep minutes",
+      "prep time (min)",
+    ],
+    cookTimeMinutes: [
+      "cooktimeminutes",
+      "cook",
+      "cooktime",
+      "cook time",
+      "cook minutes",
+      "cook time (min)",
+    ],
+    servings: ["servings", "serving", "serves"],
+    sourceUrl: ["sourceurl", "source url", "source", "url"],
+    notes: ["notes", "note"],
     ingredient: ["ingredient", "ingredientname", "ingredient name", "item"],
     quantity: ["quantity", "qty", "amount"],
     unit: ["unit", "units"],
@@ -156,6 +180,36 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       }
     }
 
+    const parseMetaInt = (
+      key: "prepTimeMinutes" | "cookTimeMinutes" | "servings",
+      label: string,
+      min: number,
+    ): void => {
+      const raw = get(row, key);
+      if (!raw || meal![key] != null) return;
+      const n = Number(raw);
+      if (Number.isInteger(n) && n >= min) {
+        meal![key] = n;
+      } else {
+        warnings.push(
+          `Row ${i + 1}: ignored non-numeric ${label} "${raw}"`,
+        );
+      }
+    };
+    parseMetaInt("prepTimeMinutes", "prep time", 0);
+    parseMetaInt("cookTimeMinutes", "cook time", 0);
+    parseMetaInt("servings", "servings", 1);
+
+    const sourceUrl = get(row, "sourceUrl");
+    if (sourceUrl && !meal.sourceUrl) {
+      meal.sourceUrl = sourceUrl;
+    }
+
+    const notes = get(row, "notes");
+    if (notes && !meal.notes) {
+      meal.notes = notes;
+    }
+
     const ingredient = get(row, "ingredient");
     if (ingredient) {
       const ing: ParsedImportMeal["ingredients"] extends (infer U)[] | undefined
@@ -187,12 +241,22 @@ export const MEALS_CSV_HEADER = [
   "quantity",
   "unit",
   "category",
+  "prepTimeMinutes",
+  "cookTimeMinutes",
+  "servings",
+  "sourceUrl",
+  "notes",
 ] as const;
 
 export interface ExportMeal {
   name: string;
   description?: string | null;
   difficulty?: Difficulty | null;
+  prepTimeMinutes?: number | null;
+  cookTimeMinutes?: number | null;
+  servings?: number | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
   ingredients?: {
     name: string;
     quantity?: string | null;
@@ -202,9 +266,9 @@ export interface ExportMeal {
 }
 
 /** Quote a single CSV field per RFC 4180 when it contains a comma, quote, or
- *  newline; escape embedded quotes by doubling them. */
-function csvField(value: string | null | undefined): string {
-  const s = value ?? "";
+ *  newline; escape embedded quotes by doubling them. Numbers are stringified. */
+function csvField(value: string | number | null | undefined): string {
+  const s = value == null ? "" : String(value);
   if (/[",\n\r]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -233,6 +297,11 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(ing?.quantity),
         csvField(ing?.unit),
         csvField(ing?.category),
+        csvField(meal.prepTimeMinutes),
+        csvField(meal.cookTimeMinutes),
+        csvField(meal.servings),
+        csvField(meal.sourceUrl),
+        csvField(meal.notes),
       ].join(","),
     );
   };

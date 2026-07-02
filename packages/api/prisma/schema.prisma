@@ -56,6 +56,11 @@ model Meal {
   imageUrl             String?
   placeholderKind      MealPlaceholderKind?
   difficulty           Difficulty?
+  prepTimeMinutes      Int?
+  cookTimeMinutes      Int?
+  servings             Int?
+  sourceUrl            String?
+  notes                String?
   family               Family           @relation(fields: [familyId], references: [id])
   familyId             String
   ingredients          MealIngredient[]
