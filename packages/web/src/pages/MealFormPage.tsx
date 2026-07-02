@@ -2,9 +2,11 @@ import { useState, useEffect, useId } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
 import { useFamily } from '../hooks/useFamily';
+import { useTaxonomy } from '../hooks/useTaxonomy';
 import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
+import TokenField from '../components/TokenField';
 
 interface IngredientRow {
   name: string;
@@ -18,6 +20,7 @@ const emptyIngredient = (): IngredientRow => ({ name: '', quantity: '', unit: ''
 export default function MealFormPage() {
   const { mealId } = useParams<{ mealId?: string }>();
   const { familyId, hasFamilies } = useFamily();
+  const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
   const navigate = useNavigate();
   const isEdit = Boolean(mealId);
 
@@ -44,6 +47,8 @@ export default function MealFormPage() {
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -68,6 +73,8 @@ export default function MealFormPage() {
         setNotes(meal.notes || '');
         setFavorite(meal.favorite ?? false);
         setRating(meal.rating != null ? String(meal.rating) : '');
+        setTags(meal.tags?.map(t => t.name) ?? []);
+        setCategories(meal.categories?.map(c => c.name) ?? []);
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -128,6 +135,10 @@ export default function MealFormPage() {
       favorite,
       rating: toNum(rating),
       ingredients: validIngredients.length ? validIngredients : undefined,
+      // Always send explicit arrays so removals persist on update (server
+      // treats the arrays as the full desired set; resolve-or-create by name).
+      tags,
+      categories,
     };
 
     try {
@@ -195,6 +206,23 @@ export default function MealFormPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <TokenField
+            label="Tags"
+            values={tags}
+            onChange={setTags}
+            suggestions={tagOptions.map(t => t.name)}
+            placeholder="Add a tag…"
+          />
+          <TokenField
+            label="Categories"
+            values={categories}
+            onChange={setCategories}
+            suggestions={categoryOptions.map(c => c.name)}
+            placeholder="Add a category…"
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

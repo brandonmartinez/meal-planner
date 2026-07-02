@@ -14,4 +14,13 @@ export const handlers = [
   // that don't exercise the agent-credential UI don't trip the
   // `onUnhandledRequest: "error"` guard. Tests that assert on it override here.
   http.get("/api/families/:id/agent-credentials", () => HttpResponse.json([])),
+  // Family taxonomy lists (issue #107) — MealsPage, MealPicker, and MealFormPage
+  // load these via useTaxonomy on mount to populate filter/assign controls.
+  // Default to empty so existing meal tests that don't exercise tags/categories
+  // don't trip the `onUnhandledRequest: "error"` guard. Tests that assert on the
+  // taxonomy UI override these with populated lists.
+  http.get("/api/families/:id/tags", () => HttpResponse.json({ tags: [] })),
+  http.get("/api/families/:id/categories", () =>
+    HttpResponse.json({ categories: [] }),
+  ),
 ];

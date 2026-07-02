@@ -5,11 +5,13 @@ import { mealsToCSV } from '../utils/csv';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useTaxonomy } from '../hooks/useTaxonomy';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
 import LastCookedBadge from '../components/LastCookedBadge';
 import { MealThumbnail } from '../components/MealThumbnail';
+import MealTagList from '../components/MealTagList';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { MealListItemDTO, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
@@ -37,6 +39,8 @@ export default function MealsPage() {
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [sort, setSort] = useState<'name' | 'created' | 'lastCooked'>('name');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [total, setTotal] = useState(0);
@@ -50,10 +54,17 @@ export default function MealsPage() {
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
 
+  // Family taxonomy powers the tag/category filter groups below.
+  const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
+
   const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
   const isParent = currentMembership?.role === 'PARENT';
 
-  const hasActiveFilters = debouncedSearch.trim() !== '' || difficulty.length > 0;
+  const hasActiveFilters =
+    debouncedSearch.trim() !== '' ||
+    difficulty.length > 0 ||
+    tagFilter.length > 0 ||
+    categoryFilter.length > 0;
 
   // Load the first page (replaces the grid). Runs whenever any filter/sort input
   // changes; a new search/filter always resets pagination to offset 0.
@@ -63,6 +74,8 @@ export default function MealsPage() {
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
+        tags: tagFilter.length ? tagFilter : undefined,
+        categories: categoryFilter.length ? categoryFilter : undefined,
         sort,
         order,
         limit: PAGE_SIZE,
@@ -77,7 +90,7 @@ export default function MealsPage() {
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty, sort, order]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, sort, order]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
@@ -89,6 +102,8 @@ export default function MealsPage() {
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
+        tags: tagFilter.length ? tagFilter : undefined,
+        categories: categoryFilter.length ? categoryFilter : undefined,
         sort,
         order,
         limit: PAGE_SIZE,
@@ -110,9 +125,23 @@ export default function MealsPage() {
     );
   };
 
+  const toggleTag = (value: string) => {
+    setTagFilter(prev =>
+      prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value],
+    );
+  };
+
+  const toggleCategory = (value: string) => {
+    setCategoryFilter(prev =>
+      prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value],
+    );
+  };
+
   const clearFilters = () => {
     setSearch('');
     setDifficulty([]);
+    setTagFilter([]);
+    setCategoryFilter([]);
   };
 
   const handleDelete = async (mealId: string) => {
@@ -193,10 +222,10 @@ export default function MealsPage() {
         />
       )}
 
-      {/* Discovery filter bar (#112). Only surfaces capabilities the #111 backend
-          exposes: search, difficulty[], sort, order, offset pagination.
-          TODO(#98,#107): add favorite / rating / tag & category filters here once
-          their backend list params land — do NOT stub them before then. */}
+      {/* Discovery filter bar (#112). Search, difficulty[], sort, order, offset
+          pagination (#111) plus tag & category facets (#107/#108). Tag/category
+          groups only render when the family has taxonomy so empty families stay
+          clutter-free. Multi-select is OR-within-facet; facets AND together. */}
       <div className="mb-6 space-y-3">
         <input
           type="text"
@@ -267,6 +296,60 @@ export default function MealsPage() {
             </button>
           )}
         </div>
+
+        {tagOptions.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter by tag"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {tagOptions.map(tag => {
+              const active = tagFilter.includes(tag.name);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleTag(tag.name)}
+                  className={`rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
+                    active
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {categoryOptions.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter by category"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {categoryOptions.map(category => {
+              const active = categoryFilter.includes(category.name);
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleCategory(category.name)}
+                  className={`rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
+                    active
+                      ? 'bg-purple-600 border-purple-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {category.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -330,6 +413,16 @@ export default function MealsPage() {
                     </>
                   )}
                 </div>
+
+                {/* Zone 2.5 — tags & categories (compact, reserved height) */}
+                {!isPlaceholder && (
+                  <MealTagList
+                    tags={meal.tags}
+                    categories={meal.categories}
+                    reserveHeight
+                    className="mt-2"
+                  />
+                )}
 
                 {/* Zone 3 — description (reserved 2-line height) */}
                 <p className="mt-2 min-h-[2.5rem] text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
