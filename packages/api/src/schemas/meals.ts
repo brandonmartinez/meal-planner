@@ -10,6 +10,21 @@ import { Difficulty } from "@prisma/client";
  * (search AND difficulty[] both apply). Placeholder meals are excluded from results
  * whenever any search/filter param is active; unfiltered pagination includes them.
  */
+/**
+ * External recipe image URL. Display-only; rendered in an <img> on web + Magic
+ * Mirror. We store the string but never fetch it server-side. Validation mirrors
+ * sourceUrl (.url()) and additionally enforces an http(s) scheme allowlist so we
+ * never persist javascript:/file:/data: values. Shared by the REST meals route,
+ * the agent route, and the CSV import schema. #103.
+ */
+export const imageUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .refine((u) => /^https?:\/\//i.test(u), {
+    message: "imageUrl must use http or https",
+  });
+
 export const listMealsQuerySchema = z.object({
   /** Case-insensitive substring search on meal name (ILIKE, pg_trgm-accelerated). */
   search: z.string().optional(),

@@ -6,6 +6,7 @@ import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 import type { Meal, MealIngredient } from '@meal-planner/shared';
 import DifficultyBadge from '../components/DifficultyBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { MealThumbnail } from '../components/MealThumbnail';
 
 type LoadedMeal = Meal & { ingredients: MealIngredient[] };
 
@@ -115,6 +116,12 @@ export default function MealDetailPage() {
       {meal.description && (
         <p className="mt-3 text-gray-700 dark:text-gray-300">{meal.description}</p>
       )}
+
+      <MealThumbnail
+        src={meal.imageUrl}
+        alt={meal.name}
+        className="mt-6 max-h-80 w-full rounded-lg object-cover"
+      />
 
       {hasTimingRow && (
         <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">

@@ -196,6 +196,7 @@ describe("createToolHandlers", () => {
       cookTimeMinutes: 20,
       servings: 4,
       sourceUrl: "https://example.com/tacos",
+      imageUrl: "https://cdn.example.com/tacos.jpg",
       notes: "Use fresh cilantro",
       favorite: true,
       rating: 5,
@@ -236,6 +237,7 @@ describe("createToolHandlers", () => {
       cookTimeMinutes: null,
       servings: 6,
       sourceUrl: null,
+      imageUrl: null,
       notes: "Simmer low",
     });
     expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
@@ -243,6 +245,7 @@ describe("createToolHandlers", () => {
       cookTimeMinutes: null,
       servings: 6,
       sourceUrl: null,
+      imageUrl: null,
       notes: "Simmer low",
     });
   });

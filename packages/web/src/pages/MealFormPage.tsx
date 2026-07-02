@@ -27,6 +27,7 @@ export default function MealFormPage() {
   const cookTimeId = useId();
   const servingsId = useId();
   const sourceUrlId = useId();
+  const imageUrlId = useId();
   const notesId = useId();
   const favoriteId = useId();
   const ratingId = useId();
@@ -38,6 +39,7 @@ export default function MealFormPage() {
   const [cookTimeMinutes, setCookTimeMinutes] = useState('');
   const [servings, setServings] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState('');
@@ -62,6 +64,7 @@ export default function MealFormPage() {
         setCookTimeMinutes(meal.cookTimeMinutes != null ? String(meal.cookTimeMinutes) : '');
         setServings(meal.servings != null ? String(meal.servings) : '');
         setSourceUrl(meal.sourceUrl || '');
+        setImageUrl(meal.imageUrl || '');
         setNotes(meal.notes || '');
         setFavorite(meal.favorite ?? false);
         setRating(meal.rating != null ? String(meal.rating) : '');
@@ -120,6 +123,7 @@ export default function MealFormPage() {
       cookTimeMinutes: toNum(cookTimeMinutes),
       servings: toNum(servings),
       sourceUrl: sourceUrl.trim() || null,
+      imageUrl: imageUrl.trim() || null,
       notes: notes.trim() || null,
       favorite,
       rating: toNum(rating),
@@ -239,6 +243,19 @@ export default function MealFormPage() {
             placeholder="https://example.com/recipe"
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
           />
+        </div>
+
+        <div>
+          <label htmlFor={imageUrlId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
+          <input
+            id={imageUrlId}
+            type="url"
+            value={imageUrl}
+            onChange={e => setImageUrl(e.target.value)}
+            placeholder="https://example.com/photo.jpg"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Link to an external photo of this meal. Displayed as a thumbnail.</p>
         </div>
 
         <div>

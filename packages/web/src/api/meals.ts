@@ -68,6 +68,7 @@ export async function createMeal(
   data: {
     name: string;
     description?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;
@@ -91,6 +92,7 @@ export async function updateMeal(
   data: {
     name: string;
     description?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;
@@ -122,6 +124,7 @@ export async function importMeals(
   meals: {
     name: string;
     description?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;

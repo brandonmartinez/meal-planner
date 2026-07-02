@@ -35,6 +35,8 @@ interface RequestOptions {
 export interface CreateMealInput {
   name: string;
   description?: string;
+  /** External recipe image URL (http/https). Display-only; stored as-is. #103. */
+  imageUrl?: string | null;
   difficulty?: Difficulty;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
@@ -56,6 +58,8 @@ export interface CreateMealInput {
 export interface UpdateMealInput {
   name?: string;
   description?: string;
+  /** External recipe image URL (http/https), or `null` to clear it. #103. */
+  imageUrl?: string | null;
   difficulty?: Difficulty | null;
   prepTimeMinutes?: number | null;
   cookTimeMinutes?: number | null;

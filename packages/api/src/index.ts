@@ -46,8 +46,12 @@ app.use(
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
-        // Allow Google avatar images served via the user's `avatarUrl`.
-        "img-src": ["'self'", "data:", "https://*.googleusercontent.com"],
+        // Allow Google avatar images (avatarUrl) and external recipe images
+        // (Meal.imageUrl). imageUrl is a validated http(s) URL rendered as a
+        // display-only thumbnail; enumerating recipe image hosts is infeasible,
+        // so any https source is permitted. http URLs won't load in prod (mixed
+        // content) but fail gracefully via the thumbnail onError fallback.
+        "img-src": ["'self'", "data:", "https:"],
         // The OAuth callback issues a 302 to the SPA; no embedded scripts are
         // returned from this API, but the API also serves the production SPA
         // bundle (which uses external JS/CSS files).

@@ -176,6 +176,7 @@ export interface ImportMealsResultDTO {
 export interface ExportMealDTO {
   name: string;
   description: string | null;
+  imageUrl: string | null;
   difficulty: Difficulty | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;

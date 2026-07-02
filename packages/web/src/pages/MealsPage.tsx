@@ -9,6 +9,7 @@ import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
 import LastCookedBadge from '../components/LastCookedBadge';
+import { MealThumbnail } from '../components/MealThumbnail';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { MealListItemDTO, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
@@ -294,6 +295,11 @@ export default function MealsPage() {
               >
                 {/* Zone 1 — title */}
                 <div className="flex items-start gap-2">
+                  <MealThumbnail
+                    src={meal.imageUrl}
+                    alt=""
+                    className="h-12 w-12 shrink-0 rounded object-cover"
+                  />
                   {meta && (
                     <span className="shrink-0 text-lg leading-6" aria-hidden="true">
                       {meta.emoji}

@@ -117,6 +117,19 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">category</code>.
                         </p>
                         <p className="mb-2">
+                            Optional extra columns:{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">prepTimeMinutes</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">cookTimeMinutes</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">servings</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">sourceUrl</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">imageUrl</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">notes</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">favorite</code>,{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">rating</code>.{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">imageUrl</code> must be an{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">http(s)</code> link to an image.
+                        </p>
+                        <p className="mb-2">
                             Use one row per ingredient. Repeat the meal name to add multiple ingredients to the
                             same meal. Only <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">meal</code> is required.{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">difficulty</code> is optional and must be{' '}

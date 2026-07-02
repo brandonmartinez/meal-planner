@@ -4,7 +4,7 @@ import { MEAL_DIFFICULTIES } from "@meal-planner/shared";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as mealService from "../services/meals.js";
-import { listMealsQuerySchema } from "../schemas/meals.js";
+import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
 export const mealsRouter = Router();
 
@@ -12,10 +12,14 @@ function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
 }
 
+// Re-exported from schemas/meals.ts so both the REST route and the agent route
+// share one validator. See that file for the http(s) scheme-allowlist rationale. #103.
+export { imageUrlSchema };
+
 export const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  imageUrl: z.string().optional(),
+  imageUrl: imageUrlSchema.nullable().optional(),
   difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
   prepTimeMinutes: z.number().int().min(0).nullable().optional(),
   cookTimeMinutes: z.number().int().min(0).nullable().optional(),
@@ -39,7 +43,7 @@ export const createMealSchema = z.object({
 export const updateMealSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
-  imageUrl: z.string().optional(),
+  imageUrl: imageUrlSchema.nullable().optional(),
   difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
   prepTimeMinutes: z.number().int().min(0).nullable().optional(),
   cookTimeMinutes: z.number().int().min(0).nullable().optional(),
@@ -67,6 +71,7 @@ const importMealsSchema = z.object({
       z.object({
         name: z.string().min(1),
         description: z.string().optional(),
+        imageUrl: imageUrlSchema.nullable().optional(),
         difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
         prepTimeMinutes: z.number().int().min(0).nullable().optional(),
         cookTimeMinutes: z.number().int().min(0).nullable().optional(),

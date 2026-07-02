@@ -83,6 +83,39 @@ describe('MealsPage difficulty', () => {
     expect(screen.queryByText('Hard', { selector: ':not(button)' })).not.toBeInTheDocument();
   });
 
+  it('renders a thumbnail image when the meal has an imageUrl', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', imageUrl: 'https://cdn.example.com/tacos.jpg' }),
+          ]),
+        ),
+      ),
+    );
+
+    const { container } = renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute('src', 'https://cdn.example.com/tacos.jpg');
+  });
+
+  it('renders no thumbnail image when the meal has no imageUrl', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-2', name: 'Soup', imageUrl: null })])),
+      ),
+    );
+
+    const { container } = renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Soup')).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+  });
   it('renders a View link to the recipe detail page on non-placeholder cards', async () => {
     server.use(
       authMeWithFamily(),
@@ -157,7 +190,7 @@ describe('MealsPage export', () => {
       reader.readAsText(capturedBlob!);
     });
     expect(text.split('\n')[0]).toBe(
-      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,notes,favorite,rating',
+      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating',
     );
     expect(text).toContain('Tacos,Yum,EASY,Tortillas,6,,produce');
 

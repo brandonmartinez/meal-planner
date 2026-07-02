@@ -88,6 +88,7 @@ describe('MealDetailPage', () => {
             cookTimeMinutes: 30,
             servings: 4,
             sourceUrl: 'https://example.com/curry',
+            imageUrl: 'https://cdn.example.com/curry.jpg',
             notes: 'Add extra chili for heat.',
             ingredients: [
               { id: 'i-1', name: 'chicken', quantity: '500', unit: 'g', mealId: 'm-1' },
@@ -113,6 +114,9 @@ describe('MealDetailPage', () => {
     expect(source).toHaveAttribute('target', '_blank');
     expect(source).toHaveAttribute('rel', 'noopener noreferrer');
 
+    const image = screen.getByRole('img', { name: 'Chicken Curry' });
+    expect(image).toHaveAttribute('src', 'https://cdn.example.com/curry.jpg');
+
     expect(screen.getByText('500 g chicken')).toBeInTheDocument();
     expect(screen.getByText('1 onion')).toBeInTheDocument();
     expect(screen.getByText('Add extra chili for heat.')).toBeInTheDocument();
@@ -130,6 +134,8 @@ describe('MealDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Plain' })).toBeInTheDocument();
     expect(screen.getByText('No ingredients listed.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Notes' })).not.toBeInTheDocument();
+    // No imageUrl on this meal → no <img> renders (graceful missing-image).
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
   it('renders a non-recipe state for placeholder meals', async () => {
