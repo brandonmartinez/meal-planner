@@ -263,7 +263,52 @@ describe("POST /:familyId/meals (create)", () => {
     );
   });
 
-  it("400s on a malformed sourceUrl (validated, never fetched)", async () => {
+  it("forwards ordered instructions through to the service (#100)", async () => {
+    vi.mocked(mealService.createMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: {
+          name: "Tacos",
+          instructions: [
+            { text: "Warm the tortillas" },
+            { text: "Assemble", timerMinutes: 2 },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(mealService.createMeal).toHaveBeenCalledWith(
+      FAMILY_ID,
+      expect.objectContaining({
+        instructions: [
+          { text: "Warm the tortillas" },
+          { text: "Assemble", timerMinutes: 2 },
+        ],
+      }),
+    );
+  });
+
+  it("400s on an instruction step with empty text (#100)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", instructions: [{ text: "" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on an invalid sourceUrl", async () => {
     const res = buildFullRes();
     await handler(
       req({
@@ -493,6 +538,53 @@ describe("POST /:familyId/meals/import (bulk)", () => {
     expect(mealService.importMeals).not.toHaveBeenCalled();
   });
 
+  it("forwards ordered instructions in a meal row through to the service (#100)", async () => {
+    vi.mocked(mealService.importMeals).mockResolvedValue({
+      created: 1,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: {
+          meals: [
+            {
+              name: "Tacos",
+              instructions: [{ text: "Warm" }, { text: "Assemble" }],
+            },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.importMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      [
+        {
+          name: "Tacos",
+          instructions: [{ text: "Warm" }, { text: "Assemble" }],
+        },
+      ],
+      { mode: undefined },
+    );
+  });
+
+  it("400s on an instruction step with empty text in a meal row (#100)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { meals: [{ name: "Tacos", instructions: [{ text: "" }] }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.importMeals).not.toHaveBeenCalled();
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.importMeals).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
@@ -676,7 +768,67 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     );
   });
 
-  it("400s on an out-of-range rating", async () => {
+  it("forwards a replacement instruction list through to the service (#100)", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          instructions: [
+            { text: "First" },
+            { text: "Second", timerMinutes: 5 },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({
+        instructions: [
+          { text: "First" },
+          { text: "Second", timerMinutes: 5 },
+        ],
+      }),
+    );
+  });
+
+  it("forwards an empty instruction list to clear all steps (#100)", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { instructions: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({ instructions: [] }),
+    );
+  });
+
+  it("400s on an instruction step with empty text (#100)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { instructions: [{ text: "" }] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a rating below the minimum", async () => {
     const res = buildFullRes();
     await handler(
       req({ params, body: { rating: 0 } }),

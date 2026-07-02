@@ -18,6 +18,28 @@ const MEAL_TAXONOMY_INCLUDE = {
   categories: { include: { category: true } },
 } satisfies Prisma.MealInclude;
 
+/** Full detail `include` for single-meal read paths: ingredients, ordered
+ *  instructions (issue #100), and taxonomy join rows. Instructions are always
+ *  returned in ascending `position` order so callers get a stable step order. */
+const MEAL_DETAIL_INCLUDE = {
+  ingredients: true,
+  instructions: { orderBy: { position: "asc" } },
+  ...MEAL_TAXONOMY_INCLUDE,
+} satisfies Prisma.MealInclude;
+
+/** Map ordered instruction inputs to Prisma create rows, assigning a dense,
+ *  0-based `position` from array index. Used by every create/replace path so
+ *  input order is the persisted order (issue #100). */
+function mapInstructionCreates(
+  instructions?: { text: string; timerMinutes?: number | null }[],
+) {
+  return (instructions ?? []).map((step, i) => ({
+    text: step.text,
+    timerMinutes: step.timerMinutes ?? null,
+    position: i,
+  }));
+}
+
 /** The subset of a meal's included join rows this module reads. */
 type TaxonomyJoinRows = {
   tags: { tag: { id: string; name: string; familyId: string } }[];
@@ -335,7 +357,7 @@ export async function getLastCookedMap(
 export async function getMealById(mealId: string, familyId: string) {
   const meal = await prisma.meal.findFirst({
     where: { id: mealId, familyId },
-    include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
+    include: MEAL_DETAIL_INCLUDE,
   });
   return meal ? flattenMeal(meal) : null;
 }
@@ -360,6 +382,7 @@ export async function createMeal(
       unit?: string;
       category?: string;
     }[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
   },
@@ -382,12 +405,15 @@ export async function createMeal(
         ingredients: data.ingredients?.length
           ? { create: data.ingredients }
           : undefined,
+        instructions: data.instructions?.length
+          ? { create: mapInstructionCreates(data.instructions) }
+          : undefined,
       },
     });
     await syncMealTaxonomy(tx, familyId, meal.id, data.tags, data.categories);
     const withTaxonomy = await tx.meal.findUniqueOrThrow({
       where: { id: meal.id },
-      include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
+      include: MEAL_DETAIL_INCLUDE,
     });
     return flattenMeal(withTaxonomy);
   });
@@ -414,6 +440,7 @@ export async function updateMeal(
       unit?: string;
       category?: string;
     }[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
   },
@@ -431,6 +458,14 @@ export async function updateMeal(
     // Delete old ingredients and create new ones
     if (data.ingredients !== undefined) {
       await tx.mealIngredient.deleteMany({ where: { mealId } });
+    }
+
+    // Instructions use replace-all-on-update semantics (issue #100): when the
+    // caller passes `instructions`, the meal's entire ordered step list is
+    // deleted and recreated from the input array. Omitting `instructions`
+    // leaves existing steps untouched; passing `[]` clears them.
+    if (data.instructions !== undefined) {
+      await tx.mealInstruction.deleteMany({ where: { mealId } });
     }
 
     await tx.meal.update({
@@ -451,12 +486,16 @@ export async function updateMeal(
           data.ingredients !== undefined
             ? { create: data.ingredients }
             : undefined,
+        instructions:
+          data.instructions !== undefined
+            ? { create: mapInstructionCreates(data.instructions) }
+            : undefined,
       },
     });
     await syncMealTaxonomy(tx, familyId, mealId, data.tags, data.categories);
     const meal = await tx.meal.findUniqueOrThrow({
       where: { id: mealId },
-      include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
+      include: MEAL_DETAIL_INCLUDE,
     });
     return flattenMeal(meal);
   });
@@ -511,6 +550,7 @@ export async function importMeals(
       unit?: string;
       category?: string;
     }[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
   }[],
@@ -547,6 +587,13 @@ export async function importMeals(
           await tx.mealIngredient.deleteMany({
             where: { mealId: existing.id },
           });
+          // Replace-all instructions on import-replace (issue #100): drop the
+          // existing ordered steps and recreate from the imported list.
+          if (data.instructions !== undefined) {
+            await tx.mealInstruction.deleteMany({
+              where: { mealId: existing.id },
+            });
+          }
           await tx.meal.update({
             where: { id: existing.id },
             data: {
@@ -562,6 +609,9 @@ export async function importMeals(
               rating: data.rating,
               ingredients: data.ingredients?.length
                 ? { create: data.ingredients }
+                : undefined,
+              instructions: data.instructions?.length
+                ? { create: mapInstructionCreates(data.instructions) }
                 : undefined,
             },
           });
@@ -592,6 +642,9 @@ export async function importMeals(
             familyId,
             ingredients: data.ingredients?.length
               ? { create: data.ingredients }
+              : undefined,
+            instructions: data.instructions?.length
+              ? { create: mapInstructionCreates(data.instructions) }
               : undefined,
           },
         });
@@ -628,6 +681,10 @@ export async function exportMeals(familyId: string) {
       ingredients: {
         select: { name: true, quantity: true, unit: true, category: true },
       },
+      instructions: {
+        orderBy: { position: "asc" },
+        select: { text: true, timerMinutes: true, position: true },
+      },
       tags: { include: { tag: { select: { name: true } } } },
       categories: { include: { category: { select: { name: true } } } },
     },
@@ -647,6 +704,7 @@ export async function exportMeals(familyId: string) {
     favorite: meal.favorite,
     rating: meal.rating,
     ingredients: meal.ingredients,
+    instructions: meal.instructions,
     tags: (meal.tags ?? []).map((mt) => mt.tag.name),
     categories: (meal.categories ?? []).map((mc) => mc.category.name),
   }));

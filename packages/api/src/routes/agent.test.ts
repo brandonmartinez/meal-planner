@@ -450,4 +450,112 @@ describe("agent routes (end-to-end middleware chain)", () => {
     });
     expect(prismaMock.mealCategory.createMany).not.toHaveBeenCalled();
   });
+
+  // --- #100 instructions parity (parity.instructions.md row 4) ---
+  // The agent write path shares mealService.createMeal / updateMeal with REST,
+  // so ordering + replace-all are covered exhaustively in services/meals.test.ts.
+  // These pin the agent-SPECIFIC surface: the credential's family scopes the
+  // write, and a placeholder meal cannot receive instructions (403).
+
+  it("write: POST meals nested-creates ordered instructions (#100, parity row 4)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      {
+        name: "Tacos",
+        instructions: [
+          { text: "Warm the tortillas" },
+          { text: "Assemble", timerMinutes: 2 },
+        ],
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const arg = prismaMock.meal.create.mock.calls[0][0] as {
+      data: {
+        instructions?: {
+          create: { text: string; timerMinutes: number | null; position: number }[];
+        };
+      };
+    };
+    expect(arg.data.instructions?.create).toEqual([
+      { text: "Warm the tortillas", timerMinutes: null, position: 0 },
+      { text: "Assemble", timerMinutes: 2, position: 1 },
+    ]);
+  });
+
+  it("write: PATCH meals replace-alls instructions in order (#100, parity row 4)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.mealInstruction.deleteMany.mockResolvedValue({
+      count: 3,
+    } as never);
+    prismaMock.meal.update.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq(
+      { mealId: "meal-1" },
+      { instructions: [{ text: "First" }, { text: "Second" }] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    // Replace-all: existing steps deleted before recreation.
+    expect(prismaMock.mealInstruction.deleteMany).toHaveBeenCalledWith({
+      where: { mealId: "meal-1" },
+    });
+    const arg = prismaMock.meal.update.mock.calls[0][0] as {
+      data: {
+        instructions?: { create: { text: string; position: number }[] };
+      };
+    };
+    expect(
+      arg.data.instructions?.create.map((s) => [s.position, s.text]),
+    ).toEqual([
+      [0, "First"],
+      [1, "Second"],
+    ]);
+  });
+
+  it("write: PATCH meals rejects instructions on a placeholder meal (#100, 403)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: "LEFTOVERS",
+    } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq(
+      { mealId: "meal-1" },
+      { instructions: [{ text: "Nope" }] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toMatchObject({ error: "Cannot modify placeholder meal" });
+    // Guard fires before any instruction write.
+    expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+  });
 });

@@ -246,7 +246,23 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(input);
   });
 
-  it("updateMeal PATCHes /api/agent/meals/:mealId with the patch body", async () => {
+  it("createMeal forwards ordered instructions in the body (#100)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-new" }, 201));
+    const input = {
+      name: "Tacos",
+      instructions: [
+        { text: "Warm the tortillas" },
+        { text: "Assemble", timerMinutes: 2 },
+      ],
+    };
+
+    await client.createMeal(input);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(input);
+  });
+
+  it("updateMeal sends a PATCH with the partial body", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
 
     await client.updateMeal("meal-1", { name: "Better Tacos" });
@@ -294,7 +310,19 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(patch);
   });
 
-  it("updateMeal encodes the mealId path segment", async () => {
+  it("updateMeal forwards a replacement instruction list verbatim (#100)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
+
+    const patch = {
+      instructions: [{ text: "First" }, { text: "Second", timerMinutes: 5 }],
+    };
+    await client.updateMeal("meal-1", patch);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(patch);
+  });
+
+  it("updateMeal URL-encodes the meal id in the path", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "x" }));
     await client.updateMeal("a/b", { name: "X" });
     const { url } = lastCall(fetchFn);
