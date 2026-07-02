@@ -305,7 +305,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories",
     );
   });
 
@@ -322,8 +322,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -332,7 +332,7 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,,,");
   });
 
   it("emits meal-level metadata columns, repeating them per ingredient row", () => {
@@ -354,10 +354,10 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines[1]).toBe(
-      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,",
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,",
     );
     expect(lines[2]).toBe(
-      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,",
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,",
     );
   });
 
@@ -374,8 +374,8 @@ describe("mealsToCSV", () => {
       { name: "Cereal", favorite: false, rating: null },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5");
-    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,");
+    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5,,");
+    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,,,");
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -426,5 +426,110 @@ describe("mealsToCSV", () => {
     expect(cereal?.difficulty).toBeUndefined();
     expect(cereal?.prepTimeMinutes).toBeUndefined();
     expect(cereal?.ingredients).toBeUndefined();
+  });
+});
+
+describe("parseMealsCSV — tags & categories (#107)", () => {
+  it("parses semicolon-delimited tag and category name lists", () => {
+    const csv =
+      "meal,tags,categories\nTacos,Quick;Weeknight,Dinner;Mexican\n";
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.tags).toEqual(["Quick", "Weeknight"]);
+    expect(tacos?.categories).toEqual(["Dinner", "Mexican"]);
+  });
+
+  it("trims whitespace and drops empty segments in name lists", () => {
+    const csv = "meal,tags\nTacos, Quick ; ;Weeknight; \n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.tags).toEqual(["Quick", "Weeknight"]);
+  });
+
+  it("dedupes case-insensitively within a single cell, preserving first casing", () => {
+    const csv = "meal,categories\nTacos,Dinner;dinner;DINNER\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.categories).toEqual(["Dinner"]);
+  });
+
+  it("supports tag and category header aliases", () => {
+    const csv = "meal,tag,cats\nTacos,Quick,Dinner\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.tags).toEqual(["Quick"]);
+    expect(tacos?.categories).toEqual(["Dinner"]);
+  });
+
+  it("keeps the first non-empty tag/category list across grouped rows", () => {
+    const csv =
+      "meal,ingredient,tags\nTacos,Tortillas,Quick;Weeknight\nTacos,Salsa,Ignored\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.tags).toEqual(["Quick", "Weeknight"]);
+  });
+
+  it("leaves tags/categories undefined when the columns are absent or empty", () => {
+    const csv = "meal,tags,categories\nCereal,,\n";
+    const r = parseMealsCSV(csv);
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.tags).toBeUndefined();
+    expect(cereal?.categories).toBeUndefined();
+  });
+});
+
+describe("mealsToCSV — tags & categories (#107)", () => {
+  it("emits semicolon-joined tag and category name lists", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        tags: ["Quick", "Weeknight"],
+        categories: ["Dinner", "Mexican"],
+      },
+    ]);
+    const dataRow = csv.trim().split("\n")[1];
+    expect(dataRow.endsWith("Quick;Weeknight,Dinner;Mexican")).toBe(true);
+  });
+
+  it("round-trips tag and category assignments by name", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        difficulty: "MEDIUM",
+        tags: ["Quick", "Weeknight"],
+        categories: ["Dinner"],
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+          { name: "Salsa", quantity: "1", unit: "cup", category: "produce" },
+        ],
+      },
+      { name: "Cereal", tags: ["Breakfast"], categories: [] },
+    ]);
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    // Multi-ingredient meal repeats tag/category columns on every row;
+    // the first-non-empty guard keeps a single deduped assignment.
+    expect(tacos?.tags).toEqual(["Quick", "Weeknight"]);
+    expect(tacos?.categories).toEqual(["Dinner"]);
+
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.tags).toEqual(["Breakfast"]);
+    // An empty category list exports as an empty cell → undefined on re-import.
+    expect(cereal?.categories).toBeUndefined();
+  });
+
+  it("re-resolves names case-insensitively on round-trip (normalized dedupe is a service concern)", () => {
+    // Export preserves original casing; the importer only dedupes exact
+    // case-insensitive repeats within a cell. Distinct casings survive as
+    // separate names for the service layer to normalize/upsert per family.
+    const csv = mealsToCSV([
+      { name: "Tacos", tags: ["Quick", "quick"] },
+    ]);
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.tags).toEqual(["Quick"]);
   });
 });

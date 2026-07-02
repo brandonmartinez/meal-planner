@@ -377,6 +377,82 @@ describe("meals service", () => {
       expect(arg.where.placeholderKind).toBeNull();
     });
 
+    it("filters by tags (OR-within-facet, normalized to lowercase)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { tags: ["Quick", "VEGETARIAN"] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: {
+          tags?: { some?: { tag?: { nameNormalized?: { in?: string[] } } } };
+          placeholderKind?: unknown;
+        };
+      };
+      // OR-within-facet: any of the supplied tag names matches, normalized.
+      expect(arg.where.tags?.some?.tag?.nameNormalized?.in).toEqual([
+        "quick",
+        "vegetarian",
+      ]);
+      // Filtering excludes placeholders.
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("filters by categories (OR-within-facet, normalized to lowercase)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { categories: ["Dinner"] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: {
+          categories?: {
+            some?: { category?: { nameNormalized?: { in?: string[] } } };
+          };
+          placeholderKind?: unknown;
+        };
+      };
+      expect(arg.where.categories?.some?.category?.nameNormalized?.in).toEqual([
+        "dinner",
+      ]);
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("AND-across-facets: tag AND category filters both applied to where", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", {
+        tags: ["quick"],
+        categories: ["dinner"],
+      } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: {
+          tags?: { some?: { tag?: { nameNormalized?: { in?: string[] } } } };
+          categories?: {
+            some?: { category?: { nameNormalized?: { in?: string[] } } };
+          };
+        };
+      };
+      // Both facets present on the same where object → AND semantics.
+      expect(arg.where.tags?.some?.tag?.nameNormalized?.in).toEqual(["quick"]);
+      expect(arg.where.categories?.some?.category?.nameNormalized?.in).toEqual([
+        "dinner",
+      ]);
+    });
+
+    it("excludes placeholders when only a tag filter is active", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { tags: ["quick"] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { placeholderKind?: unknown };
+      };
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("ignores blank/whitespace-only tag names (no tag filter applied)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { tags: ["  ", ""] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { tags?: unknown; placeholderKind?: unknown };
+      };
+      // All names blank → no tag filter, and no filter means placeholders stay.
+      expect(arg.where).not.toHaveProperty("tags");
+      expect(arg.where).not.toHaveProperty("placeholderKind");
+    });
+
     it("lastCooked sort: fetches all via findMany (not $transaction), sorts nulls-last tiebreak name asc", async () => {
       prismaMock.meal.findMany.mockResolvedValue([
         { id: "m-c", name: "Zucchini soup", _count: { ingredients: 0 } },
@@ -478,6 +554,18 @@ describe("meals service", () => {
   });
 
   describe("createMeal", () => {
+    beforeEach(() => {
+      // createMeal re-fetches the meal with taxonomy joins after mutating.
+      // Default to an empty-taxonomy row so tests that don't care about
+      // tags/categories don't have to wire the re-fetch themselves.
+      prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+        id: "m-1",
+        ingredients: [],
+        tags: [],
+        categories: [],
+      } as never);
+    });
+
     it("creates a meal with nested ingredients in a transaction", async () => {
       stubTransaction();
       const created = { id: "m-1", name: "Tacos" };
@@ -488,7 +576,7 @@ describe("meals service", () => {
         ingredients: [{ name: "tortilla", quantity: "6" }],
       });
 
-      expect(result).toBe(created);
+      expect(result).toMatchObject({ id: "m-1", tags: [], categories: [] });
       const arg = prismaMock.meal.create.mock.calls[0][0] as {
         data: {
           name: string;
@@ -614,9 +702,67 @@ describe("meals service", () => {
       };
       expect(arg.data.rating).toBeNull();
     });
+
+    it("assigns tags and categories by name within the family transaction", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      prismaMock.tag.upsert.mockResolvedValue({ id: "t-1" } as never);
+      prismaMock.category.upsert.mockResolvedValue({ id: "c-1" } as never);
+      prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.mealCategory.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.mealCategory.createMany.mockResolvedValue({
+        count: 1,
+      } as never);
+
+      await createMeal("fam-1", {
+        name: "Tacos",
+        tags: ["Quick"],
+        categories: ["Dinner"],
+      } as never);
+
+      // Tag resolved via family-scoped upsert, then joined to the new meal.
+      const tagUpsert = prismaMock.tag.upsert.mock.calls[0][0] as {
+        where: { familyId_nameNormalized: unknown };
+      };
+      expect(tagUpsert.where.familyId_nameNormalized).toEqual({
+        familyId: "fam-1",
+        nameNormalized: "quick",
+      });
+      expect(prismaMock.mealTag.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-1", tagId: "t-1" }],
+        skipDuplicates: true,
+      });
+      expect(prismaMock.mealCategory.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-1", categoryId: "c-1" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("does not touch taxonomy joins when tags/categories are omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      await createMeal("fam-1", { name: "Plain" });
+      expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   describe("updateMeal", () => {
+    beforeEach(() => {
+      // updateMeal re-fetches the meal with taxonomy joins after mutating.
+      prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+        id: "m-1",
+        ingredients: [],
+        tags: [],
+        categories: [],
+      } as never);
+    });
+
     it("refuses to modify a placeholder meal", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({
@@ -854,6 +1000,85 @@ describe("meals service", () => {
       expect(arg.data.favorite).toBeUndefined();
       expect(arg.data.rating).toBeUndefined();
     });
+
+    it("replace-sets tags when tags is provided (clears then re-creates)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+      prismaMock.tag.upsert.mockResolvedValue({ id: "t-9" } as never);
+      prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+
+      await updateMeal("m-1", "fam-1", { tags: ["Weeknight"] } as never);
+
+      // Existing joins cleared before the new set is written.
+      expect(prismaMock.mealTag.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      const tagUpsert = prismaMock.tag.upsert.mock.calls[0][0] as {
+        where: { familyId_nameNormalized: unknown };
+      };
+      expect(tagUpsert.where.familyId_nameNormalized).toEqual({
+        familyId: "fam-1",
+        nameNormalized: "weeknight",
+      });
+      expect(prismaMock.mealTag.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-1", tagId: "t-9" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("clears all tags when tags is an empty array (delete, no create)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+      prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 2 } as never);
+
+      await updateMeal("m-1", "fam-1", { tags: [] } as never);
+
+      expect(prismaMock.mealTag.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      expect(prismaMock.mealTag.createMany).not.toHaveBeenCalled();
+      expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
+    });
+
+    it("leaves taxonomy joins untouched when tags/categories are omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
+    });
+
+    it("does not assign taxonomy to a placeholder meal (guard runs first)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: "FREE_DAY",
+      } as never);
+
+      await expect(
+        updateMeal("m-1", "fam-1", { tags: ["Quick"] } as never),
+      ).rejects.toThrow(/Cannot modify placeholder/);
+      // Guard rejects before any taxonomy mutation.
+      expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
+      expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
+    });
   });
 
   describe("deleteMeal", () => {
@@ -1058,6 +1283,67 @@ describe("meals service", () => {
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].name).toBe("A");
     });
+
+    it("resolves and assigns tags/categories by name on a newly created meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
+      prismaMock.tag.upsert.mockResolvedValue({ id: "t-1" } as never);
+      prismaMock.category.upsert.mockResolvedValue({ id: "c-1" } as never);
+      prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
+      prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.mealCategory.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.mealCategory.createMany.mockResolvedValue({
+        count: 1,
+      } as never);
+
+      const result = await importMeals("fam-1", [
+        { name: "Tacos", tags: ["Quick"], categories: ["Dinner"] },
+      ]);
+
+      expect(result.created).toBe(1);
+      const tagUpsert = prismaMock.tag.upsert.mock.calls[0][0] as {
+        where: { familyId_nameNormalized: unknown };
+      };
+      expect(tagUpsert.where.familyId_nameNormalized).toEqual({
+        familyId: "fam-1",
+        nameNormalized: "quick",
+      });
+      expect(prismaMock.mealTag.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-new", tagId: "t-1" }],
+        skipDuplicates: true,
+      });
+      expect(prismaMock.mealCategory.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-new", categoryId: "c-1" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("re-syncs tags/categories when replacing an existing meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+      prismaMock.tag.upsert.mockResolvedValue({ id: "t-2" } as never);
+      prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+
+      await importMeals("fam-1", [{ name: "Tacos", tags: ["Weeknight"] }], {
+        mode: "replace",
+      });
+
+      expect(prismaMock.mealTag.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-old" },
+      });
+      expect(prismaMock.mealTag.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-old", tagId: "t-2" }],
+        skipDuplicates: true,
+      });
+    });
   });
 
   describe("exportMeals", () => {
@@ -1083,6 +1369,8 @@ describe("meals service", () => {
               category: "condiments",
             },
           ],
+          tags: [],
+          categories: [],
         },
       ] as never);
 
@@ -1115,8 +1403,48 @@ describe("meals service", () => {
               category: "condiments",
             },
           ],
+          tags: [],
+          categories: [],
         },
       ]);
+    });
+
+    it("flattens tag/category join rows to name lists for the CSV round trip", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        {
+          name: "Tacos",
+          description: null,
+          imageUrl: null,
+          difficulty: null,
+          prepTimeMinutes: null,
+          cookTimeMinutes: null,
+          servings: null,
+          sourceUrl: null,
+          notes: null,
+          favorite: false,
+          rating: null,
+          ingredients: [],
+          tags: [{ tag: { name: "Quick" } }, { tag: { name: "Vegetarian" } }],
+          categories: [{ category: { name: "Dinner" } }],
+        },
+      ] as never);
+
+      const result = await exportMeals("fam-1");
+
+      expect(result[0].tags).toEqual(["Quick", "Vegetarian"]);
+      expect(result[0].categories).toEqual(["Dinner"]);
+      // Export must pull the join rows scoped to the family with only the
+      // display name selected (no nameNormalized leakage).
+      expect(prismaMock.meal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            tags: { include: { tag: { select: { name: true } } } },
+            categories: {
+              include: { category: { select: { name: true } } },
+            },
+          }),
+        }),
+      );
     });
   });
 

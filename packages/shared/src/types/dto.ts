@@ -191,6 +191,8 @@ export interface ExportMealDTO {
     unit: string | null;
     category: string | null;
   }[];
+  tags: string[];
+  categories: string[];
 }
 
 /** The response from `GET /families/:id/meals/export`. */

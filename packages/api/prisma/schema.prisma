@@ -19,6 +19,8 @@ model Family {
   meals            Meal[]
   weekPlans        WeekPlan[]
   agentCredentials AgentCredential[]
+  tags             Tag[]
+  categories       Category[]
 }
 
 model User {
@@ -67,6 +69,8 @@ model Meal {
   familyId             String
   ingredients          MealIngredient[]
   suggestions          MealSuggestion[]
+  tags                 MealTag[]
+  categories           MealCategory[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -100,6 +104,70 @@ model MealIngredient {
   category String?
   meal     Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
   mealId   String
+}
+
+/// Family-scoped, free-form tag taxonomy (issue #107). A tag belongs to exactly
+/// one family and is case-insensitively unique within it: `nameNormalized`
+/// (`lower(trim(name))`, computed in the service layer) is the uniqueness key,
+/// while `name` preserves the original display casing. The Family relation is
+/// `onDelete: Restrict` (a family with tags cannot be silently cascade-deleted),
+/// mirroring the deliberate meal family-scoping pattern.
+model Tag {
+  id             String    @id @default(uuid())
+  name           String
+  nameNormalized String
+  family         Family    @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  familyId       String
+  meals          MealTag[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// Family-scoped category taxonomy (issue #107). Structurally identical to Tag
+/// but a separate model so a tag and a category may share a name without
+/// colliding. Same case-insensitive per-family uniqueness and Restrict on the
+/// Family relation.
+model Category {
+  id             String         @id @default(uuid())
+  name           String
+  nameNormalized String
+  family         Family         @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  familyId       String
+  meals          MealCategory[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// Explicit many-to-many join between Meal and Tag (mirrors MealIngredient's
+/// explicit-relation style). Composite primary key prevents duplicate
+/// assignments; `onDelete: Cascade` on BOTH foreign keys means deleting a meal
+/// OR a tag cleans up its join rows automatically.
+model MealTag {
+  meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId  String
+
+  @@id([mealId, tagId])
+  @@index([tagId])
+}
+
+/// Explicit many-to-many join between Meal and Category. Same composite PK and
+/// dual-cascade semantics as MealTag.
+model MealCategory {
+  meal       Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId     String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  @@id([mealId, categoryId])
+  @@index([categoryId])
 }
 
 model WeekPlan {

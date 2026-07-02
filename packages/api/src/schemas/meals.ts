@@ -6,9 +6,11 @@ import { Difficulty } from "@prisma/client";
  *   - `GET /api/families/:familyId/meals`  (authenticateJWT → requireMembership)
  *   - `GET /api/agent/:familyId/meals`     (authenticateAgent → requireScope)
  *
- * Semantics: OR-within-facet (all difficulty[] values are OR'd), AND-across-facets
- * (search AND difficulty[] both apply). Placeholder meals are excluded from results
- * whenever any search/filter param is active; unfiltered pagination includes them.
+ * Semantics: OR-within-facet (all difficulty[]/tags[]/categories[] values are
+ * OR'd within their facet), AND-across-facets (search AND difficulty[] AND
+ * tags[] AND categories[] all apply). Placeholder meals are excluded from
+ * results whenever any search/filter param is active; unfiltered pagination
+ * includes them.
  */
 /**
  * External recipe image URL. Display-only; rendered in an <img> on web + Magic
@@ -53,6 +55,24 @@ export const listMealsQuerySchema = z.object({
    * meals are excluded from the result.
    */
   minRating: z.coerce.number().int().min(1).max(5).optional(),
+
+  /**
+   * Filter to meals assigned any of these tag names (OR-within-facet,
+   * case-insensitive). AND-composed with the category filter and every other
+   * facet. A single repeated query param arrives as a string; normalize to an
+   * array. Names are resolved to the family's tags server-side.
+   */
+  tags: z
+    .union([z.array(z.string()), z.string().transform((v) => [v])])
+    .optional(),
+
+  /**
+   * Filter to meals assigned any of these category names (OR-within-facet,
+   * case-insensitive). AND-composed with the tag filter and every other facet.
+   */
+  categories: z
+    .union([z.array(z.string()), z.string().transform((v) => [v])])
+    .optional(),
 
   /**
    * Sort field.

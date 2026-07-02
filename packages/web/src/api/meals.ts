@@ -134,6 +134,8 @@ export async function importMeals(
     favorite?: boolean;
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+    tags?: string[];
+    categories?: string[];
   }[],
   mode: "skip" | "replace" = "skip",
 ): Promise<ImportMealsResultDTO> {

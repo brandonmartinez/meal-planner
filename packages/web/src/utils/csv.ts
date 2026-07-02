@@ -71,6 +71,10 @@ export interface ParsedImportMeal {
     unit?: string;
     category?: string;
   }[];
+  /** Meal-level tag names (semicolon-delimited in CSV). #107. */
+  tags?: string[];
+  /** Meal-level category names (semicolon-delimited in CSV). #107. */
+  categories?: string[];
 }
 
 export interface ParseMealsCSVResult {
@@ -92,6 +96,8 @@ export interface ParseMealsCSVResult {
  *   meal       <- name, mealName
  *   ingredient <- ingredientName, item
  *   difficulty <- diff, effort
+ *   tags       <- tag, labels (semicolon-delimited names; meal-level)
+ *   categories <- cats, category names (semicolon-delimited names; meal-level)
  */
 export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const rows = parseCSV(input);
@@ -131,6 +137,8 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     quantity: ["quantity", "qty", "amount"],
     unit: ["unit", "units"],
     category: ["category", "cat"],
+    tags: ["tags", "tag", "labels"],
+    categories: ["categories", "cats", "category names", "meal categories"],
   };
 
   const colIndex: Record<string, number> = {};
@@ -237,6 +245,32 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       meal.notes = notes;
     }
 
+    const splitNames = (raw: string): string[] => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const part of raw.split(";")) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(trimmed);
+      }
+      return out;
+    };
+
+    const tagsRaw = get(row, "tags");
+    if (tagsRaw && !meal.tags) {
+      const parsed = splitNames(tagsRaw);
+      if (parsed.length > 0) meal.tags = parsed;
+    }
+
+    const categoriesRaw = get(row, "categories");
+    if (categoriesRaw && !meal.categories) {
+      const parsed = splitNames(categoriesRaw);
+      if (parsed.length > 0) meal.categories = parsed;
+    }
+
     const ingredient = get(row, "ingredient");
     if (ingredient) {
       const ing: ParsedImportMeal["ingredients"] extends (infer U)[] | undefined
@@ -276,6 +310,8 @@ export const MEALS_CSV_HEADER = [
   "notes",
   "favorite",
   "rating",
+  "tags",
+  "categories",
 ] as const;
 
 export interface ExportMeal {
@@ -296,6 +332,10 @@ export interface ExportMeal {
     unit?: string | null;
     category?: string | null;
   }[];
+  /** Meal-level tag names, emitted semicolon-delimited. #107. */
+  tags?: string[] | null;
+  /** Meal-level category names, emitted semicolon-delimited. #107. */
+  categories?: string[] | null;
 }
 
 /** Quote a single CSV field per RFC 4180 when it contains a comma, quote, or
@@ -338,6 +378,8 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.notes),
         csvField(meal.favorite),
         csvField(meal.rating),
+        csvField(meal.tags?.join(";")),
+        csvField(meal.categories?.join(";")),
       ].join(","),
     );
   };
