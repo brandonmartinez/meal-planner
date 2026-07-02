@@ -29,3 +29,7 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 📌 Team update (2026-07-01T17-12-00Z): #87/#88 MCP bearer auth implementation landed; reviewer-lockout remediation handled by Rusty. — decided by Livingston
+📌 Team update (2026-07-02T10:16:59-0400): Nine epic #91 recipe-management issues were filed under Livingston ownership for future backend/service planning. — logged by Scribe
+📌 Team update (2026-07-02T10:59:35-04:00): Rusty produced a five-sprint recipe-management execution plan; Sprint 1 assigns Livingston #94 (recipe search/indexing) and #95 (grocery regeneration/source tracking). — logged by Scribe
+📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 design gates APPROVED. #95 grocery regeneration/source tracking: additive origin(GENERATED|MANUAL)/edited/sourceMealIds; non-destructive ID-preserving merge (name|unit keyed); PATCH endpoint in #118. #94 recipe search/indexing: shared listMealsQuerySchema for REST+agent; MealListResponseDTO{items,total,limit,offset,hasMore} envelope adopted; offset/limit pagination; indexes reserved for #111; lastCookedOn via getLastCookedMap. Both issues closed, decision records posted. Ready for Sprint 2. — logged by Scribe
+📌 Team update (2026-07-02T19:53:00Z): Wave 4 launched #99 from green main 67c4f42; last-cooked is DERIVED/no-migration. #107 tags/categories is held for a solo migration wave next, and #108 remains blocked on #107 — logged by Scribe.

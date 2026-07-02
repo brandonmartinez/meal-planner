@@ -26,3 +26,5 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
 
 - 2026-07-01: #70 Meal Library UI (PR #73) — MealPicker Recent/Difficulty badges + MealsPage zoned card layout (impeccable layout pass). a11y gate APPROVE. Merged.
+📌 Team update (2026-07-02T10:16:59-0400): Eight epic #91 recipe-management issues were filed under Linus ownership for future frontend planning. — logged by Scribe
+📌 Team update (2026-07-02T19:53:00Z): Wave 3 shipped #101 recipe detail page in PR #130; MealPicker linking deferred to avoid nested-interactive a11y risk. Wave 4 launched #103 imageUrl wiring from green main 67c4f42 with CSV lockstep + Helmet CSP review — logged by Scribe.

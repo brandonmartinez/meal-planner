@@ -26,3 +26,6 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 ## Learnings
 
 <!-- Append new learnings below. Each entry is something lasting about the project. -->
+📌 Team update (2026-07-02T10:16:59-0400): Three epic #91 recipe-management issues were filed under Basher ownership for future infra/release planning. — logged by Scribe
+📌 Team update (2026-07-02T10:59:35-04:00): Rusty produced a five-sprint recipe-management execution plan; Sprint 1 assigns Basher #93 (image storage abstraction) and standalone #121 (squad-triage owner routing fix). — logged by Scribe
+📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 delivery: #121 triage workflow fix PR #122 merged (squash), issue auto-closed. #93 image storage abstraction APPROVED. Contract: MealImageResolver(none/external/asset) + pluggable ImageStorage; asset wins; opaque assetId serving; DisplayMealEntry.imageUrl unchanged; prod backend (S3 vs RWX PVC) deferred to #104. Issue closed, decision record posted. Ready for Sprint 2. — logged by Scribe
