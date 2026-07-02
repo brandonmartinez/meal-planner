@@ -37,6 +37,7 @@ function meal(overrides: Record<string, unknown>) {
     recentlyScheduled: false,
     lastScheduledOn: null,
     lastCookedOn: null,
+    timesCooked: 0,
     ...overrides,
   };
 }
@@ -228,6 +229,55 @@ describe('MealsPage recent indicator', () => {
 
     expect(await screen.findByText('Soup')).toBeInTheDocument();
     expect(screen.queryByText('Recent')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealsPage cook history (issue #99)', () => {
+  it('shows a cook badge with the times-cooked count and last-cooked date', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([
+          meal({
+            id: 'm-1',
+            name: 'Tacos',
+            timesCooked: 7,
+            lastCookedOn: '2026-06-20',
+          }),
+        ])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    // Visible, text-bearing badge carrying the all-time count.
+    expect(screen.getByText('Cooked 7\u00d7')).toBeInTheDocument();
+    // Help text / accessible label surfaces the last-cooked date.
+    expect(
+      screen.getByLabelText('Cooked 7 times — last on 2026-06-20'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no cook badge when the meal has never been cooked (empty history)', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([
+          meal({
+            id: 'm-2',
+            name: 'Soup',
+            timesCooked: 0,
+            lastCookedOn: null,
+          }),
+        ])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Soup')).toBeInTheDocument();
+    expect(screen.queryByText(/^Cooked /)).not.toBeInTheDocument();
   });
 });
 

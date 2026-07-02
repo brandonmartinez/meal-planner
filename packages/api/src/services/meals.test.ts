@@ -276,6 +276,36 @@ describe("meals service", () => {
 
       const result = await listMeals("fam-1");
       expect(result.items[0].lastCookedOn).toBe("2026-05-15");
+      expect(result.items[0].timesCooked).toBe(1);
+    });
+
+    it("populates timesCooked from the count of approved suggestions for the meal", async () => {
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
+      ] as never);
+      // Call 1 (getRecentlyScheduledMap): none. Call 2 (getLastCookedMap):
+      // meal cooked three times.
+      prismaMock.mealSuggestion.findMany
+        .mockResolvedValueOnce([] as never)
+        .mockResolvedValueOnce([
+          {
+            mealId: "m-1",
+            dayPlan: { date: new Date("2026-05-15T00:00:00.000Z") },
+          },
+          {
+            mealId: "m-1",
+            dayPlan: { date: new Date("2026-03-02T00:00:00.000Z") },
+          },
+          {
+            mealId: "m-1",
+            dayPlan: { date: new Date("2026-01-10T00:00:00.000Z") },
+          },
+        ] as never);
+
+      const result = await listMeals("fam-1");
+      expect(result.items[0].timesCooked).toBe(3);
+      expect(result.items[0].lastCookedOn).toBe("2026-05-15");
     });
 
     it("sets lastCookedOn to null when the meal has never been approved", async () => {
@@ -286,6 +316,7 @@ describe("meals service", () => {
       // Both calls return [] → no lastCookedOn.
       const result = await listMeals("fam-1");
       expect(result.items[0].lastCookedOn).toBeNull();
+      expect(result.items[0].timesCooked).toBe(0);
     });
 
     it("excludes placeholder meals when search is active", async () => {
@@ -427,6 +458,12 @@ describe("meals service", () => {
         "Old cook",
         "Never",
       ]);
+      // timesCooked is threaded through the lastCooked-sort projection path too.
+      const byName = new Map(result.items.map((m) => [m.name, m]));
+      expect(byName.get("New cook")?.timesCooked).toBe(1);
+      expect(byName.get("Old cook")?.timesCooked).toBe(1);
+      expect(byName.get("Never")?.timesCooked).toBe(0);
+      expect(byName.get("Never")?.lastCookedOn).toBeNull();
     });
   });
 
@@ -1101,7 +1138,10 @@ describe("meals service", () => {
       ] as never);
 
       const result = await getLastCookedMap("fam-1", ["m-1"]);
-      expect(result.get("m-1")).toBe("2026-06-15");
+      expect(result.get("m-1")).toEqual({
+        lastCookedOn: "2026-06-15",
+        timesCooked: 3,
+      });
     });
 
     it("returns separate entries for multiple meals", async () => {
@@ -1117,8 +1157,64 @@ describe("meals service", () => {
       ] as never);
 
       const result = await getLastCookedMap("fam-1", ["m-1", "m-2"]);
-      expect(result.get("m-1")).toBe("2026-04-10");
-      expect(result.get("m-2")).toBe("2026-05-20");
+      expect(result.get("m-1")).toEqual({
+        lastCookedOn: "2026-04-10",
+        timesCooked: 1,
+      });
+      expect(result.get("m-2")).toEqual({
+        lastCookedOn: "2026-05-20",
+        timesCooked: 1,
+      });
+    });
+
+    it("counts all approved suggestions per meal into timesCooked (all-time, no window)", async () => {
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-03-01T00:00:00.000Z") },
+        },
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-06-15T00:00:00.000Z") },
+        },
+        {
+          mealId: "m-2",
+          dayPlan: { date: new Date("2026-05-20T00:00:00.000Z") },
+        },
+      ] as never);
+
+      const result = await getLastCookedMap("fam-1", ["m-1", "m-2"]);
+      expect(result.get("m-1")?.timesCooked).toBe(2);
+      expect(result.get("m-2")?.timesCooked).toBe(1);
+    });
+
+    it("derives lastCookedOn and timesCooked from the SAME family-scoped query (cross-family leak impossible)", async () => {
+      // The query filters on BOTH meal.familyId AND dayPlan.weekPlan.familyId,
+      // so every counted row belongs to fam-1. A family B suggestion for the
+      // same meal id can never enter this result set.
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-04-10T00:00:00.000Z") },
+        },
+      ] as never);
+
+      const result = await getLastCookedMap("fam-1", ["m-1"]);
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: {
+          approved?: boolean;
+          meal?: { familyId?: string };
+          dayPlan?: { weekPlan?: { familyId?: string } };
+        };
+      };
+      expect(arg.where.approved).toBe(true);
+      expect(arg.where.meal?.familyId).toBe("fam-1");
+      expect(arg.where.dayPlan?.weekPlan?.familyId).toBe("fam-1");
+      // Only the single fam-1 row is counted.
+      expect(result.get("m-1")).toEqual({
+        lastCookedOn: "2026-04-10",
+        timesCooked: 1,
+      });
     });
 
     it("does not include meals that have never been approved onto a week plan", async () => {

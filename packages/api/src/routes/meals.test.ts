@@ -60,7 +60,7 @@ describe("GET /:familyId/meals (list)", () => {
     expect(body.hasMore).toBe(false);
   });
 
-  it("forwards the recent-scheduling fields in the response body", async () => {
+  it("forwards the recent-scheduling and cook-history fields in the response body", async () => {
     vi.mocked(mealService.listMeals).mockResolvedValue({
       items: [
         {
@@ -69,7 +69,8 @@ describe("GET /:familyId/meals (list)", () => {
           _count: { ingredients: 2 },
           recentlyScheduled: true,
           lastScheduledOn: "2026-06-30",
-          lastCookedOn: null,
+          lastCookedOn: "2026-06-15",
+          timesCooked: 4,
         },
       ],
       total: 1,
@@ -81,10 +82,17 @@ describe("GET /:familyId/meals (list)", () => {
     await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
     expect(res.statusCode).toBe(200);
     const body = res.body as {
-      items: Array<{ recentlyScheduled: boolean; lastScheduledOn: string | null }>;
+      items: Array<{
+        recentlyScheduled: boolean;
+        lastScheduledOn: string | null;
+        lastCookedOn: string | null;
+        timesCooked: number;
+      }>;
     };
     expect(body.items[0].recentlyScheduled).toBe(true);
     expect(body.items[0].lastScheduledOn).toBe("2026-06-30");
+    expect(body.items[0].lastCookedOn).toBe("2026-06-15");
+    expect(body.items[0].timesCooked).toBe(4);
   });
 
   it("400s when limit exceeds 100", async () => {

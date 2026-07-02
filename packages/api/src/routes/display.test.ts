@@ -204,6 +204,24 @@ describe("GET /api/display/meals — per-day status", () => {
     expect(body.meals[0].meals[0].imageUrl).toBe("https://x/img.png");
   });
 
+  it("does NOT leak cook-history fields (lastCookedOn/timesCooked) on the public display surface", async () => {
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: null })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as {
+      meals: { meals: Record<string, unknown>[] }[];
+    };
+    const entry = body.meals[0].meals[0];
+    // Deny-by-default (parity §3): cook history must never reach the api-key surface.
+    expect(entry).not.toHaveProperty("lastCookedOn");
+    expect(entry).not.toHaveProperty("timesCooked");
+  });
+
   it("returns status: 'skipped' when only SKIP placeholder is approved (and meals: [])", async () => {
     prismaMock.dayPlan.findMany.mockResolvedValue([
       fakeDayPlan("2026-05-04", [placeholderMeal("SKIP")]),

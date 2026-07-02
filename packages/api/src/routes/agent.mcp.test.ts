@@ -117,7 +117,10 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
   it("list_meals: GET /meals returns the envelope and audits an allowed read", async () => {
     mockCredential(["meal_plan:read"]);
     vi.mocked(mealService.listMeals).mockResolvedValue({
-      items: [{ id: "meal-1" }, { id: "meal-2" }],
+      items: [
+        { id: "meal-1", lastCookedOn: "2026-06-15", timesCooked: 3 },
+        { id: "meal-2", lastCookedOn: null, timesCooked: 0 },
+      ],
       total: 2,
       limit: 25,
       offset: 0,
@@ -139,6 +142,13 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
     });
     // Response body is the envelope, not a bare array.
     expect(res.body).toMatchObject({ items: expect.any(Array), total: 2 });
+    // Cook-history fields flow through the agent surface (parity row 4).
+    const body = res.body as {
+      items: Array<{ lastCookedOn: string | null; timesCooked: number }>;
+    };
+    expect(body.items[0].lastCookedOn).toBe("2026-06-15");
+    expect(body.items[0].timesCooked).toBe(3);
+    expect(body.items[1].timesCooked).toBe(0);
     expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: "meal_plan:read",

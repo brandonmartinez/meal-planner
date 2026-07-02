@@ -133,12 +133,19 @@ export interface RevokedAgentCredentialDTO {
  *  Last-cooked seam (issue #111): `lastCookedOn` is the calendar date of the
  *  most recent **approved** suggestion for this meal (family-scoped), or `null`
  *  when the meal has never been approved onto a week plan. This seam enables the
- *  `lastCooked` sort key and surfaces the value to UI in follow-up issues. */
+ *  `lastCooked` sort key and surfaces the value to UI in follow-up issues.
+ *
+ *  Cook-history metadata (issue #99): `timesCooked` is the all-time count of
+ *  **approved** suggestions for this meal (family-scoped, no window), or `0`
+ *  when never cooked. Both cook-history fields are **derived at query time** —
+ *  nothing new is persisted. They are read-only projection fields: excluded from
+ *  CSV round-trip and from the public API-key display surface. */
 export interface MealListItemDTO extends Meal {
   _count: { ingredients: number };
   recentlyScheduled: boolean;
   lastScheduledOn: string | null;
   lastCookedOn: string | null;
+  timesCooked: number;
 }
 
 /** Paginated meal list response — the envelope returned by
