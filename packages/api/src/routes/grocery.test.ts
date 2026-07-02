@@ -20,6 +20,7 @@ vi.mock("../services/grocery.js", () => {
     getGroceryList: vi.fn(),
     getGroceryListByWeek: vi.fn(),
     toggleItem: vi.fn(),
+    editItemFields: vi.fn(),
     addCustomItem: vi.fn(),
     removeItem: vi.fn(),
   };
@@ -208,7 +209,75 @@ describe("PATCH /:familyId/grocery/:listId/items/:itemId (toggle)", () => {
     const res = buildFullRes();
     await handler(req({ params, body: { checked: true } }), res, buildNext());
     expect(res.statusCode).toBe(500);
-    expect(res.body).toEqual({ error: "Failed to toggle item" });
+    expect(res.body).toEqual({ error: "Failed to update item" });
+  });
+
+  it("200s and calls editItemFields when quantity is provided", async () => {
+    vi.mocked(groceryService.editItemFields).mockResolvedValue({
+      id: ITEM_ID,
+      quantity: "3",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { quantity: "3", unit: "cups" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(groceryService.editItemFields).toHaveBeenCalledWith(
+      FAMILY_ID,
+      LIST_ID,
+      ITEM_ID,
+      { quantity: "3", unit: "cups", category: undefined },
+    );
+    expect(groceryService.toggleItem).not.toHaveBeenCalled();
+  });
+
+  it("400s on empty body (no valid field)", async () => {
+    const res = buildFullRes();
+    await handler(req({ params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(groceryService.editItemFields).not.toHaveBeenCalled();
+    expect(groceryService.toggleItem).not.toHaveBeenCalled();
+  });
+
+  it("maps a GroceryError from editItemFields to its status code", async () => {
+    vi.mocked(groceryService.editItemFields).mockRejectedValue(
+      new GroceryError(404, "Item not found"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { quantity: "2" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Item not found" });
+  });
+
+  it("500s on an unexpected error from editItemFields", async () => {
+    vi.mocked(groceryService.editItemFields).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { quantity: "2" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(500);
+  });
+
+  it("calls both toggleItem and editItemFields when body includes checked + quantity", async () => {
+    vi.mocked(groceryService.toggleItem).mockResolvedValue({ id: ITEM_ID, checked: true } as never);
+    vi.mocked(groceryService.editItemFields).mockResolvedValue({ id: ITEM_ID, quantity: "5" } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { checked: true, quantity: "5" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(groceryService.toggleItem).toHaveBeenCalled();
+    expect(groceryService.editItemFields).toHaveBeenCalled();
   });
 });
 

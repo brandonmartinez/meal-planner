@@ -79,6 +79,11 @@ export interface GroceryList {
   items?: GroceryItem[];
 }
 
+export enum GrocerySource {
+  GENERATED = 'GENERATED',
+  MANUAL = 'MANUAL',
+}
+
 export interface GroceryItem {
   id: string;
   name: string;
@@ -88,6 +93,9 @@ export interface GroceryItem {
   checked: boolean;
   sources?: string[];
   groceryListId: string;
+  origin?: GrocerySource;
+  edited?: boolean;
+  sourceMealIds?: string[];
 }
 
 export interface ApiKey {
