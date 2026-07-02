@@ -125,6 +125,10 @@ describe('MealFormPage core metadata', () => {
       screen.getByRole('textbox', { name: 'Source URL' }),
       'https://example.com/tacos',
     );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Image URL' }),
+      'https://cdn.example.com/tacos.jpg',
+    );
     await userEvent.type(screen.getByRole('textbox', { name: 'Notes' }), 'Use fresh cilantro');
     await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
 
@@ -134,6 +138,7 @@ describe('MealFormPage core metadata', () => {
       cookTimeMinutes: 20,
       servings: 4,
       sourceUrl: 'https://example.com/tacos',
+      imageUrl: 'https://cdn.example.com/tacos.jpg',
       notes: 'Use fresh cilantro',
     });
   });
@@ -158,6 +163,7 @@ describe('MealFormPage core metadata', () => {
       cookTimeMinutes: null,
       servings: null,
       sourceUrl: null,
+      imageUrl: null,
       notes: null,
     });
   });
@@ -176,6 +182,7 @@ describe('MealFormPage core metadata', () => {
           cookTimeMinutes: 45,
           servings: 6,
           sourceUrl: 'https://example.com/lasagna',
+          imageUrl: 'https://cdn.example.com/lasagna.jpg',
           notes: 'Rest before slicing',
           familyId: FAMILY_ID,
           ingredients: [],
@@ -199,9 +206,13 @@ describe('MealFormPage core metadata', () => {
     expect(
       screen.getByRole<HTMLInputElement>('textbox', { name: 'Source URL' }).value,
     ).toBe('https://example.com/lasagna');
+    expect(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'Image URL' }).value,
+    ).toBe('https://cdn.example.com/lasagna.jpg');
 
-    // Clear source URL + notes, then save — cleared strings become null.
+    // Clear source URL + image URL + notes, then save — cleared strings become null.
     await userEvent.clear(screen.getByRole('textbox', { name: 'Source URL' }));
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Image URL' }));
     await userEvent.clear(screen.getByRole('textbox', { name: 'Notes' }));
     await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
 
@@ -210,6 +221,7 @@ describe('MealFormPage core metadata', () => {
       prepTimeMinutes: 15,
       servings: 6,
       sourceUrl: null,
+      imageUrl: null,
       notes: null,
     });
   });

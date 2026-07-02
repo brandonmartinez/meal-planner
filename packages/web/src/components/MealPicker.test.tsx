@@ -136,6 +136,36 @@ describe('MealPicker', () => {
         expect(screen.queryAllByText(/^Cooked /)).toHaveLength(1);
     });
 
+    it('renders a thumbnail image on rows that have an imageUrl', async () => {
+        const withImage = [
+            {
+                id: 'm-1',
+                name: 'Tacos',
+                description: 'Yum',
+                placeholderKind: null,
+                familyId: 'f-1',
+                difficulty: 'HARD',
+                _count: { ingredients: 3 },
+                recentlyScheduled: false,
+                lastScheduledOn: null,
+                lastCookedOn: null,
+                imageUrl: 'https://cdn.example.com/tacos.jpg',
+            },
+        ];
+        server.use(
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(withImage))),
+        );
+
+        const { container } = renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        const img = container.querySelector('img');
+        expect(img).not.toBeNull();
+        expect(img).toHaveAttribute('src', 'https://cdn.example.com/tacos.jpg');
+    });
+
     it('invokes onClose when the close button is clicked', async () => {
         server.use(
             http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),

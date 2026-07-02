@@ -56,6 +56,7 @@ export function parseCSV(input: string): string[][] {
 export interface ParsedImportMeal {
   name: string;
   description?: string;
+  imageUrl?: string;
   difficulty?: Difficulty;
   prepTimeMinutes?: number;
   cookTimeMinutes?: number;
@@ -103,6 +104,7 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const aliases: Record<string, string[]> = {
     meal: ["meal", "name", "mealname", "meal name"],
     description: ["description", "desc"],
+    imageUrl: ["imageurl", "image url", "image", "photo", "picture"],
     difficulty: ["difficulty", "diff", "effort"],
     prepTimeMinutes: [
       "preptimeminutes",
@@ -170,6 +172,11 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     const description = get(row, "description");
     if (description && !meal.description) {
       meal.description = description;
+    }
+
+    const imageUrl = get(row, "imageUrl");
+    if (imageUrl && !meal.imageUrl) {
+      meal.imageUrl = imageUrl;
     }
 
     const difficultyRaw = get(row, "difficulty");
@@ -265,6 +272,7 @@ export const MEALS_CSV_HEADER = [
   "cookTimeMinutes",
   "servings",
   "sourceUrl",
+  "imageUrl",
   "notes",
   "favorite",
   "rating",
@@ -278,6 +286,7 @@ export interface ExportMeal {
   cookTimeMinutes?: number | null;
   servings?: number | null;
   sourceUrl?: string | null;
+  imageUrl?: string | null;
   notes?: string | null;
   favorite?: boolean | null;
   rating?: number | null;
@@ -325,6 +334,7 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.cookTimeMinutes),
         csvField(meal.servings),
         csvField(meal.sourceUrl),
+        csvField(meal.imageUrl),
         csvField(meal.notes),
         csvField(meal.favorite),
         csvField(meal.rating),

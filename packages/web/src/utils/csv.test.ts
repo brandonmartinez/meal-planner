@@ -161,6 +161,22 @@ Tacos,https://example.com/tacos,Use fresh cilantro`;
     expect(r.meals[0].notes).toBe("Use fresh cilantro");
   });
 
+  it("parses the imageUrl column and its aliases", () => {
+    const canonical = parseMealsCSV(
+      `meal,imageUrl\nTacos,https://cdn.example.com/tacos.jpg`,
+    );
+    expect(canonical.meals[0].imageUrl).toBe(
+      "https://cdn.example.com/tacos.jpg",
+    );
+
+    const aliased = parseMealsCSV(
+      `meal,photo\nPizza,https://cdn.example.com/pizza.png`,
+    );
+    expect(aliased.meals[0].imageUrl).toBe(
+      "https://cdn.example.com/pizza.png",
+    );
+  });
+
   it("supports metadata header aliases", () => {
     const csv = `meal,prep,cook,serves,source,note
 Tacos,5,15,2,https://ex.com,quick`;
@@ -289,7 +305,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,notes,favorite,rating",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating",
     );
   });
 
@@ -306,8 +322,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -316,7 +332,7 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,");
   });
 
   it("emits meal-level metadata columns, repeating them per ingredient row", () => {
@@ -338,10 +354,10 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines[1]).toBe(
-      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,Use fresh cilantro,,",
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,",
     );
     expect(lines[2]).toBe(
-      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,Use fresh cilantro,,",
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,",
     );
   });
 
@@ -358,8 +374,8 @@ describe("mealsToCSV", () => {
       { name: "Cereal", favorite: false, rating: null },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,true,5");
-    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,false,");
+    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5");
+    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,");
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -381,6 +397,7 @@ describe("mealsToCSV", () => {
         servings: 4,
         sourceUrl: "https://example.com/tacos",
         notes: "Use fresh cilantro",
+        imageUrl: "https://cdn.example.com/tacos.jpg",
         favorite: true,
         rating: 5,
         ingredients: [
@@ -399,6 +416,7 @@ describe("mealsToCSV", () => {
     expect(tacos?.servings).toBe(4);
     expect(tacos?.sourceUrl).toBe("https://example.com/tacos");
     expect(tacos?.notes).toBe("Use fresh cilantro");
+    expect(tacos?.imageUrl).toBe("https://cdn.example.com/tacos.jpg");
     expect(tacos?.favorite).toBe(true);
     expect(tacos?.rating).toBe(5);
     expect(tacos?.ingredients).toEqual([

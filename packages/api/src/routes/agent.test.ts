@@ -191,6 +191,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
         cookTimeMinutes: 20,
         servings: 4,
         sourceUrl: "https://example.com/tacos",
+        imageUrl: "https://cdn.example.com/tacos.jpg",
         notes: "Use fresh cilantro",
       },
     );
@@ -206,6 +207,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
       cookTimeMinutes: 20,
       servings: 4,
       sourceUrl: "https://example.com/tacos",
+      imageUrl: "https://cdn.example.com/tacos.jpg",
       notes: "Use fresh cilantro",
     });
   });
@@ -215,6 +217,21 @@ describe("agent routes (end-to-end middleware chain)", () => {
 
     const handlers = findStack("/meals");
     const req = agentReq({}, { name: "Tacos", sourceUrl: "not-a-url" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+  });
+
+  it("write: POST meals 400s on a non-http(s) imageUrl scheme (#103)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      { name: "Tacos", imageUrl: "javascript:alert(1)" },
+    );
     const res = buildRes();
     await runStack(handlers, req, res);
 
@@ -237,7 +254,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
     const handlers = findStack("/meals/:mealId");
     const req = agentReq(
       { mealId: "meal-1" },
-      { prepTimeMinutes: 15, servings: 6, sourceUrl: null, notes: null },
+      { prepTimeMinutes: 15, servings: 6, sourceUrl: null, imageUrl: null, notes: null },
     );
     const res = buildRes();
     await runStack(handlers, req, res);
@@ -250,6 +267,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
       prepTimeMinutes: 15,
       servings: 6,
       sourceUrl: null,
+      imageUrl: null,
       notes: null,
     });
   });

@@ -549,6 +549,7 @@ describe("meals service", () => {
         cookTimeMinutes: 20,
         servings: 4,
         sourceUrl: "https://example.com/tacos",
+        imageUrl: "https://cdn.example.com/tacos.jpg",
         notes: "Use fresh cilantro",
       });
       const arg = prismaMock.meal.create.mock.calls[0][0] as {
@@ -557,6 +558,7 @@ describe("meals service", () => {
           cookTimeMinutes?: unknown;
           servings?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
@@ -564,6 +566,7 @@ describe("meals service", () => {
       expect(arg.data.cookTimeMinutes).toBe(20);
       expect(arg.data.servings).toBe(4);
       expect(arg.data.sourceUrl).toBe("https://example.com/tacos");
+      expect(arg.data.imageUrl).toBe("https://cdn.example.com/tacos.jpg");
       expect(arg.data.notes).toBe("Use fresh cilantro");
     });
 
@@ -574,17 +577,20 @@ describe("meals service", () => {
         name: "Soup",
         prepTimeMinutes: null,
         sourceUrl: null,
+        imageUrl: null,
         notes: null,
       });
       const arg = prismaMock.meal.create.mock.calls[0][0] as {
         data: {
           prepTimeMinutes?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
       expect(arg.data.prepTimeMinutes).toBeNull();
       expect(arg.data.sourceUrl).toBeNull();
+      expect(arg.data.imageUrl).toBeNull();
       expect(arg.data.notes).toBeNull();
     });
 
@@ -734,6 +740,7 @@ describe("meals service", () => {
         cookTimeMinutes: 30,
         servings: 6,
         sourceUrl: "https://example.com/stew",
+        imageUrl: "https://cdn.example.com/stew.png",
         notes: "Simmer low and slow",
       });
 
@@ -743,6 +750,7 @@ describe("meals service", () => {
           cookTimeMinutes?: unknown;
           servings?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
@@ -750,6 +758,7 @@ describe("meals service", () => {
       expect(arg.data.cookTimeMinutes).toBe(30);
       expect(arg.data.servings).toBe(6);
       expect(arg.data.sourceUrl).toBe("https://example.com/stew");
+      expect(arg.data.imageUrl).toBe("https://cdn.example.com/stew.png");
       expect(arg.data.notes).toBe("Simmer low and slow");
     });
 
@@ -766,6 +775,7 @@ describe("meals service", () => {
         cookTimeMinutes: null,
         servings: null,
         sourceUrl: null,
+        imageUrl: null,
         notes: null,
       });
 
@@ -775,6 +785,7 @@ describe("meals service", () => {
           cookTimeMinutes?: unknown;
           servings?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
@@ -782,6 +793,7 @@ describe("meals service", () => {
       expect(arg.data.cookTimeMinutes).toBeNull();
       expect(arg.data.servings).toBeNull();
       expect(arg.data.sourceUrl).toBeNull();
+      expect(arg.data.imageUrl).toBeNull();
       expect(arg.data.notes).toBeNull();
     });
 
@@ -799,11 +811,13 @@ describe("meals service", () => {
         data: {
           prepTimeMinutes?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
       expect(arg.data.prepTimeMinutes).toBeUndefined();
       expect(arg.data.sourceUrl).toBeUndefined();
+      expect(arg.data.imageUrl).toBeUndefined();
       expect(arg.data.notes).toBeUndefined();
     });
 
@@ -926,6 +940,7 @@ describe("meals service", () => {
           cookTimeMinutes: 20,
           servings: 4,
           sourceUrl: "https://example.com/tacos",
+          imageUrl: "https://cdn.example.com/tacos.jpg",
           notes: "Weeknight favorite",
         },
       ]);
@@ -935,6 +950,7 @@ describe("meals service", () => {
           cookTimeMinutes?: unknown;
           servings?: unknown;
           sourceUrl?: unknown;
+          imageUrl?: unknown;
           notes?: unknown;
         };
       };
@@ -942,6 +958,7 @@ describe("meals service", () => {
       expect(arg.data.cookTimeMinutes).toBe(20);
       expect(arg.data.servings).toBe(4);
       expect(arg.data.sourceUrl).toBe("https://example.com/tacos");
+      expect(arg.data.imageUrl).toBe("https://cdn.example.com/tacos.jpg");
       expect(arg.data.notes).toBe("Weeknight favorite");
     });
 
@@ -1054,6 +1071,7 @@ describe("meals service", () => {
           cookTimeMinutes: 20,
           servings: 4,
           sourceUrl: "https://example.com/tacos",
+          imageUrl: "https://cdn.example.com/tacos.jpg",
           notes: "Use fresh cilantro",
           favorite: true,
           rating: 4,
@@ -1085,6 +1103,7 @@ describe("meals service", () => {
           cookTimeMinutes: 20,
           servings: 4,
           sourceUrl: "https://example.com/tacos",
+          imageUrl: "https://cdn.example.com/tacos.jpg",
           notes: "Use fresh cilantro",
           favorite: true,
           rating: 4,
@@ -1344,6 +1363,34 @@ describe("meal core metadata route validation", () => {
         createMealSchema.parse({ name: "Tacos", sourceUrl: "not-a-url" }),
       ).toThrow();
     });
+
+    it("accepts a valid https imageUrl (#103)", () => {
+      const parsed = createMealSchema.parse({
+        name: "Tacos",
+        imageUrl: "https://cdn.example.com/tacos.jpg",
+      });
+      expect(parsed.imageUrl).toBe("https://cdn.example.com/tacos.jpg");
+    });
+
+    it("accepts an explicit null imageUrl (#103)", () => {
+      const parsed = createMealSchema.parse({ name: "Soup", imageUrl: null });
+      expect(parsed.imageUrl).toBeNull();
+    });
+
+    it("rejects a malformed imageUrl (#103)", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", imageUrl: "not-a-url" }),
+      ).toThrow();
+    });
+
+    it("rejects a non-http(s) imageUrl scheme (#103)", () => {
+      expect(() =>
+        createMealSchema.parse({
+          name: "Tacos",
+          imageUrl: "javascript:alert(1)",
+        }),
+      ).toThrow();
+    });
   });
 
   describe("updateMealSchema", () => {
@@ -1383,6 +1430,24 @@ describe("meal core metadata route validation", () => {
 
     it("rejects a malformed sourceUrl", () => {
       expect(() => updateMealSchema.parse({ sourceUrl: "not a url" })).toThrow();
+    });
+
+    it("accepts a valid https imageUrl (#103)", () => {
+      const parsed = updateMealSchema.parse({
+        imageUrl: "https://cdn.example.com/stew.png",
+      });
+      expect(parsed.imageUrl).toBe("https://cdn.example.com/stew.png");
+    });
+
+    it("accepts an explicit null imageUrl (clearing) (#103)", () => {
+      const parsed = updateMealSchema.parse({ imageUrl: null });
+      expect(parsed.imageUrl).toBeNull();
+    });
+
+    it("rejects a non-http(s) imageUrl scheme (#103)", () => {
+      expect(() =>
+        updateMealSchema.parse({ imageUrl: "ftp://example.com/x.png" }),
+      ).toThrow();
     });
   });
 });

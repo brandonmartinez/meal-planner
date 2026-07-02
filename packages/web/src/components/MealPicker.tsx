@@ -8,6 +8,7 @@ import LoadingSpinner from './LoadingSpinner';
 import RecentBadge from './RecentBadge';
 import LastCookedBadge from './LastCookedBadge';
 import DifficultyBadge from './DifficultyBadge';
+import { MealThumbnail } from './MealThumbnail';
 
 interface MealPickerProps {
   familyId: string;
@@ -179,23 +180,32 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                 onClick={() => onSelect(meal.id)}
                 className="w-full text-left p-3 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-transparent hover:border-gray-200 dark:hover:border-gray-600"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{meal.name}</div>
-                  <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
-                    <RecentBadge
-                      recentlyScheduled={meal.recentlyScheduled}
-                      lastScheduledOn={meal.lastScheduledOn}
-                    />
-                    <LastCookedBadge
-                      timesCooked={meal.timesCooked}
-                      lastCookedOn={meal.lastCookedOn}
-                    />
-                    <DifficultyBadge difficulty={meal.difficulty} />
+                <div className="flex items-start gap-2">
+                  <MealThumbnail
+                    src={meal.imageUrl}
+                    alt=""
+                    className="h-10 w-10 shrink-0 rounded object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{meal.name}</div>
+                      <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+                        <RecentBadge
+                          recentlyScheduled={meal.recentlyScheduled}
+                          lastScheduledOn={meal.lastScheduledOn}
+                        />
+                        <LastCookedBadge
+                          timesCooked={meal.timesCooked}
+                          lastCookedOn={meal.lastCookedOn}
+                        />
+                        <DifficultyBadge difficulty={meal.difficulty} />
+                      </div>
+                    </div>
+                    {meal.description && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
+                    )}
                   </div>
                 </div>
-                {meal.description && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
-                )}
               </button>
             ))}
 

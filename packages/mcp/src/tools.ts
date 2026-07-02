@@ -146,6 +146,7 @@ export function createToolHandlers(
     create_meal: (args: {
       name: string;
       description?: string;
+      imageUrl?: string | null;
       difficulty?: "EASY" | "MEDIUM" | "HARD";
       prepTimeMinutes?: number;
       cookTimeMinutes?: number;
@@ -166,6 +167,7 @@ export function createToolHandlers(
       mealId: string;
       name?: string;
       description?: string;
+      imageUrl?: string | null;
       difficulty?: "EASY" | "MEDIUM" | "HARD" | null;
       prepTimeMinutes?: number | null;
       cookTimeMinutes?: number | null;
@@ -383,6 +385,15 @@ export function registerTools(
           .string()
           .optional()
           .describe("Optional short description or notes."),
+        imageUrl: z
+          .string()
+          .url()
+          .nullable()
+          .optional()
+          .describe(
+            "Optional external image URL (http/https) for the recipe. " +
+              "Display-only — stored as-is and never fetched server-side.",
+          ),
         difficulty: difficultyEnum
           .optional()
           .describe("Optional difficulty: EASY, MEDIUM, or HARD."),
@@ -449,6 +460,15 @@ export function registerTools(
         mealId: z.string().min(1).describe("The id of the meal to edit."),
         name: z.string().min(1).optional().describe("New name."),
         description: z.string().optional().describe("New description."),
+        imageUrl: z
+          .string()
+          .url()
+          .nullable()
+          .optional()
+          .describe(
+            "New external image URL (http/https), or null to clear it. " +
+              "Display-only — stored as-is and never fetched server-side.",
+          ),
         difficulty: difficultyEnum
           .nullable()
           .optional()

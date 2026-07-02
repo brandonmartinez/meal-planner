@@ -267,7 +267,7 @@ export async function createMeal(
   data: {
     name: string;
     description?: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;
@@ -315,7 +315,7 @@ export async function updateMeal(
   data: {
     name?: string;
     description?: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;
@@ -406,6 +406,7 @@ export async function importMeals(
   meals: {
     name: string;
     description?: string;
+    imageUrl?: string | null;
     difficulty?: Difficulty | null;
     prepTimeMinutes?: number | null;
     cookTimeMinutes?: number | null;
@@ -458,6 +459,7 @@ export async function importMeals(
             where: { id: existing.id },
             data: {
               description: data.description,
+              imageUrl: data.imageUrl,
               difficulty: data.difficulty,
               prepTimeMinutes: data.prepTimeMinutes,
               cookTimeMinutes: data.cookTimeMinutes,
@@ -479,6 +481,7 @@ export async function importMeals(
           data: {
             name: data.name,
             description: data.description,
+            imageUrl: data.imageUrl,
             difficulty: data.difficulty,
             prepTimeMinutes: data.prepTimeMinutes,
             cookTimeMinutes: data.cookTimeMinutes,
@@ -526,6 +529,7 @@ export async function exportMeals(familyId: string) {
   return meals.map((meal) => ({
     name: meal.name,
     description: meal.description,
+    imageUrl: meal.imageUrl,
     difficulty: meal.difficulty,
     prepTimeMinutes: meal.prepTimeMinutes,
     cookTimeMinutes: meal.cookTimeMinutes,

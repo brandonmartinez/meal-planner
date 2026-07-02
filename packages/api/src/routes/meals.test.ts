@@ -261,6 +261,54 @@ describe("POST /:familyId/meals (create)", () => {
     expect(mealService.createMeal).not.toHaveBeenCalled();
   });
 
+  it("forwards a valid https imageUrl through to the service (#103)", async () => {
+    vi.mocked(mealService.createMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", imageUrl: "https://cdn.example.com/tacos.jpg" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(mealService.createMeal).toHaveBeenCalledWith(
+      FAMILY_ID,
+      expect.objectContaining({ imageUrl: "https://cdn.example.com/tacos.jpg" }),
+    );
+  });
+
+  it("400s on a non-http(s) imageUrl scheme (#103)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", imageUrl: "javascript:alert(1)" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a malformed imageUrl (#103)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", imageUrl: "not-a-url" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.createMeal).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
@@ -334,6 +382,45 @@ describe("POST /:familyId/meals/import (bulk)", () => {
       req({
         params: { familyId: FAMILY_ID },
         body: { meals: [{ name: "Tacos", difficulty: "IMPOSSIBLE" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.importMeals).not.toHaveBeenCalled();
+  });
+
+  it("forwards a valid imageUrl through to the service (#103)", async () => {
+    vi.mocked(mealService.importMeals).mockResolvedValue({
+      created: 1,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: {
+          meals: [
+            { name: "Tacos", imageUrl: "https://cdn.example.com/tacos.jpg" },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.importMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      [{ name: "Tacos", imageUrl: "https://cdn.example.com/tacos.jpg" }],
+      { mode: undefined },
+    );
+  });
+
+  it("400s on a non-http(s) imageUrl in a meal row (#103)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { meals: [{ name: "Tacos", imageUrl: "file:///etc/passwd" }] },
       }),
       res,
       buildNext(),
@@ -508,6 +595,49 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     const res = buildFullRes();
     await handler(
       req({ params, body: { rating: 0 } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("forwards imageUrl and null-clearing through to the service (#103)", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { imageUrl: "https://cdn.example.com/stew.png" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({ imageUrl: "https://cdn.example.com/stew.png" }),
+    );
+
+    vi.mocked(mealService.updateMeal).mockClear();
+    const res2 = buildFullRes();
+    await handler(
+      req({ params, body: { imageUrl: null } }),
+      res2,
+      buildNext(),
+    );
+    expect(res2.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({ imageUrl: null }),
+    );
+  });
+
+  it("400s on a non-http(s) imageUrl scheme (#103)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { imageUrl: "ftp://example.com/x.png" } }),
       res,
       buildNext(),
     );

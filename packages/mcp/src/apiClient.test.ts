@@ -194,6 +194,7 @@ describe("MealPlannerApiClient", () => {
       cookTimeMinutes: 20,
       servings: 4,
       sourceUrl: "https://example.com/tacos",
+      imageUrl: "https://cdn.example.com/tacos.jpg",
       notes: "Use fresh cilantro",
       favorite: true,
       rating: 5,
@@ -229,6 +230,7 @@ describe("MealPlannerApiClient", () => {
       cookTimeMinutes: null,
       servings: 6,
       sourceUrl: null,
+      imageUrl: null,
       notes: "Simmer low",
     };
     await client.updateMeal("meal-1", patch);

@@ -12,7 +12,7 @@ import {
 import * as weekPlanService from "../services/weekPlan.js";
 import * as mealService from "../services/meals.js";
 import * as groceryService from "../services/grocery.js";
-import { listMealsQuerySchema } from "../schemas/meals.js";
+import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
 /**
  * MCP agent surface. Mounted at `/api/agent` (NOT `/api/families`) so it has
@@ -77,6 +77,7 @@ const ingredientInputSchema = z.object({
 const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
+  imageUrl: imageUrlSchema.nullable().optional(),
   difficulty: z.enum(MEAL_DIFFICULTIES).optional(),
   prepTimeMinutes: z.number().int().min(0).optional(),
   cookTimeMinutes: z.number().int().min(0).optional(),
@@ -92,6 +93,7 @@ const updateMealSchema = z
   .object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
+    imageUrl: imageUrlSchema.nullable().optional(),
     difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
     prepTimeMinutes: z.number().int().min(0).nullable().optional(),
     cookTimeMinutes: z.number().int().min(0).nullable().optional(),
