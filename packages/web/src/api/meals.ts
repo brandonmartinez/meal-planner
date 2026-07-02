@@ -25,6 +25,8 @@ export async function listMeals(
   opts?: {
     search?: string;
     difficulty?: string[];
+    tags?: string[];
+    categories?: string[];
     favorite?: boolean;
     minRating?: number;
     sort?: string;
@@ -37,6 +39,15 @@ export async function listMeals(
   if (opts?.search) params.set("search", opts.search);
   if (opts?.difficulty?.length) {
     for (const d of opts.difficulty) params.append("difficulty", d);
+  }
+  // Tags & categories filter by name, repeated once per value (#107). The
+  // backend treats multiple values within a facet as OR, and combines facets
+  // (tags AND categories AND difficulty AND search) with AND.
+  if (opts?.tags?.length) {
+    for (const t of opts.tags) params.append("tags", t);
+  }
+  if (opts?.categories?.length) {
+    for (const c of opts.categories) params.append("categories", c);
   }
   if (opts?.favorite !== undefined) {
     params.set("favorite", String(opts.favorite));
@@ -78,6 +89,8 @@ export async function createMeal(
     favorite?: boolean;
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+    tags?: string[];
+    categories?: string[];
   },
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals`, {
@@ -102,6 +115,8 @@ export async function updateMeal(
     favorite?: boolean;
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+    tags?: string[];
+    categories?: string[];
   },
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals/${mealId}`, {

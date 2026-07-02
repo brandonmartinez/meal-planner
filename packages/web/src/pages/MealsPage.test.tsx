@@ -490,3 +490,191 @@ describe('MealsPage discovery filters', () => {
     expect(screen.getByRole('button', { name: 'Sort ascending' })).toBeInTheDocument();
   });
 });
+
+function tag(id: string, name: string) {
+  return { id, name, familyId: FAMILY_ID };
+}
+
+function taxonomyHandlers(
+  tags: ReturnType<typeof tag>[],
+  categories: ReturnType<typeof tag>[],
+) {
+  return [
+    http.get(`/api/families/${FAMILY_ID}/tags`, () => HttpResponse.json({ tags })),
+    http.get(`/api/families/${FAMILY_ID}/categories`, () =>
+      HttpResponse.json({ categories }),
+    ),
+  ];
+}
+
+describe('MealsPage tags and categories', () => {
+  it('renders compact tag/category pills on cards with +N overflow', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({
+              id: 'm-1',
+              name: 'Tacos',
+              tags: [tag('t-1', 'Weeknight'), tag('t-2', 'Spicy'), tag('t-3', 'Quick')],
+              categories: [tag('c-1', 'Dinner')],
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    // First 3 chips (tags first) render; the 4th (category) collapses into +1.
+    expect(screen.getByText('Weeknight')).toBeInTheDocument();
+    expect(screen.getByText('Spicy')).toBeInTheDocument();
+    expect(screen.getByText('Quick')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 more')).toBeInTheDocument();
+  });
+
+  it('filters by tag and sends repeated tags params', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+
+    await waitFor(() =>
+      expect(new URL(urls[urls.length - 1]).searchParams.getAll('tags')).toEqual([
+        'Weeknight',
+      ]),
+    );
+    expect(screen.getByRole('button', { name: 'Weeknight' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('filters by category and sends repeated categories params', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      ...taxonomyHandlers([], [tag('c-1', 'Dinner')]),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Dinner' }));
+
+    await waitFor(() =>
+      expect(new URL(urls[urls.length - 1]).searchParams.getAll('categories')).toEqual([
+        'Dinner',
+      ]),
+    );
+  });
+
+  it('OR-within-facet: selecting two tags sends both as repeated params', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight'), tag('t-2', 'Vegan')], []),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vegan' }));
+
+    await waitFor(() =>
+      expect(
+        new URL(urls[urls.length - 1]).searchParams.getAll('tags').sort(),
+      ).toEqual(['Vegan', 'Weeknight']),
+    );
+  });
+
+  it('AND-across-facets: a tag and a difficulty are sent together', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Medium' }));
+
+    await waitFor(() => {
+      const params = new URL(urls[urls.length - 1]).searchParams;
+      expect(params.getAll('tags')).toEqual(['Weeknight']);
+      expect(params.getAll('difficulty')).toEqual(['MEDIUM']);
+    });
+  });
+
+  it('clear filters drops the tag params', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    await waitFor(() =>
+      expect(new URL(urls[urls.length - 1]).searchParams.getAll('tags')).toEqual([
+        'Weeknight',
+      ]),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await waitFor(() =>
+      expect(new URL(urls[urls.length - 1]).searchParams.getAll('tags')).toEqual([]),
+    );
+  });
+
+  it('hides the tag/category filter groups when the family has no taxonomy', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    // Default MSW taxonomy handlers return empty lists → no filter groups.
+    expect(screen.queryByRole('group', { name: 'Filter by tag' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('group', { name: 'Filter by category' }),
+    ).not.toBeInTheDocument();
+  });
+});
