@@ -66,6 +66,15 @@ function mockCredential(scopes: string[]) {
 describe("agent routes (end-to-end middleware chain)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // createMeal/updateMeal re-fetch the meal with taxonomy joins after
+    // mutating. Default to an empty-taxonomy row so write tests that don't
+    // care about tags/categories don't have to wire the re-fetch themselves.
+    prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+      id: "meal-1",
+      ingredients: [],
+      tags: [],
+      categories: [],
+    } as never);
   });
 
   it("read-only: GET weeks returns the plan and audits an allowed read", async () => {
