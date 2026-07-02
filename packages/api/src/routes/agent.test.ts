@@ -327,4 +327,118 @@ describe("agent routes (end-to-end middleware chain)", () => {
     };
     expect(updateArg.data).toMatchObject({ favorite: false, rating: null });
   });
+
+  // --- #107 tags/categories parity (parity.instructions.md row 4) ---
+  // The agent create/update routes share the meal service with REST, so the
+  // list-FILTER path is parity-by-construction (identical shared
+  // `listMealsQuerySchema` + `mealService.listMeals(familyId, parsed.data)`
+  // call; filter where-clause is exhaustively covered in services/meals.test.ts
+  // and routes/meals.test.ts). The agent-SPECIFIC risk is the WRITE path: the
+  // credential's own `familyId` (never a client-supplied value) must scope the
+  // tag/category upsert so an agent key can never resolve or create taxonomy in
+  // another family (#9 IDOR). These two tests pin that.
+
+  it("write: POST meals assigns tags/categories scoped to the credential's family (#107, IDOR)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+    prismaMock.tag.upsert.mockResolvedValue({ id: "tag-1" } as never);
+    prismaMock.category.upsert.mockResolvedValue({ id: "cat-1" } as never);
+    prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.mealCategory.deleteMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.mealCategory.createMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+      id: "meal-1",
+      ingredients: [],
+      tags: [],
+      categories: [],
+    } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      { name: "Tacos", tags: ["Quick", "Weeknight"], categories: ["Dinner"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    // Family scope (fam-1) comes from the credential, not the request body.
+    expect(prismaMock.tag.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          familyId_nameNormalized: { familyId: "fam-1", nameNormalized: "quick" },
+        },
+        create: { name: "Quick", nameNormalized: "quick", familyId: "fam-1" },
+        update: {},
+      }),
+    );
+    expect(prismaMock.category.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          familyId_nameNormalized: {
+            familyId: "fam-1",
+            nameNormalized: "dinner",
+          },
+        },
+      }),
+    );
+    // Joins are (re)created for the new meal.
+    expect(prismaMock.mealTag.createMany).toHaveBeenCalled();
+    expect(prismaMock.mealCategory.createMany).toHaveBeenCalled();
+  });
+
+  it("write: PATCH meals replace-sets tags and clears categories with [] (#107)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.meal.update.mockResolvedValue({ id: "meal-1" } as never);
+    prismaMock.tag.upsert.mockResolvedValue({ id: "tag-1" } as never);
+    prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
+    prismaMock.mealCategory.deleteMany.mockResolvedValue({ count: 2 } as never);
+    prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+      id: "meal-1",
+      ingredients: [],
+      tags: [],
+      categories: [],
+    } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq(
+      { mealId: "meal-1" },
+      { tags: ["Quick"], categories: [] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    // Tag upsert is family-scoped to the credential (fam-1).
+    expect(prismaMock.tag.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          familyId_nameNormalized: { familyId: "fam-1", nameNormalized: "quick" },
+        },
+      }),
+    );
+    // Replace-set: existing tag joins are cleared before re-create.
+    expect(prismaMock.mealTag.deleteMany).toHaveBeenCalledWith({
+      where: { mealId: "meal-1" },
+    });
+    // categories: [] clears all category joins and creates none.
+    expect(prismaMock.mealCategory.deleteMany).toHaveBeenCalledWith({
+      where: { mealId: "meal-1" },
+    });
+    expect(prismaMock.mealCategory.createMany).not.toHaveBeenCalled();
+  });
 });

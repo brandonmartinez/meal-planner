@@ -87,6 +87,8 @@ const createMealSchema = z.object({
   favorite: z.boolean().optional(),
   rating: z.number().int().min(1).max(5).optional(),
   ingredients: z.array(ingredientInputSchema).optional(),
+  tags: z.array(z.string()).optional(),
+  categories: z.array(z.string()).optional(),
 });
 
 const updateMealSchema = z
@@ -103,6 +105,8 @@ const updateMealSchema = z
     favorite: z.boolean().optional(),
     rating: z.number().int().min(1).max(5).nullable().optional(),
     ingredients: z.array(ingredientInputSchema).optional(),
+    tags: z.array(z.string()).optional(),
+    categories: z.array(z.string()).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field must be provided",

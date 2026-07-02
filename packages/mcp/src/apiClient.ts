@@ -51,6 +51,10 @@ export interface CreateMealInput {
     unit?: string;
     category?: string;
   }[];
+  /** Tag names to assign (family-scoped, resolved/created by name). #107. */
+  tags?: string[];
+  /** Category names to assign (family-scoped, resolved/created by name). #107. */
+  categories?: string[];
 }
 
 /** Partial edit of an existing meal. Every field is optional; `difficulty` may
@@ -74,6 +78,10 @@ export interface UpdateMealInput {
     unit?: string;
     category?: string;
   }[];
+  /** Tag names to replace the meal's tags with (by name). #107. */
+  tags?: string[];
+  /** Category names to replace the meal's categories with (by name). #107. */
+  categories?: string[];
 }
 
 /**
@@ -116,6 +124,8 @@ export class MealPlannerApiClient {
       difficulty?: string[];
       favorite?: boolean;
       minRating?: number;
+      tags?: string[];
+      categories?: string[];
       sort?: string;
       order?: string;
       limit?: number;
@@ -132,6 +142,8 @@ export class MealPlannerApiClient {
       offset: opts?.offset,
     };
     if (opts?.difficulty?.length) query["difficulty"] = opts.difficulty;
+    if (opts?.tags?.length) query["tags"] = opts.tags;
+    if (opts?.categories?.length) query["categories"] = opts.categories;
     return this.request<MealListResponseDTO>(
       "GET",
       `/api/agent/${encodeURIComponent(familyId)}/meals`,

@@ -44,6 +44,8 @@ export interface Meal {
   rating: number | null;
   familyId: string;
   ingredients?: MealIngredient[];
+  tags?: Tag[];
+  categories?: Category[];
 }
 
 export interface MealIngredient {
@@ -53,6 +55,23 @@ export interface MealIngredient {
   unit?: string;
   category?: string;
   mealId: string;
+}
+
+/** A family-scoped tag. `name` is the display value (original casing); the
+ *  case-insensitive uniqueness key (`nameNormalized`) is a service-internal
+ *  detail and is intentionally NOT part of the wire contract. */
+export interface Tag {
+  id: string;
+  name: string;
+  familyId: string;
+}
+
+/** A family-scoped category. Same shape and rules as {@link Tag} — a separate
+ *  model so a "quick" tag and a "quick" category can coexist per family. */
+export interface Category {
+  id: string;
+  name: string;
+  familyId: string;
 }
 
 export interface WeekPlan {

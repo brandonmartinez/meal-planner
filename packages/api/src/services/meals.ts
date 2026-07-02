@@ -7,7 +7,44 @@ import {
 import type { Difficulty, MealListResponseDTO } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
+import { syncMealTaxonomy } from "./taxonomy.js";
 import type { ListMealsQuery } from "../schemas/meals.js";
+
+/** Prisma `include` that pulls a meal's tag/category join rows with their
+ *  parent taxonomy records. Shared by every read path so the wire shape stays
+ *  consistent. */
+const MEAL_TAXONOMY_INCLUDE = {
+  tags: { include: { tag: true } },
+  categories: { include: { category: true } },
+} satisfies Prisma.MealInclude;
+
+/** The subset of a meal's included join rows this module reads. */
+type TaxonomyJoinRows = {
+  tags: { tag: { id: string; name: string; familyId: string } }[];
+  categories: { category: { id: string; name: string; familyId: string } }[];
+};
+
+/** Project a meal's tag/category join rows into flat `Tag[]` / `Category[]`
+ *  wire shapes, dropping `nameNormalized` and timestamps (internal only). */
+function mapTaxonomy(meal: TaxonomyJoinRows) {
+  return {
+    tags: meal.tags.map((mt) => ({
+      id: mt.tag.id,
+      name: mt.tag.name,
+      familyId: mt.tag.familyId,
+    })),
+    categories: meal.categories.map((mc) => ({
+      id: mc.category.id,
+      name: mc.category.name,
+      familyId: mc.category.familyId,
+    })),
+  };
+}
+
+/** Return a meal with its join rows replaced by flat taxonomy arrays. */
+function flattenMeal<T extends TaxonomyJoinRows>(meal: T) {
+  return { ...meal, ...mapTaxonomy(meal) };
+}
 
 /** Calendar-date label (YYYY-MM-DD) of a stored DayPlan/WeekPlan date. Week and
  *  day dates are persisted at UTC midnight, so the UTC slice IS the intended
@@ -21,14 +58,34 @@ export async function listMeals(
   familyId: string,
   opts: ListMealsQuery = { sort: "name", order: "asc", limit: 25, offset: 0 },
 ): Promise<MealListResponseDTO> {
-  const { search, difficulty, favorite, minRating, sort, order, limit, offset } =
-    opts;
+  const {
+    search,
+    difficulty,
+    favorite,
+    minRating,
+    tags,
+    categories,
+    sort,
+    order,
+    limit,
+    offset,
+  } = opts;
+
+  // Normalize filter names to match the stored `nameNormalized` column.
+  const tagNames = (tags ?? [])
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  const categoryNames = (categories ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
 
   const hasFilter = Boolean(
     search ||
       difficulty?.length ||
       favorite !== undefined ||
-      minRating !== undefined,
+      minRating !== undefined ||
+      tagNames.length ||
+      categoryNames.length,
   );
 
   const where: Prisma.MealWhereInput = { familyId };
@@ -57,11 +114,26 @@ export async function listMeals(
     where.rating = { gte: minRating };
   }
 
+  // Taxonomy filters: OR-within a facet (any supplied tag matches), AND-across
+  // facets (tag filter AND category filter must both be satisfied). Join rows
+  // are family-scoped transitively via the parent tag/category records.
+  if (tagNames.length) {
+    where.tags = { some: { tag: { nameNormalized: { in: tagNames } } } };
+  }
+  if (categoryNames.length) {
+    where.categories = {
+      some: { category: { nameNormalized: { in: categoryNames } } },
+    };
+  }
+
   // lastCooked sort is derived — fetch all, enrich, sort app-side, then slice.
   if (sort === "lastCooked") {
     const allMeals = await prisma.meal.findMany({
       where,
-      include: { _count: { select: { ingredients: true } } },
+      include: {
+        _count: { select: { ingredients: true } },
+        ...MEAL_TAXONOMY_INCLUDE,
+      },
     });
 
     const mealIds = allMeals.map((m) => m.id);
@@ -73,6 +145,7 @@ export async function listMeals(
       const cooked = lastCookedByMeal.get(meal.id);
       return {
         ...meal,
+        ...mapTaxonomy(meal),
         recentlyScheduled: last !== undefined,
         lastScheduledOn: last ?? null,
         lastCookedOn: cooked?.lastCookedOn ?? null,
@@ -108,7 +181,10 @@ export async function listMeals(
     prisma.meal.count({ where }),
     prisma.meal.findMany({
       where,
-      include: { _count: { select: { ingredients: true } } },
+      include: {
+        _count: { select: { ingredients: true } },
+        ...MEAL_TAXONOMY_INCLUDE,
+      },
       orderBy,
       skip: offset,
       take: limit,
@@ -124,6 +200,7 @@ export async function listMeals(
     const cooked = lastCookedByMeal.get(meal.id);
     return {
       ...meal,
+      ...mapTaxonomy(meal),
       description: meal.description ?? undefined,
       imageUrl: meal.imageUrl ?? undefined,
       recentlyScheduled: last !== undefined,
@@ -256,10 +333,11 @@ export async function getLastCookedMap(
 }
 
 export async function getMealById(mealId: string, familyId: string) {
-  return prisma.meal.findFirst({
+  const meal = await prisma.meal.findFirst({
     where: { id: mealId, familyId },
-    include: { ingredients: true },
+    include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
   });
+  return meal ? flattenMeal(meal) : null;
 }
 
 export async function createMeal(
@@ -282,6 +360,8 @@ export async function createMeal(
       unit?: string;
       category?: string;
     }[];
+    tags?: string[];
+    categories?: string[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -303,9 +383,13 @@ export async function createMeal(
           ? { create: data.ingredients }
           : undefined,
       },
-      include: { ingredients: true },
     });
-    return meal;
+    await syncMealTaxonomy(tx, familyId, meal.id, data.tags, data.categories);
+    const withTaxonomy = await tx.meal.findUniqueOrThrow({
+      where: { id: meal.id },
+      include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
+    });
+    return flattenMeal(withTaxonomy);
   });
 }
 
@@ -330,6 +414,8 @@ export async function updateMeal(
       unit?: string;
       category?: string;
     }[];
+    tags?: string[];
+    categories?: string[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -347,7 +433,7 @@ export async function updateMeal(
       await tx.mealIngredient.deleteMany({ where: { mealId } });
     }
 
-    const meal = await tx.meal.update({
+    await tx.meal.update({
       where: { id: mealId },
       data: {
         name: data.name,
@@ -366,9 +452,13 @@ export async function updateMeal(
             ? { create: data.ingredients }
             : undefined,
       },
-      include: { ingredients: true },
     });
-    return meal;
+    await syncMealTaxonomy(tx, familyId, mealId, data.tags, data.categories);
+    const meal = await tx.meal.findUniqueOrThrow({
+      where: { id: mealId },
+      include: { ingredients: true, ...MEAL_TAXONOMY_INCLUDE },
+    });
+    return flattenMeal(meal);
   });
 }
 
@@ -421,6 +511,8 @@ export async function importMeals(
       unit?: string;
       category?: string;
     }[];
+    tags?: string[];
+    categories?: string[];
   }[],
   options?: { mode?: "skip" | "replace" },
 ) {
@@ -473,11 +565,18 @@ export async function importMeals(
                 : undefined,
             },
           });
+          await syncMealTaxonomy(
+            tx,
+            familyId,
+            existing.id,
+            data.tags,
+            data.categories,
+          );
           result.updated++;
           return;
         }
 
-        await tx.meal.create({
+        const created = await tx.meal.create({
           data: {
             name: data.name,
             description: data.description,
@@ -496,6 +595,13 @@ export async function importMeals(
               : undefined,
           },
         });
+        await syncMealTaxonomy(
+          tx,
+          familyId,
+          created.id,
+          data.tags,
+          data.categories,
+        );
         result.created++;
       });
     } catch (err) {
@@ -522,6 +628,8 @@ export async function exportMeals(familyId: string) {
       ingredients: {
         select: { name: true, quantity: true, unit: true, category: true },
       },
+      tags: { include: { tag: { select: { name: true } } } },
+      categories: { include: { category: { select: { name: true } } } },
     },
     orderBy: { name: "asc" },
   });
@@ -539,6 +647,8 @@ export async function exportMeals(familyId: string) {
     favorite: meal.favorite,
     rating: meal.rating,
     ingredients: meal.ingredients,
+    tags: meal.tags.map((mt) => mt.tag.name),
+    categories: meal.categories.map((mc) => mc.category.name),
   }));
 }
 

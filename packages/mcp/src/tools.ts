@@ -93,6 +93,8 @@ export function createToolHandlers(
       difficulty?: string[];
       favorite?: boolean;
       minRating?: number;
+      tags?: string[];
+      categories?: string[];
       sort?: string;
       order?: string;
       limit?: number;
@@ -104,6 +106,8 @@ export function createToolHandlers(
           difficulty: args.difficulty,
           favorite: args.favorite,
           minRating: args.minRating,
+          tags: args.tags,
+          categories: args.categories,
           sort: args.sort,
           order: args.order,
           limit: args.limit,
@@ -161,6 +165,8 @@ export function createToolHandlers(
         unit?: string;
         category?: string;
       }[];
+      tags?: string[];
+      categories?: string[];
     }): Promise<ToolResult> => run(() => client.createMeal(args)),
 
     update_meal: (args: {
@@ -182,6 +188,8 @@ export function createToolHandlers(
         unit?: string;
         category?: string;
       }[];
+      tags?: string[];
+      categories?: string[];
     }): Promise<ToolResult> => {
       const { mealId, ...rest } = args;
       return run(() => client.updateMeal(mealId, rest));
@@ -228,9 +236,12 @@ export function registerTools(
         "List the family's meal catalog, including a recently-scheduled " +
         "indicator, last-cooked date, and all-time times-cooked count. " +
         "Supports name search, difficulty " +
-        "filter, favorite filter, minimum-rating filter, sort " +
+        "filter, favorite filter, minimum-rating filter, tag filter, " +
+        "category filter, sort " +
         "(name|lastCooked|created), pagination " +
-        "(limit/offset), and sort order (asc|desc). Requires the " +
+        "(limit/offset), and sort order (asc|desc). Multiple values within " +
+        "the tags (or categories) filter are OR'd; the tags and categories " +
+        "filters are AND'd together and with the other filters. Requires the " +
         "meal_plan:read scope.",
       inputSchema: {
         search: z
@@ -253,6 +264,18 @@ export function registerTools(
           .max(5)
           .optional()
           .describe("Only meals rated at least this value (1–5)."),
+        tags: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Filter by tag names (case-insensitive). Multiple tags are OR'd.",
+          ),
+        categories: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Filter by category names (case-insensitive). Multiple categories are OR'd.",
+          ),
         sort: z
           .enum(["name", "lastCooked", "created"])
           .optional()
@@ -441,6 +464,20 @@ export function registerTools(
           .array(ingredientSchema)
           .optional()
           .describe("Optional list of ingredients parsed from the recipe."),
+        tags: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Optional tag names to assign (case-insensitive, created within " +
+              "the family if new).",
+          ),
+        categories: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Optional category names to assign (case-insensitive, created " +
+              "within the family if new).",
+          ),
       },
     },
     (args) => handlers.create_meal(args),
@@ -523,6 +560,21 @@ export function registerTools(
           .array(ingredientSchema)
           .optional()
           .describe("Replacement ingredient list (replaces all existing)."),
+        tags: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Replacement tag names (replaces all existing; case-insensitive, " +
+              "created within the family if new). Pass [] to clear.",
+          ),
+        categories: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Replacement category names (replaces all existing; " +
+              "case-insensitive, created within the family if new). Pass [] " +
+              "to clear.",
+          ),
       },
     },
     (args) => handlers.update_meal(args),
