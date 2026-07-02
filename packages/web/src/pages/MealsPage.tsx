@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { listMeals, deleteMeal, exportMeals } from '../api/meals';
 import { mealsToCSV } from '../utils/csv';
 import { useAuth } from '../context/AuthContext';
@@ -341,6 +341,13 @@ export default function MealsPage() {
                       </span>
                     ) : (
                       <>
+                        <Link
+                          to={`/meals/${meal.id}`}
+                          aria-label={`View ${meal.name}`}
+                          className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                        >
+                          View
+                        </Link>
                         <button
                           onClick={() => navigate(`/meals/${meal.id}/edit`)}
                           aria-label={`Edit ${meal.name}`}
