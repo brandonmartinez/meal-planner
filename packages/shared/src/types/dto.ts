@@ -175,6 +175,8 @@ export interface ExportMealDTO {
   servings: number | null;
   sourceUrl: string | null;
   notes: string | null;
+  favorite: boolean;
+  rating: number | null;
   ingredients: {
     name: string;
     quantity: string | null;

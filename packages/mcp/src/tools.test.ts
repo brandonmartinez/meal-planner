@@ -46,6 +46,8 @@ describe("createToolHandlers", () => {
     expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
       search: "taco",
       difficulty: undefined,
+      favorite: undefined,
+      minRating: undefined,
       sort: undefined,
       order: undefined,
       limit: undefined,
@@ -75,10 +77,35 @@ describe("createToolHandlers", () => {
     expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
       search: undefined,
       difficulty: ["EASY", "HARD"],
+      favorite: undefined,
+      minRating: undefined,
       sort: "lastCooked",
       order: "desc",
       limit: 10,
       offset: 0,
+    });
+  });
+
+  it("list_meals forwards favorite and minRating to the client", async () => {
+    const client = stubClient();
+    const envelope = { items: [], total: 0, limit: 25, offset: 0, hasMore: false };
+    client.listMeals.mockResolvedValue(envelope);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.list_meals({ favorite: true, minRating: 4 });
+
+    expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
+      search: undefined,
+      difficulty: undefined,
+      favorite: true,
+      minRating: 4,
+      sort: undefined,
+      order: undefined,
+      limit: undefined,
+      offset: undefined,
     });
   });
 
@@ -152,6 +179,8 @@ describe("createToolHandlers", () => {
       servings: 4,
       sourceUrl: "https://example.com/tacos",
       notes: "Use fresh cilantro",
+      favorite: true,
+      rating: 5,
       ingredients: [{ name: "tortillas", category: "bakery" }],
     };
     const result = await handlers.create_meal(input);
@@ -197,6 +226,25 @@ describe("createToolHandlers", () => {
       servings: 6,
       sourceUrl: null,
       notes: "Simmer low",
+    });
+  });
+
+  it("update_meal forwards favorite and a null-cleared rating (mealId stripped)", async () => {
+    const client = stubClient();
+    client.updateMeal.mockResolvedValue({ id: "meal-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.update_meal({
+      mealId: "meal-1",
+      favorite: false,
+      rating: null,
+    });
+    expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
+      favorite: false,
+      rating: null,
     });
   });
 

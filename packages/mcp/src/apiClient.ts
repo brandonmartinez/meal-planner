@@ -26,7 +26,7 @@ export interface ApiClientOptions {
 }
 
 interface RequestOptions {
-  query?: Record<string, string | string[] | number | undefined>;
+  query?: Record<string, string | string[] | number | boolean | undefined>;
   body?: unknown;
 }
 
@@ -41,6 +41,8 @@ export interface CreateMealInput {
   servings?: number;
   sourceUrl?: string;
   notes?: string;
+  favorite?: boolean;
+  rating?: number;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -60,6 +62,8 @@ export interface UpdateMealInput {
   servings?: number | null;
   sourceUrl?: string | null;
   notes?: string | null;
+  favorite?: boolean;
+  rating?: number | null;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -106,14 +110,18 @@ export class MealPlannerApiClient {
     opts?: {
       search?: string;
       difficulty?: string[];
+      favorite?: boolean;
+      minRating?: number;
       sort?: string;
       order?: string;
       limit?: number;
       offset?: number;
     },
   ): Promise<MealListResponseDTO> {
-    const query: Record<string, string | string[] | number | undefined> = {
+    const query: Record<string, string | string[] | number | boolean | undefined> = {
       search: opts?.search,
+      favorite: opts?.favorite,
+      minRating: opts?.minRating,
       sort: opts?.sort,
       order: opts?.order,
       limit: opts?.limit,

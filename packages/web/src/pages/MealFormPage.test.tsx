@@ -215,6 +215,88 @@ describe('MealFormPage core metadata', () => {
   });
 });
 
+describe('MealFormPage favorite and rating', () => {
+  it('sends favorite=true and a rating when creating a meal', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Favorite' }));
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Rating (1–5)' }), '5');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({ favorite: true, rating: 5 });
+  });
+
+  it('defaults favorite to false and rating to null on create', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Soup');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({ favorite: false, rating: null });
+  });
+
+  it('populates favorite and rating from an existing meal and can clear the rating', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Lasagna',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          favorite: true,
+          rating: 4,
+          familyId: FAMILY_ID,
+          ingredients: [],
+        }),
+      ),
+      http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    const favorite = await screen.findByRole<HTMLInputElement>('checkbox', {
+      name: 'Favorite',
+    });
+    await waitFor(() => expect(favorite.checked).toBe(true));
+    const ratingInput = screen.getByRole<HTMLInputElement>('spinbutton', {
+      name: 'Rating (1–5)',
+    });
+    expect(ratingInput.value).toBe('4');
+
+    // Untoggle favorite and clear the rating, then save.
+    await userEvent.click(favorite);
+    await userEvent.clear(ratingInput);
+    await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({ favorite: false, rating: null });
+  });
+});
+
 describe('MealFormPage accessibility', () => {
   it('associates accessible names with the meal name and description controls', async () => {
     renderForm('/meals/new');

@@ -207,6 +207,77 @@ Tacos,99,Salsa`;
     expect(r.meals[0].prepTimeMinutes).toBe(10);
   });
 
+  it("parses the rating column within its 1–5 range", () => {
+    const csv = `meal,rating
+Tacos,4`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].rating).toBe(4);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("warns and ignores an out-of-range or non-integer rating", () => {
+    const csv = `meal,rating
+Tacos,6
+Soup,0
+Stew,abc`;
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    const soup = r.meals.find((m) => m.name === "Soup");
+    const stew = r.meals.find((m) => m.name === "Stew");
+    expect(tacos?.rating).toBeUndefined();
+    expect(soup?.rating).toBeUndefined();
+    expect(stew?.rating).toBeUndefined();
+    expect(r.warnings.filter((w) => /non-numeric rating/.test(w))).toHaveLength(
+      3,
+    );
+  });
+
+  it("supports rating header aliases", () => {
+    const csv = `meal,stars
+Tacos,3`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].rating).toBe(3);
+  });
+
+  it("parses truthy favorite tokens", () => {
+    const csv = `meal,favorite
+True,true
+Yes,yes
+Y,y
+One,1`;
+    const r = parseMealsCSV(csv);
+    for (const m of r.meals) expect(m.favorite).toBe(true);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("parses falsy favorite tokens", () => {
+    const csv = `meal,favorite
+False,false
+No,no
+N,n
+Zero,0`;
+    const r = parseMealsCSV(csv);
+    for (const m of r.meals) expect(m.favorite).toBe(false);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("supports favorite header aliases", () => {
+    const csv = `meal,starred
+Tacos,yes`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].favorite).toBe(true);
+  });
+
+  it("warns and ignores an unrecognized favorite token", () => {
+    const csv = `meal,favorite
+Tacos,maybe`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].favorite).toBeUndefined();
+    expect(
+      r.warnings.some((w) => /unrecognized favorite "maybe"/.test(w)),
+    ).toBe(true);
+  });
+
   it("handles empty input gracefully", () => {
     const r = parseMealsCSV("");
     expect(r.meals).toEqual([]);
@@ -218,7 +289,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,notes",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,notes,favorite,rating",
     );
   });
 
@@ -235,8 +306,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -245,7 +316,7 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,");
   });
 
   it("emits meal-level metadata columns, repeating them per ingredient row", () => {
@@ -267,11 +338,28 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines[1]).toBe(
-      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,Use fresh cilantro",
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,Use fresh cilantro,,",
     );
     expect(lines[2]).toBe(
-      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,Use fresh cilantro",
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,Use fresh cilantro,,",
     );
+  });
+
+  it("emits favorite and rating in the trailing columns", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        favorite: true,
+        rating: 5,
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+        ],
+      },
+      { name: "Cereal", favorite: false, rating: null },
+    ]);
+    const lines = csv.trim().split("\n");
+    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,true,5");
+    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,false,");
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -293,6 +381,8 @@ describe("mealsToCSV", () => {
         servings: 4,
         sourceUrl: "https://example.com/tacos",
         notes: "Use fresh cilantro",
+        favorite: true,
+        rating: 5,
         ingredients: [
           { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
         ],
@@ -309,6 +399,8 @@ describe("mealsToCSV", () => {
     expect(tacos?.servings).toBe(4);
     expect(tacos?.sourceUrl).toBe("https://example.com/tacos");
     expect(tacos?.notes).toBe("Use fresh cilantro");
+    expect(tacos?.favorite).toBe(true);
+    expect(tacos?.rating).toBe(5);
     expect(tacos?.ingredients).toEqual([
       { name: "Tortillas", quantity: "6", category: "produce" },
     ]);

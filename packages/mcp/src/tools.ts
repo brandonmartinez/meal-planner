@@ -91,6 +91,8 @@ export function createToolHandlers(
     list_meals: (args: {
       search?: string;
       difficulty?: string[];
+      favorite?: boolean;
+      minRating?: number;
       sort?: string;
       order?: string;
       limit?: number;
@@ -100,6 +102,8 @@ export function createToolHandlers(
         client.listMeals(familyId, {
           search: args.search,
           difficulty: args.difficulty,
+          favorite: args.favorite,
+          minRating: args.minRating,
           sort: args.sort,
           order: args.order,
           limit: args.limit,
@@ -148,6 +152,8 @@ export function createToolHandlers(
       servings?: number;
       sourceUrl?: string;
       notes?: string;
+      favorite?: boolean;
+      rating?: number;
       ingredients?: {
         name: string;
         quantity?: string;
@@ -166,6 +172,8 @@ export function createToolHandlers(
       servings?: number | null;
       sourceUrl?: string | null;
       notes?: string | null;
+      favorite?: boolean;
+      rating?: number | null;
       ingredients?: {
         name: string;
         quantity?: string;
@@ -217,7 +225,8 @@ export function registerTools(
       description:
         "List the family's meal catalog, including a recently-scheduled " +
         "indicator and last-cooked date. Supports name search, difficulty " +
-        "filter, sort (name|lastCooked|created), pagination " +
+        "filter, favorite filter, minimum-rating filter, sort " +
+        "(name|lastCooked|created), pagination " +
         "(limit/offset), and sort order (asc|desc). Requires the " +
         "meal_plan:read scope.",
       inputSchema: {
@@ -230,6 +239,17 @@ export function registerTools(
           .array(z.enum(["EASY", "MEDIUM", "HARD"]))
           .optional()
           .describe("Filter by one or more difficulty levels."),
+        favorite: z
+          .boolean()
+          .optional()
+          .describe("Filter to only favorite meals when true."),
+        minRating: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Only meals rated at least this value (1–5)."),
         sort: z
           .enum(["name", "lastCooked", "created"])
           .optional()
@@ -394,6 +414,17 @@ export function registerTools(
           .string()
           .optional()
           .describe("Optional free-form recipe notes."),
+        favorite: z
+          .boolean()
+          .optional()
+          .describe("Optional flag to mark the meal as a favorite."),
+        rating: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .optional()
+          .describe("Optional rating from 1 to 5."),
         ingredients: z
           .array(ingredientSchema)
           .optional()
@@ -455,6 +486,18 @@ export function registerTools(
           .nullable()
           .optional()
           .describe("New recipe notes, or null to clear them."),
+        favorite: z
+          .boolean()
+          .optional()
+          .describe("Whether to mark the meal as a favorite."),
+        rating: z
+          .number()
+          .int()
+          .min(1)
+          .max(5)
+          .nullable()
+          .optional()
+          .describe("New rating from 1 to 5, or null to clear it."),
         ingredients: z
           .array(ingredientSchema)
           .optional()

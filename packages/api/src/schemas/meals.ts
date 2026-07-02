@@ -23,6 +23,23 @@ export const listMealsQuerySchema = z.object({
     .optional(),
 
   /**
+   * Filter by favorite flag. Query params arrive as strings, so accept the
+   * literal "true"/"false" (coerced) as well as a real boolean.
+   */
+  favorite: z
+    .union([
+      z.boolean(),
+      z.enum(["true", "false"]).transform((v) => v === "true"),
+    ])
+    .optional(),
+
+  /**
+   * Filter to meals rated at or above this threshold (1–5). Unrated (null)
+   * meals are excluded from the result.
+   */
+  minRating: z.coerce.number().int().min(1).max(5).optional(),
+
+  /**
    * Sort field.
    * - `name`       — alphabetical (DB-side)
    * - `created`    — newest first by default (DB-side)

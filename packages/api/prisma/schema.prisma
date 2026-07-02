@@ -61,6 +61,8 @@ model Meal {
   servings             Int?
   sourceUrl            String?
   notes                String?
+  favorite             Boolean          @default(false)
+  rating               Int?
   family               Family           @relation(fields: [familyId], references: [id])
   familyId             String
   ingredients          MealIngredient[]

@@ -253,4 +253,60 @@ describe("agent routes (end-to-end middleware chain)", () => {
       notes: null,
     });
   });
+
+  it("write: POST meals forwards favorite and rating to the service (meal:write)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { name: "Tacos", favorite: true, rating: 4 });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const createArg = prismaMock.meal.create.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArg.data).toMatchObject({ favorite: true, rating: 4 });
+  });
+
+  it("write: POST meals 400s on an out-of-range rating", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { name: "Tacos", rating: 6 });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+  });
+
+  it("write: PATCH meals clears rating to null and unsets favorite", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.meal.update.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq({ mealId: "meal-1" }, { favorite: false, rating: null });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    const updateArg = prismaMock.meal.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateArg.data).toMatchObject({ favorite: false, rating: null });
+  });
 });
