@@ -3,11 +3,13 @@ import { listMeals } from '../api/meals';
 import type { MealListItemDTO, MealPlaceholderKind, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useTaxonomy } from '../hooks/useTaxonomy';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
 import RecentBadge from './RecentBadge';
 import LastCookedBadge from './LastCookedBadge';
 import DifficultyBadge from './DifficultyBadge';
+import MealTagList from './MealTagList';
 import { MealThumbnail } from './MealThumbnail';
 
 interface MealPickerProps {
@@ -28,10 +30,14 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const headingId = useId();
+
+  const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
 
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -41,6 +47,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
+        tags: tagFilter.length ? tagFilter : undefined,
+        categories: categoryFilter.length ? categoryFilter : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: 0,
       });
@@ -51,7 +59,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
@@ -63,6 +71,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
+        tags: tagFilter.length ? tagFilter : undefined,
+        categories: categoryFilter.length ? categoryFilter : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: meals.length,
       });
@@ -78,6 +88,18 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const toggleDifficulty = (value: Difficulty) => {
     setDifficulty(prev =>
       prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value],
+    );
+  };
+
+  const toggleTag = (value: string) => {
+    setTagFilter(prev =>
+      prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value],
+    );
+  };
+
+  const toggleCategory = (value: string) => {
+    setCategoryFilter(prev =>
+      prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value],
     );
   };
 
@@ -114,8 +136,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           data-autofocus
         />
         {/* Difficulty is the most relevant planning filter; kept compact so the
-            picker stays lean. TODO(#98,#107): add favorite / rating / tag filters
-            here once their backend list params land — do NOT stub them before then. */}
+            picker stays lean. Tag/category facets (#107/#108) render only when
+            the family has taxonomy so the picker stays uncluttered. */}
         <div
           role="group"
           aria-label="Filter by difficulty"
@@ -140,6 +162,60 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
             );
           })}
         </div>
+
+        {tagOptions.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter by tag"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {tagOptions.map(tag => {
+              const active = tagFilter.includes(tag.name);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleTag(tag.name)}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
+                    active
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {categoryOptions.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filter by category"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {categoryOptions.map(category => {
+              const active = categoryFilter.includes(category.name);
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleCategory(category.name)}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
+                    active
+                      ? 'bg-purple-600 border-purple-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {category.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -204,6 +280,12 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                     {meal.description && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
                     )}
+                    <MealTagList
+                      tags={meal.tags}
+                      categories={meal.categories}
+                      max={2}
+                      className="mt-1"
+                    />
                   </div>
                 </div>
               </button>
