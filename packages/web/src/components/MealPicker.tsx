@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useId } from 'react';
 import { listMeals } from '../api/meals';
-import type { MealListItemDTO, MealPlaceholderKind } from '@meal-planner/shared';
-import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
+import type { MealListItemDTO, MealPlaceholderKind, Difficulty } from '@meal-planner/shared';
+import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
 import RecentBadge from './RecentBadge';
@@ -13,24 +14,70 @@ interface MealPickerProps {
   onClose: () => void;
 }
 
+const PICKER_PAGE_SIZE = 25;
+
+const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  EASY: 'Easy',
+  MEDIUM: 'Medium',
+  HARD: 'Hard',
+};
+
 export default function MealPicker({ familyId, onSelect, onClose }: MealPickerProps) {
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const headingId = useId();
+
+  // Debounce the raw search input so fast typing does not spam the list API.
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const loadMeals = useCallback(async () => {
     try {
-      const data = await listMeals(familyId, search ? { search } : undefined);
+      const data = await listMeals(familyId, {
+        search: debouncedSearch || undefined,
+        difficulty: difficulty.length ? difficulty : undefined,
+        limit: PICKER_PAGE_SIZE,
+        offset: 0,
+      });
       setMeals(data.items);
+      setHasMore(data.hasMore);
     } catch {
       // silently fail
     } finally {
       setLoading(false);
     }
-  }, [familyId, search]);
+  }, [familyId, debouncedSearch, difficulty]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
+
+  // Append the next page onto the existing list without clearing it.
+  const loadMore = async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await listMeals(familyId, {
+        search: debouncedSearch || undefined,
+        difficulty: difficulty.length ? difficulty : undefined,
+        limit: PICKER_PAGE_SIZE,
+        offset: meals.length,
+      });
+      setMeals(prev => [...prev, ...data.items]);
+      setHasMore(data.hasMore);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const toggleDifficulty = (value: Difficulty) => {
+    setDifficulty(prev =>
+      prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value],
+    );
+  };
 
   // Index placeholders by kind so we can render them in canonical order.
   const placeholderByKind = new Map<MealPlaceholderKind, MealListItemDTO>();
@@ -54,7 +101,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         <button onClick={onClose} aria-label="Close meal picker" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-xl">✕</button>
       </div>
 
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-3">
         <input
           type="text"
           value={search}
@@ -64,6 +111,33 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           data-autofocus
         />
+        {/* Difficulty is the most relevant planning filter; kept compact so the
+            picker stays lean. TODO(#98,#107): add favorite / rating / tag filters
+            here once their backend list params land — do NOT stub them before then. */}
+        <div
+          role="group"
+          aria-label="Filter by difficulty"
+          className="flex flex-wrap items-center gap-1.5"
+        >
+          {MEAL_DIFFICULTIES.map(value => {
+            const active = difficulty.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => toggleDifficulty(value)}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
+                  active
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                {DIFFICULTY_LABELS[value]}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
@@ -119,6 +193,19 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                 )}
               </button>
             ))}
+
+            {hasMore && (
+              <div className="p-2">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="w-full rounded border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-50"
+                >
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

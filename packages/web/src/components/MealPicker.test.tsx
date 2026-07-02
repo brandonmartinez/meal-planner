@@ -63,6 +63,31 @@ describe('MealPicker', () => {
         await waitFor(() => expect(lastUrl).toContain('search=pizza'));
     });
 
+    it('sends the difficulty filter as a query parameter', async () => {
+        let lastUrl = '';
+        server.use(
+            http.get('/api/families/f-1/meals', ({ request }) => {
+                lastUrl = request.url;
+                return HttpResponse.json(mealsEnvelope(meals));
+            }),
+        );
+
+        renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        await userEvent.click(screen.getByRole('button', { name: 'Hard' }));
+
+        await waitFor(() =>
+            expect(new URL(lastUrl).searchParams.getAll('difficulty')).toEqual(['HARD']),
+        );
+        expect(screen.getByRole('button', { name: 'Hard' })).toHaveAttribute(
+            'aria-pressed',
+            'true',
+        );
+    });
+
     it('invokes onSelect with the chosen meal id', async () => {
         server.use(
             http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
