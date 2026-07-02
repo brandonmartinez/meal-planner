@@ -6,9 +6,21 @@ import * as groceryService from '../services/grocery.js';
 
 export const groceryRouter = Router();
 
-const toggleItemSchema = z.object({
-  checked: z.boolean(),
-});
+const patchItemSchema = z
+  .object({
+    checked: z.boolean().optional(),
+    quantity: z.string().optional(),
+    unit: z.string().optional(),
+    category: z.string().optional(),
+  })
+  .refine(
+    (d) =>
+      d.checked !== undefined ||
+      d.quantity !== undefined ||
+      d.unit !== undefined ||
+      d.category !== undefined,
+    { message: 'At least one field is required' },
+  );
 
 const addItemSchema = z.object({
   name: z.string().min(1),
@@ -80,7 +92,7 @@ groceryRouter.get(
   }
 );
 
-// PATCH /api/families/:familyId/grocery/:listId/items/:itemId — toggle checked
+// PATCH /api/families/:familyId/grocery/:listId/items/:itemId — update item fields
 groceryRouter.patch(
   '/:familyId/grocery/:listId/items/:itemId',
   authenticateJWT,
@@ -90,8 +102,20 @@ groceryRouter.patch(
       const familyId = paramStr(req.params.familyId);
       const listId = paramStr(req.params.listId);
       const itemId = paramStr(req.params.itemId);
-      const { checked } = toggleItemSchema.parse(req.body);
-      const item = await groceryService.toggleItem(familyId, listId, itemId, checked);
+      const { checked, quantity, unit, category } = patchItemSchema.parse(req.body);
+
+      let item;
+      if (checked !== undefined) {
+        item = await groceryService.toggleItem(familyId, listId, itemId, checked);
+      }
+      if (quantity !== undefined || unit !== undefined || category !== undefined) {
+        item = await groceryService.editItemFields(familyId, listId, itemId, {
+          quantity,
+          unit,
+          category,
+        });
+      }
+
       res.json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -102,7 +126,7 @@ groceryRouter.patch(
         res.status(error.status).json({ error: error.message });
         return;
       }
-      res.status(500).json({ error: 'Failed to toggle item' });
+      res.status(500).json({ error: 'Failed to update item' });
     }
   }
 );

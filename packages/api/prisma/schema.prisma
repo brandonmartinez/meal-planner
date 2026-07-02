@@ -139,15 +139,23 @@ model GroceryList {
   createdAt DateTime      @default(now())
 }
 
+enum GrocerySource {
+  GENERATED
+  MANUAL
+}
+
 model GroceryItem {
-  id            String      @id @default(uuid())
+  id            String        @id @default(uuid())
   name          String
   quantity      String?
   unit          String?
   category      String?
-  checked       Boolean     @default(false)
-  sources       String[]    @default([])
-  groceryList   GroceryList @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
+  checked       Boolean       @default(false)
+  sources       String[]      @default([])
+  origin        GrocerySource @default(GENERATED)
+  edited        Boolean       @default(false)
+  sourceMealIds String[]      @default([])
+  groceryList   GroceryList   @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
   groceryListId String
 }
 

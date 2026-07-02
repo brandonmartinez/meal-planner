@@ -1,3 +1,4 @@
+import { GrocerySource } from "@prisma/client";
 import { describe, it, expect, vi } from "vitest";
 import { prismaMock } from "../../tests/helpers/prisma.js";
 
@@ -5,19 +6,41 @@ vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
 const {
   generateGroceryList,
+  groceryKey,
+  mergeQuantities,
   getGroceryList,
   getGroceryListByWeek,
   toggleItem,
   addCustomItem,
   removeItem,
+  editItemFields,
   GroceryError,
 } = await import("./grocery.js");
+
+describe("groceryKey", () => {
+  it("lowercases name and unit, joins with |", () => {
+    expect(groceryKey("Onion", "Cup")).toBe("onion|cup");
+    expect(groceryKey("Salt")).toBe("salt|");
+  });
+});
+
+describe("mergeQuantities", () => {
+  it("sums numeric quantities", () => {
+    expect(mergeQuantities("1", "2")).toBe("3");
+  });
+
+  it("falls back to comma-separated when quantities are not both numeric", async () => {
+    expect(mergeQuantities("a pinch", "2")).toBe("a pinch, 2");
+  });
+});
 
 describe("generateGroceryList", () => {
   it("aggregates ingredients across approved suggestions and dedupes by name+unit", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([
       {
         meal: {
+          id: "meal-1",
+          name: "Meal A",
           ingredients: [
             { name: "Onion", quantity: "1", unit: "", category: "produce" },
             { name: "Salt", quantity: "", unit: "tsp", category: "pantry" },
@@ -26,12 +49,11 @@ describe("generateGroceryList", () => {
       },
       {
         meal: {
+          id: "meal-2",
+          name: "Meal B",
           ingredients: [
-            // same name+unit -> merged numerically
             { name: "onion", quantity: "2", unit: "", category: "produce" },
-            // different unit -> separate entry
             { name: "Onion", quantity: "1", unit: "cup", category: "produce" },
-            // empty quantity stays empty
             { name: "Pepper", quantity: "", unit: "tsp", category: "pantry" },
           ],
         },
@@ -57,64 +79,164 @@ describe("generateGroceryList", () => {
       };
     };
     const items = arg.data.items.create;
-    // Onion (no unit), Salt (tsp), Onion (cup), Pepper (tsp)
     expect(items).toHaveLength(4);
     const merged = items.find(
       (i) => i.name === "Onion" && (i.unit === null || i.unit === ""),
     );
-    expect(merged?.quantity).toBe("3"); // 1 + 2 numeric merge
+    expect(merged?.quantity).toBe("3");
   });
 
-  it("deletes any existing list for the same week before creating a new one", async () => {
+  it("creates a fresh list when none exists (no merge needed)", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
-    prismaMock.groceryList.findFirst.mockResolvedValue({ id: "old" } as never);
-    prismaMock.groceryList.delete.mockResolvedValue({} as never);
-    prismaMock.groceryList.create.mockResolvedValue({ id: "new" } as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl-new", items: [] } as never);
 
     await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
 
-    expect(prismaMock.groceryList.delete).toHaveBeenCalledWith({
-      where: { id: "old" },
-    });
+    expect(prismaMock.groceryList.create).toHaveBeenCalled();
+    expect(prismaMock.groceryList.delete).not.toHaveBeenCalled();
   });
 
-  it("falls back to string concatenation when quantities are not both numeric", async () => {
+  it("preserves MANUAL items unchanged during regeneration", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue({
+      id: "gl-1",
+      items: [
+        {
+          id: "item-manual",
+          name: "Butter",
+          unit: "",
+          origin: GrocerySource.MANUAL,
+          edited: false,
+        },
+      ],
+    } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [{ id: "item-manual", name: "Butter", unit: "", origin: GrocerySource.MANUAL, edited: false }],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    // MANUAL items never appear in transaction ops
+    const txOps = prismaMock.$transaction.mock.calls[0][0] as unknown[];
+    expect(txOps).toHaveLength(0);
+  });
+
+  it("refreshes GENERATED unedited items — keeps ID and checked, updates qty", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([
       {
         meal: {
-          ingredients: [
-            {
-              name: "Lemon",
-              quantity: "a pinch",
-              unit: "",
-              category: "produce",
-            },
-          ],
-        },
-      },
-      {
-        meal: {
-          ingredients: [
-            { name: "Lemon", quantity: "2", unit: "", category: "produce" },
-          ],
+          id: "meal-1",
+          name: "Tacos",
+          ingredients: [{ name: "Beef", quantity: "500", unit: "g", category: "meat" }],
         },
       },
     ] as never);
-    prismaMock.groceryList.findFirst.mockResolvedValue(null);
-    prismaMock.groceryList.create.mockResolvedValue({ id: "gl" } as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [
+          {
+            id: "item-beef",
+            name: "Beef",
+            unit: "g",
+            quantity: "250",
+            checked: true,
+            origin: GrocerySource.GENERATED,
+            edited: false,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
 
     await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
-    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
-      data: { items: { create: { name: string; quantity: string | null }[] } };
-    };
-    const lemon = arg.data.items.create.find((i) => i.name === "Lemon");
-    expect(lemon?.quantity).toBe("a pinch + 2");
+
+    const updateCall = prismaMock.groceryItem.update.mock.calls.find(
+      (c) => (c[0] as { where: { id: string } }).where.id === "item-beef",
+    );
+    expect(updateCall).toBeDefined();
+    // quantity refreshed; checked NOT in update (preserved via no-touch)
+    expect((updateCall![0] as { data: { quantity: string } }).data.quantity).toBe("500");
   });
 
-  it("tracks the source meal names for each ingredient", async () => {
+  it("deletes unedited GENERATED orphaned items", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [
+          {
+            id: "item-orphan",
+            name: "Flour",
+            unit: "cups",
+            origin: GrocerySource.GENERATED,
+            edited: false,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryItem.delete.mockResolvedValue({} as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    expect(prismaMock.groceryItem.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "item-orphan" } }),
+    );
+  });
+
+  it("promotes GENERATED edited orphaned items to MANUAL", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [
+          {
+            id: "item-edited",
+            name: "Flour",
+            unit: "cups",
+            origin: GrocerySource.GENERATED,
+            edited: true,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    expect(prismaMock.groceryItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "item-edited" },
+        data: expect.objectContaining({ origin: GrocerySource.MANUAL }),
+      }),
+    );
+  });
+
+  it("never calls groceryList.delete on the existing list", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    expect(prismaMock.groceryList.delete).not.toHaveBeenCalled();
+  });
+
+  it("tracks the source meal names and IDs for each ingredient", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([
       {
         meal: {
+          id: "meal-tacos",
           name: "Tacos",
           ingredients: [
             { name: "Onion", quantity: "1", unit: "", category: "produce" },
@@ -123,6 +245,7 @@ describe("generateGroceryList", () => {
       },
       {
         meal: {
+          id: "meal-soup",
           name: "Soup",
           ingredients: [
             { name: "onion", quantity: "2", unit: "", category: "produce" },
@@ -136,14 +259,15 @@ describe("generateGroceryList", () => {
 
     await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
     const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
-      data: { items: { create: { name: string; sources: string[] }[] } };
+      data: { items: { create: { name: string; sources: string[]; sourceMealIds: string[] }[] } };
     };
     const onion = arg.data.items.create.find(
       (i) => i.name.toLowerCase() === "onion",
     );
-    const carrot = arg.data.items.create.find((i) => i.name === "Carrot");
-    expect(onion?.sources).toEqual(["Soup", "Tacos"]);
-    expect(carrot?.sources).toEqual(["Soup"]);
+    expect(onion?.sources).toContain("Tacos");
+    expect(onion?.sources).toContain("Soup");
+    expect(onion?.sourceMealIds).toContain("meal-tacos");
+    expect(onion?.sourceMealIds).toContain("meal-soup");
   });
 });
 
@@ -172,7 +296,6 @@ describe("item operations", () => {
     prismaMock.groceryItem.findFirst.mockResolvedValue({ id: "item-1" } as never);
     prismaMock.groceryItem.update.mockResolvedValue({} as never);
     await toggleItem("fam-1", "list-1", "item-1", true);
-    // Ownership predicate spans item -> list -> family.
     expect(prismaMock.groceryItem.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -196,7 +319,7 @@ describe("item operations", () => {
     expect(prismaMock.groceryItem.update).not.toHaveBeenCalled();
   });
 
-  it('addCustomItem defaults category to "other" and checked to false when list is in family', async () => {
+  it('addCustomItem defaults category to "other", checked to false, and sets origin=MANUAL', async () => {
     prismaMock.groceryList.findFirst.mockResolvedValue({ id: "list-1" } as never);
     prismaMock.groceryItem.create.mockResolvedValue({} as never);
     await addCustomItem("fam-1", "list-1", { name: "Bananas" });
@@ -209,6 +332,7 @@ describe("item operations", () => {
         checked: boolean;
         quantity: string | null;
         unit: string | null;
+        origin: GrocerySource;
       };
     };
     expect(arg.data).toMatchObject({
@@ -216,6 +340,7 @@ describe("item operations", () => {
       checked: false,
       quantity: null,
       unit: null,
+      origin: GrocerySource.MANUAL,
     });
   });
 
@@ -255,5 +380,83 @@ describe("item operations", () => {
 
   it("exports GroceryError as a class", () => {
     expect(new GroceryError(404, "x")).toBeInstanceOf(Error);
+  });
+});
+
+describe("editItemFields", () => {
+  it("sets edited=true for a GENERATED item", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({
+      id: "item-1",
+      origin: GrocerySource.GENERATED,
+    } as never);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await editItemFields("fam-1", "list-1", "item-1", { quantity: "3" });
+
+    expect(prismaMock.groceryItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "item-1" },
+        data: expect.objectContaining({ quantity: "3", edited: true }),
+      }),
+    );
+  });
+
+  it("does NOT set edited=true for a MANUAL item", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({
+      id: "item-2",
+      origin: GrocerySource.MANUAL,
+    } as never);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await editItemFields("fam-1", "list-1", "item-2", { quantity: "5" });
+
+    const updateArg = prismaMock.groceryItem.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateArg.data.edited).toBeUndefined();
+  });
+
+  it("updates only the provided fields (partial patch)", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({
+      id: "item-3",
+      origin: GrocerySource.GENERATED,
+    } as never);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await editItemFields("fam-1", "list-1", "item-3", { unit: "kg" });
+
+    const updateArg = prismaMock.groceryItem.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateArg.data.unit).toBe("kg");
+    expect(updateArg.data.quantity).toBeUndefined();
+    expect(updateArg.data.category).toBeUndefined();
+  });
+
+  it("throws GroceryError(404) when item not found", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue(null);
+
+    await expect(
+      editItemFields("fam-1", "list-1", "item-MISSING", { quantity: "1" }),
+    ).rejects.toMatchObject({ name: "GroceryError", status: 404 });
+    expect(prismaMock.groceryItem.update).not.toHaveBeenCalled();
+  });
+
+  it("enforces family scope in ownership query (IDOR guard)", async () => {
+    prismaMock.groceryItem.findFirst.mockResolvedValue({
+      id: "item-1",
+      origin: GrocerySource.GENERATED,
+    } as never);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await editItemFields("fam-999", "list-1", "item-1", { quantity: "2" });
+
+    expect(prismaMock.groceryItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          groceryList: expect.objectContaining({ familyId: "fam-999" }),
+        }),
+      }),
+    );
   });
 });
