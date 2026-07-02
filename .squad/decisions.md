@@ -163,8 +163,203 @@ Gate status at hand-off: #9 APPROVED + ready; #11 Lead gate in review; all other
 **Why:** This preserves the hosted MCP security invariants from #81/#89 while calling out non-blocking operational notes: validate `MCP_REQUEST_TIMEOUT_MS` to avoid `NaN` timeouts, watch the loopback `agentLimiter` bucket for multi-IP use of one key, and keep the pre-existing bare SHA-256 rate-limit fingerprint debt separate from key storage hashing.
 **Merged from:** `decisions/inbox/frank-mcp-security-review.md`
 
+### 2026-07-02T10:16:59-0400: Epic #91 recipe-management decomposition
+**By:** Scribe
+**What:** Epic #91, "Expand recipe management capabilities," was decomposed into 29 repo-grounded GitHub issues (#92-#120) across three dependency-ordered phases: P1 foundational design spikes (#92-#96), P2 `release:v0.4.0` (#97-#101, #103, #107, #111, #112, #118, and the #119 check), and P3 `release:v0.5.0` for the remainder. Final single-owner routing is squad:saul=8 (#92, #97, #98, #100, #107, #109, #116, #119), squad:livingston=9, squad:linus=8, squad:basher=3, and squad:rusty=1. DB/schema/migration-centric issues were routed to Saul per user directive. The `squad-triage.yml` workflow's auto-assigned duplicate owner labels were reconciled out in favor of the Lead-approved owner labels, leaving each issue with exactly one `squad:{owner}` label. No implementation was done; this batch covered decomposition and issue creation only.
+**Why:** Brandon approved Rusty's decomposition before issue creation. The phase split preserves dependencies by settling foundational design spikes first, then the v0.4.0 implementation set, then the v0.5.0 remainder. Saul ownership for DB/migration work keeps recipe-management data evolution aligned with the team's migration-safety directive, and label reconciliation keeps future routing unambiguous.
+
 ## Governance
 
 - All meaningful changes require team consensus
 - Document architectural decisions here
 - Keep history focused on work, decisions focused on direction
+
+### 2026-07-02: Recipe-management sprint sequencing
+**By:** Rusty
+**What:** Sequence epic #91 as five roughly two-week sprints: Sprint 1 resolves P1 design gates (#92-#96) while Basher handles standalone #121; Sprints 2-3 deliver v0.4.0 P2 core features with #111/#112 treated as the v0.4 convergence path; Sprints 4-5 deliver v0.5.0 P3 media, collections, planning, and grocery enhancements.
+**Why:** #92 is the universal blocker and #96 is the second gate for most implementation. The plan maximizes parallelism after those gates land while calling out Saul and Livingston as bottlenecks and requiring Yen, Frank, Rai, and Fact Checker reviews at release and security-sensitive boundaries.
+
+### 2026-07-02: #111 trimmed to envelope + name-search (Option 1 — filter split)
+**By:** Squad (Coordinator), Brandon (@brandonmartinez) signed off
+**What:** #111 keystone scope trimmed. It ships ONLY: MealListResponseDTO envelope cutover (breaking, all consumers lockstep), offset/limit pagination, name trigram search (GIN on Meal.name), difficulty[] filter, sorts (name/lastCooked/created), lastCookedOn + getLastCookedMap(). It adds NO new Meal scalar columns.
+Filter ownership split (amends the #94 contract, comment posted to #94):
+- favorite + ratingMin (+ rating sort) → #98 (adds columns + extends listMealsQuerySchema)
+- notes search (notes GIN) → #97 (adds notes column)
+- tags[]/categories[]/collectionId → #107
+**Why:** Dependency inversion — current Meal model lacks notes/favorite/rating/tags; those columns are owned by the gated metadata issues (#97/#98/#107). Original #94 put all filters in #111, which would force #111 to steal column ownership and collide with Saul's later migrations. Option 1 keeps #111 as the true breaking keystone (envelope) that legitimately gates the metadata wave, with each issue owning its own field + filter + CSV + indexes incrementally atop the parity checklist. CSV rule does NOT trigger for #111 (no new persisted user-facing scalar).
+
+### 2026-07-02: Reverse #94 "avoid preview features" — declare pg_trgm index in schema.prisma
+
+**By:** Squad (Coordinator), on approval from @brandonmartinez
+**What:** Enable Prisma's `postgresqlExtensions` preview feature and declare the `pg_trgm` extension + the trigram GIN index (`Meal_name_trgm_idx`) declaratively in `schema.prisma`, so the schema matches the migrated DB and the CI drift gate passes.
+**Why:** #111 created `Meal_name_trgm_idx` via raw SQL (to avoid the preview feature per #94). But the CI drift gate (`migrate diff --from-url <db> --to-schema-datamodel schema.prisma --exit-code`) reports the undeclarable index as drift (`[-] Removed index on columns (name)`), failing EVERY PR. main went red on #111's merge and stayed red. Chosen fix keeps full drift-gate coverage rather than weakening the gate. Trade-off: reverses #94's decision to avoid preview features.
+
+### 2026-07-02: Enable branch protection on main
+
+**By:** Squad (Coordinator), on approval from @brandonmartinez
+**What:** main now requires the `test` status check (strict/up-to-date) before merge. enforce_admins=false (owner override retained). No required reviews (solo repo).
+**Why:** main had NO protection, so `gh pr merge --auto` landed red PRs (#118, #111) immediately. Protection prevents red auto-merges going forward. Team rule: do not use `--auto` on a red main.
+
+### 2026-07-02: Keep main fresh after every PR merge (worktree wave hygiene)
+**By:** Squad (Coordinator), requested by Brandon (@brandonmartinez)
+**What:** Standing workflow for the Sprint 2+ build waves:
+1. After every PR merges to main, fast-forward the local main checkout immediately.
+2. Create later-wave worktree sessions only AFTER their keystone PR (#111) merges, so they branch from post-keystone main.
+3. In-flight worktrees that touch a just-merged PR's files must rebase onto fresh main before opening their own PR.
+**Why:** During Sprint 2 kickoff, local main fell 4 commits behind origin and a stray uncommitted #118 schema.prisma edit was found in the main checkout. #111 is a breaking meals.ts/DTO rewrite that gates all metadata/UI issues — those worktrees MUST start from post-#111 main or they conflict hard.
+
+### 2026-07-02: Recipe discovery UI (#112) — load-more pagination, difficulty-first picker filter
+
+**By:** Linus (Frontend), requested by Brandon (@brandonmartinez)
+
+**What:**
+- Meal library (`MealsPage`) and picker (`MealPicker`) now surface the discovery
+  capabilities the merged #111 backend actually exposes: debounced **search**,
+  **difficulty[]** multi-toggle, **sort** (name|created|lastCooked) + **order**,
+  and **offset/limit pagination** rendered as a **Load more (append)** control.
+- Pagination is "Load more" (append), not numbered pages. Any search/filter/sort
+  change resets `offset=0` and replaces the grid; `loadingMore` is tracked
+  separately from first-mount `loading` so filter changes never blow the grid
+  away with the full-screen spinner. A "Showing X of Y" line reads `total`.
+- `MealPicker` gets a **difficulty-only** filter row (the most relevant planning
+  filter) to keep the modal lean per the issue's risk note. Search stays
+  debounced there too.
+- New generic hook `useDebouncedValue<T>(value, delayMs=300)` at
+  `packages/web/src/hooks/useDebouncedValue.ts` drives both surfaces so fast
+  typing issues a single trailing request.
+
+**Why:**
+- Favorite / rating / tag & category filters do NOT exist in the #111 envelope —
+  they land with #98 and #107. Every surface carries a clearly-marked
+  `TODO(#98,#107)` seam at the filter bar; **no** non-existent API params are
+  stubbed. When those backends merge, the next frontend issue drops controls in
+  at the seam without reworking the request plumbing.
+- Load-more matches the existing envelope (`{items,total,limit,offset,hasMore}`)
+  with the least UX churn and keeps the simple search flow usable.
+
+**Scope guard:** Stayed in my lane — only `MealsPage.tsx`, `MealPicker.tsx`,
+their tests, and the new hook. Did **not** touch `api/meals.ts` create/update
+types, `MealFormPage.tsx`, or `utils/csv.ts` (Saul, #97). The shared `listMeals`
+client already accepted every param used here, so no client edits were needed.
+
+### 2026-07-02T19:53:00Z: Recipe detail page (#101) shipped web-only; MealPicker linking deferred
+**By:** Linus (Frontend), Coordinator
+**What:** PR #130 shipped `/meals/:mealId`, `MealDetailPage.tsx`, and a MealsPage "View" link using the existing `getMeal()` endpoint. It renders recipe metadata, ingredients, and a graceful placeholder state. Rich instructions remain a `TODO(#100)` seam because #100 owns that data model. MealPicker linking was deferred (`TODO(#101-followup)`) rather than nesting interactive elements inside picker rows.
+**Why:** This preserved #101 as a web-only read surface, avoided inventing #100 schema, and avoided nested-interactive accessibility risk in MealPicker while still making recipe details reachable from the meal library.
+
+### 2026-07-02T12:19:29-04:00: Issue #111 implementation plan — retained API/schema decisions, superseded field ownership
+**By:** Livingston (Backend), Coordinator
+**What:** Retained #111 implementation decisions: place `listMealsQuerySchema` in `packages/api/src/schemas/meals.ts` for REST+agent reuse; exclude placeholders only when search/filter params are active; author pg_trgm SQL carefully and validate drift. Superseded earlier plan notes that would have added notes/favorite/rating in #111 — coordinator later trimmed #111 to envelope + name search only, with notes owned by #97, favorite/rating by #98, and tags/categories by #107.
+**Why:** The useful routing/schema decisions remain valid, but field ownership had to be corrected to avoid migration collisions and CSV-rule scope creep.
+
+### 2026-07-02T12:19:29-04:00: Grocery merge (#118) implementation plan approved
+**By:** Livingston (Backend), requested by Brandon (@brandonmartinez)
+**What:** Preserve manual grocery edits during regeneration with a non-destructive ID-preserving merge instead of delete-then-create. Locked decisions: checked state survives quantity changes; edited generated orphans become manual; manual/generated key collisions stay separate; provenance uses `origin GrocerySource` + `edited Boolean`; PATCH field-edit endpoint lands in #118; agent grocery read remains create-only.
+**Why:** This implements #95's provenance model with additive schema, backward-compatible route behavior, and a seam for later quantity normalization without granting new agent write scope.
+
+### 2026-07-02: Sprint-2 migration workflow + servings type (issue #97)
+
+**By:** Saul (Data/Migrations), requested by Brandon (@brandonmartinez)
+
+**Decision 1 — `servings` is `Int?`.**
+Issue #97 lists "servings" as a scalar. Modeled as `Int?` (nullable), matching
+`prepTimeMinutes`/`cookTimeMinutes`. Ranges ("4–6") are explicitly out of scope;
+if product wants ranges later that is a separate string field + its own issue.
+Zod: `z.number().int().min(1)`.
+
+**Decision 2 — all 5 metadata fields nullable, reuse `meal:write`.**
+`prepTimeMinutes Int?`, `cookTimeMinutes Int?`, `servings Int?`, `sourceUrl String?`,
+`notes String?`. Nullable so existing meals + placeholders migrate safely. No new
+scope — all writes use existing `meal:write`. `sourceUrl` is STORED ONLY (SSRF
+guard): validated `z.string().url()`, never fetched server-side.
+
+**Decision 3 (CROSS-CUTTING, needs coordinator sign-off) — Sprint-2 migration
+workflow under shared devcontainer + shared dev DB.**
+INCIDENT: running `prisma migrate dev` (the documented flow in
+prisma.instructions.md) against the shared dev DB from a worktree produced a
+DESTRUCTIVE spurious migration that dropped the `Meal_name_trgm_idx` pg_trgm GIN
+index (raw-SQL/unmodeled → Prisma treats it as drift and drops it). Root causes:
+  1. `devcontainer-app-1` bind-mounts the MAIN checkout (stuck on `main`), NOT the
+     agent worktree — so a worktree's schema edits are invisible to the container.
+  2. ~13 worktrees share ONE `.git`, ONE devcontainer, ONE dev Postgres — so any
+     `migrate dev` reconciles drift from whatever schema the DB last saw, and is
+     racy/destructive across agents.
+FULLY REMEDIATED: restored the trgm index via `prisma db execute`
+(`CREATE EXTENSION pg_trgm; CREATE INDEX ... USING GIN (name gin_trgm_ops)`),
+deleted the bogus `_prisma_migrations` row + migration folder, reverted
+`migration_lock.toml`. `prisma migrate status` = 7 migrations, up to date.
+
+SANCTIONED STANDARD (coordinator sign-off 2026-07-02) — the required pattern for
+#97 and EVERY later Sprint-2 field migration. `prisma migrate dev` against the
+shared dev DB is now FORBIDDEN.
+
+MIGRATION AUTHORING (via schema-to-schema diff, zero-DB, zero-drift):
+  - `prisma migrate diff --from-schema-datamodel <main schema>
+       --to-schema-datamodel <worktree schema> --script`
+    -> yields exactly the `ALTER TABLE ... ADD COLUMN` statements, no index drop.
+  - Generate BOTH schema inputs race-free from git branch refs
+    (`git show main:packages/api/prisma/schema.prisma`), NOT from the shared
+    `/workspace` working tree (it is swapped concurrently by ~13 worktrees).
+  - Hand-place the resulting SQL in a properly-named migration folder committed to
+    the agent's BRANCH. Never author migrations by running `migrate dev`.
+  - VALIDATION: for #97 the hand-placed `20260702173523_add_core_recipe_metadata/
+    migration.sql` was confirmed BYTE-IDENTICAL to fresh `migrate diff` output.
+
+VERIFICATION (isolated /tmp copy — option (b), NEVER touch /workspace or shared DB):
+  - `docker cp <worktree-path> devcontainer-app-1:/tmp/verify-<issue>` (unique path
+    per worktree — avoids the /workspace phantom-leak race).
+  - Run db:generate + shared build + mcp build + api build + lint + test ENTIRELY
+    inside `/tmp/verify-<issue>`. Leverage the shared pnpm store (mostly symlinks →
+    fast install).
+  - Tests mock Prisma (`prismaMock`; real-DB integration forbidden per
+    prisma.instructions.md), so only the generated client (from schema) is needed —
+    fully DB-read-only and race-free. Never mutate the shared Postgres.
+  - Clean up `/tmp/verify-<issue>` when done.
+
+WHY (a) is rejected: copying worktree files INTO `/workspace` (the main checkout,
+stuck on `main`) is the phantom-leak pollution source that had to be mopped after
+every merge. #111/#118 likely used (a); do not copy that pattern.
+
+RESULT for #97: migration validated byte-identical to migrate-diff; all 11 parity
+rows + CSV round-trip + tests threaded; verified 805 tests green / lint 0 errors in
+an isolated copy; PR #127 opened referencing #97.
+
+**Decision 4 (coordinator-refined 2026-07-02) — verify via detached git
+worktree, NOT docker cp; + main-red drift gate + merge sequence.**
+
+VERIFY METHOD (SUPERSEDES the docker-cp method in Decision 3):
+  - `git worktree add --detach /tmp/verify-<issue> <committed-sha>`. All agent
+    worktrees share ONE `.git` object store, so a committed SHA is reachable from
+    anywhere WITHOUT pushing. Detached + unique `/tmp` path = no branch-checkout
+    conflict, no main-tree writes, shared Postgres untouched.
+  - Run db:generate + shared/mcp/api builds + lint + test inside `/tmp/verify-<issue>`
+    (still devcontainer-only, still prismaMock/no-DB).
+  - Cleanup: `git worktree remove /tmp/verify-<issue>` (+ `git worktree prune` on the
+    HOST only if it complains — NEVER `prune` inside the container, which bind-mounts
+    only the main checkout and would delete host worktrees' admin dirs).
+  - This is strictly better than docker cp (no root-owned /tmp files, no copy step).
+
+MAIN-RED DRIFT GATE (external, not #97): CI `test` job runs
+`migrate diff --from-url $DATABASE_URL --to-schema-datamodel schema.prisma --exit-code`.
+#111's raw-SQL pg_trgm GIN index `Meal_name_trgm_idx` is undeclared in schema.prisma,
+so the gate reports `[-] Removed index on columns (name)` → exit 2 on EVERY PR
+(confirmed on #127: that index is the ONLY drift; zero failures in #97 surfaces).
+Fix in flight: Livingston's hotfix declares the index via the `postgresqlExtensions`
+preview feature (reverses #94). main is now BRANCH-PROTECTED (strict, requires `test`)
+— no self-merge. MERGE ORDER: hotfix → main green → #126 (Linus) → #97 (Saul).
+
+REBASE NOTE for #97: hotfix edits the same `Meal` block (adds `previewFeatures`,
+`pgTrgm` extension, `@@index`); #97 adds 5 scalar columns. Expect a small adjacent-line
+conflict on rebase — resolve by KEEPING BOTH (columns + index/extension/preview are
+logically independent). Re-verify with the detached-worktree method above, then
+force-push.
+
+### 2026-07-02T19:53:00Z: Favorite + rating (#98) shipped with full web parity and API filters
+**By:** Saul (Data/API), Coordinator
+**What:** PR #131 added `Meal.favorite Boolean @default(false)` and nullable `Meal.rating Int?` (1-5) and threaded both through REST + agent validation, service writes, CSV import/export, and `MealFormPage`. `listMealsQuerySchema` now accepts `favorite` and `minRating`; UI filter dropdowns stay deferred at the existing `TODO(#98,#107)` seams.
+**Why:** Coordinator approved full web parity option B1 so persisted user-facing fields are editable and round-trip through CSV immediately. Backend filters satisfy #98 AC without colliding with #107's tags/categories filter-bar work.
+
+### 2026-07-02T19:53:00Z: v0.4.0 test matrix docs (#129) committed with live status markers
+**By:** Yen (QA), Coordinator
+**What:** PR #129 added `docs/testing/v0.4.0-test-matrix.md` with 75 per-cell ✅/🟡/❌ status markers and CSV-portable-vs-not callouts. Coordinator selected the committed docs path (Option A) and requested live per-cell status markers plus CSV portability callouts.
+**Why:** The v0.4.0 recipe-metadata wave needs a visible test matrix that distinguishes current coverage from planned/blocked cells and makes CSV round-trip expectations portable for later agents.
