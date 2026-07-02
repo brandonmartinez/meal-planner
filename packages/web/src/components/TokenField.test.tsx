@@ -33,7 +33,7 @@ describe('TokenField', () => {
     const onChange = vi.fn();
     render(<Harness onChangeSpy={onChange} />);
 
-    const input = screen.getByRole('textbox', { name: 'Tags' });
+    const input = screen.getByRole('combobox', { name: 'Tags' });
     await userEvent.type(input, 'Weeknight{Enter}');
 
     expect(onChange).toHaveBeenLastCalledWith(['Weeknight']);
@@ -47,7 +47,7 @@ describe('TokenField', () => {
     const onChange = vi.fn();
     render(<Harness onChangeSpy={onChange} />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Tags' }), 'Vegetarian');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'Vegetarian');
     await userEvent.click(screen.getByRole('button', { name: 'Add' }));
 
     expect(onChange).toHaveBeenLastCalledWith(['Vegetarian']);
@@ -67,7 +67,7 @@ describe('TokenField', () => {
     const onChange = vi.fn();
     render(<Harness initial={['Weeknight']} onChangeSpy={onChange} />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Tags' }), 'weeknight{Enter}');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'weeknight{Enter}');
 
     // No onChange fires because the (case-insensitive) value already exists.
     expect(onChange).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('TokenField', () => {
     const onChange = vi.fn();
     render(<Harness onChangeSpy={onChange} />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Tags' }), '   {Enter}');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), '   {Enter}');
 
     expect(onChange).not.toHaveBeenCalled();
   });

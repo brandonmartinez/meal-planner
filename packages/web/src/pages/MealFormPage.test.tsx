@@ -365,8 +365,8 @@ describe('MealFormPage tags and categories', () => {
     renderForm('/meals/new');
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
-    await userEvent.type(screen.getByRole('textbox', { name: 'Tags' }), 'Weeknight{Enter}');
-    await userEvent.type(screen.getByRole('textbox', { name: 'Categories' }), 'Dinner{Enter}');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'Weeknight{Enter}');
+    await userEvent.type(screen.getByRole('combobox', { name: 'Categories' }), 'Dinner{Enter}');
     await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
