@@ -40,6 +40,8 @@ export interface Meal {
   servings: number | null;
   sourceUrl: string | null;
   notes: string | null;
+  favorite: boolean;
+  rating: number | null;
   familyId: string;
   ingredients?: MealIngredient[];
 }

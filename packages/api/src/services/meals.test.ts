@@ -316,6 +316,36 @@ describe("meals service", () => {
       expect(arg.where).not.toHaveProperty("placeholderKind");
     });
 
+    it("filters by favorite when the favorite flag is set", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { favorite: true } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { favorite?: unknown; placeholderKind?: unknown };
+      };
+      expect(arg.where.favorite).toBe(true);
+      // Filtering excludes placeholders.
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("filters out favorites when favorite is false", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { favorite: false } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { favorite?: unknown };
+      };
+      expect(arg.where.favorite).toBe(false);
+    });
+
+    it("filters by minRating as a gte threshold (excludes unrated meals)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { minRating: 4 } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { rating?: unknown; placeholderKind?: unknown };
+      };
+      expect(arg.where.rating).toEqual({ gte: 4 });
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
     it("lastCooked sort: fetches all via findMany (not $transaction), sorts nulls-last tiebreak name asc", async () => {
       prismaMock.meal.findMany.mockResolvedValue([
         { id: "m-c", name: "Zucchini soup", _count: { ingredients: 0 } },
@@ -520,6 +550,27 @@ describe("meals service", () => {
       expect(arg.data.sourceUrl).toBeNull();
       expect(arg.data.notes).toBeNull();
     });
+
+    it("persists favorite and rating when provided", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-8" } as never);
+      await createMeal("fam-1", { name: "Tacos", favorite: true, rating: 5 });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { favorite?: unknown; rating?: unknown };
+      };
+      expect(arg.data.favorite).toBe(true);
+      expect(arg.data.rating).toBe(5);
+    });
+
+    it("passes through null rating (clearing on create)", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-9" } as never);
+      await createMeal("fam-1", { name: "Soup", rating: null });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { rating?: unknown };
+      };
+      expect(arg.data.rating).toBeNull();
+    });
   });
 
   describe("updateMeal", () => {
@@ -718,6 +769,40 @@ describe("meals service", () => {
       expect(arg.data.sourceUrl).toBeUndefined();
       expect(arg.data.notes).toBeUndefined();
     });
+
+    it("persists favorite and rating, and clears rating to null", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { favorite: false, rating: null });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { favorite?: unknown; rating?: unknown };
+      };
+      expect(arg.data.favorite).toBe(false);
+      expect(arg.data.rating).toBeNull();
+    });
+
+    it("leaves favorite and rating untouched when omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { favorite?: unknown; rating?: unknown };
+      };
+      expect(arg.data.favorite).toBeUndefined();
+      expect(arg.data.rating).toBeUndefined();
+    });
   });
 
   describe("deleteMeal", () => {
@@ -843,6 +928,21 @@ describe("meals service", () => {
       expect(arg.data.servings).toBe(2);
     });
 
+    it("persists favorite and rating on import", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
+
+      await importMeals("fam-1", [
+        { name: "Tacos", favorite: true, rating: 5 },
+      ]);
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { favorite?: unknown; rating?: unknown };
+      };
+      expect(arg.data.favorite).toBe(true);
+      expect(arg.data.rating).toBe(5);
+    });
+
     it("skips an existing meal in skip mode", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
@@ -918,6 +1018,8 @@ describe("meals service", () => {
           servings: 4,
           sourceUrl: "https://example.com/tacos",
           notes: "Use fresh cilantro",
+          favorite: true,
+          rating: 4,
           ingredients: [
             {
               name: "salsa",
@@ -947,6 +1049,8 @@ describe("meals service", () => {
           servings: 4,
           sourceUrl: "https://example.com/tacos",
           notes: "Use fresh cilantro",
+          favorite: true,
+          rating: 4,
           ingredients: [
             {
               name: "salsa",
@@ -1183,6 +1287,66 @@ describe("meal core metadata route validation", () => {
 
     it("rejects a malformed sourceUrl", () => {
       expect(() => updateMealSchema.parse({ sourceUrl: "not a url" })).toThrow();
+    });
+  });
+});
+
+describe("meal favorite/rating route validation", () => {
+  describe("createMealSchema", () => {
+    it("accepts favorite and a valid rating", () => {
+      const parsed = createMealSchema.parse({
+        name: "Tacos",
+        favorite: true,
+        rating: 5,
+      });
+      expect(parsed.favorite).toBe(true);
+      expect(parsed.rating).toBe(5);
+    });
+
+    it("accepts a null rating", () => {
+      const parsed = createMealSchema.parse({ name: "Soup", rating: null });
+      expect(parsed.rating).toBeNull();
+    });
+
+    it("accepts omitted favorite and rating", () => {
+      const parsed = createMealSchema.parse({ name: "Salad" });
+      expect(parsed.favorite).toBeUndefined();
+      expect(parsed.rating).toBeUndefined();
+    });
+
+    it("rejects a rating below 1", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", rating: 0 }),
+      ).toThrow();
+    });
+
+    it("rejects a rating above 5", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", rating: 6 }),
+      ).toThrow();
+    });
+
+    it("rejects a non-integer rating", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", rating: 3.5 }),
+      ).toThrow();
+    });
+  });
+
+  describe("updateMealSchema", () => {
+    it("accepts favorite and a valid rating", () => {
+      const parsed = updateMealSchema.parse({ favorite: false, rating: 3 });
+      expect(parsed.favorite).toBe(false);
+      expect(parsed.rating).toBe(3);
+    });
+
+    it("accepts a null rating (clearing)", () => {
+      const parsed = updateMealSchema.parse({ rating: null });
+      expect(parsed.rating).toBeNull();
+    });
+
+    it("rejects an out-of-range rating", () => {
+      expect(() => updateMealSchema.parse({ rating: 6 })).toThrow();
     });
   });
 });

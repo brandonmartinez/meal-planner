@@ -62,6 +62,8 @@ export interface ParsedImportMeal {
   servings?: number;
   sourceUrl?: string;
   notes?: string;
+  favorite?: boolean;
+  rating?: number;
   ingredients?: {
     name: string;
     quantity?: string;
@@ -121,6 +123,8 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     servings: ["servings", "serving", "serves"],
     sourceUrl: ["sourceurl", "source url", "source", "url"],
     notes: ["notes", "note"],
+    favorite: ["favorite", "favourite", "fav", "starred"],
+    rating: ["rating", "rate", "stars", "score"],
     ingredient: ["ingredient", "ingredientname", "ingredient name", "item"],
     quantity: ["quantity", "qty", "amount"],
     unit: ["unit", "units"],
@@ -181,14 +185,15 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     }
 
     const parseMetaInt = (
-      key: "prepTimeMinutes" | "cookTimeMinutes" | "servings",
+      key: "prepTimeMinutes" | "cookTimeMinutes" | "servings" | "rating",
       label: string,
       min: number,
+      max?: number,
     ): void => {
       const raw = get(row, key);
       if (!raw || meal![key] != null) return;
       const n = Number(raw);
-      if (Number.isInteger(n) && n >= min) {
+      if (Number.isInteger(n) && n >= min && (max === undefined || n <= max)) {
         meal![key] = n;
       } else {
         warnings.push(
@@ -199,6 +204,21 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     parseMetaInt("prepTimeMinutes", "prep time", 0);
     parseMetaInt("cookTimeMinutes", "cook time", 0);
     parseMetaInt("servings", "servings", 1);
+    parseMetaInt("rating", "rating", 1, 5);
+
+    const favoriteRaw = get(row, "favorite");
+    if (favoriteRaw && meal.favorite == null) {
+      const normalized = favoriteRaw.toLowerCase();
+      if (["true", "yes", "y", "1"].includes(normalized)) {
+        meal.favorite = true;
+      } else if (["false", "no", "n", "0"].includes(normalized)) {
+        meal.favorite = false;
+      } else {
+        warnings.push(
+          `Row ${i + 1}: ignored unrecognized favorite "${favoriteRaw}"`,
+        );
+      }
+    }
 
     const sourceUrl = get(row, "sourceUrl");
     if (sourceUrl && !meal.sourceUrl) {
@@ -246,6 +266,8 @@ export const MEALS_CSV_HEADER = [
   "servings",
   "sourceUrl",
   "notes",
+  "favorite",
+  "rating",
 ] as const;
 
 export interface ExportMeal {
@@ -257,6 +279,8 @@ export interface ExportMeal {
   servings?: number | null;
   sourceUrl?: string | null;
   notes?: string | null;
+  favorite?: boolean | null;
+  rating?: number | null;
   ingredients?: {
     name: string;
     quantity?: string | null;
@@ -267,7 +291,7 @@ export interface ExportMeal {
 
 /** Quote a single CSV field per RFC 4180 when it contains a comma, quote, or
  *  newline; escape embedded quotes by doubling them. Numbers are stringified. */
-function csvField(value: string | number | null | undefined): string {
+function csvField(value: string | number | boolean | null | undefined): string {
   const s = value == null ? "" : String(value);
   if (/[",\n\r]/.test(s)) {
     return `"${s.replace(/"/g, '""')}"`;
@@ -302,6 +326,8 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.servings),
         csvField(meal.sourceUrl),
         csvField(meal.notes),
+        csvField(meal.favorite),
+        csvField(meal.rating),
       ].join(","),
     );
   };

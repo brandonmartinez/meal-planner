@@ -25,6 +25,8 @@ export async function listMeals(
   opts?: {
     search?: string;
     difficulty?: string[];
+    favorite?: boolean;
+    minRating?: number;
     sort?: string;
     order?: string;
     limit?: number;
@@ -35,6 +37,12 @@ export async function listMeals(
   if (opts?.search) params.set("search", opts.search);
   if (opts?.difficulty?.length) {
     for (const d of opts.difficulty) params.append("difficulty", d);
+  }
+  if (opts?.favorite !== undefined) {
+    params.set("favorite", String(opts.favorite));
+  }
+  if (opts?.minRating !== undefined) {
+    params.set("minRating", String(opts.minRating));
   }
   if (opts?.sort) params.set("sort", opts.sort);
   if (opts?.order) params.set("order", opts.order);
@@ -66,6 +74,8 @@ export async function createMeal(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
@@ -87,6 +97,8 @@ export async function updateMeal(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
@@ -116,6 +128,8 @@ export async function importMeals(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   }[],
   mode: "skip" | "replace" = "skip",

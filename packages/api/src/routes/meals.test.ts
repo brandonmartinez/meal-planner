@@ -219,6 +219,40 @@ describe("POST /:familyId/meals (create)", () => {
     expect(mealService.createMeal).not.toHaveBeenCalled();
   });
 
+  it("forwards favorite and rating through to the service", async () => {
+    vi.mocked(mealService.createMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", favorite: true, rating: 5 },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(mealService.createMeal).toHaveBeenCalledWith(
+      FAMILY_ID,
+      expect.objectContaining({ favorite: true, rating: 5 }),
+    );
+  });
+
+  it("400s on an out-of-range rating", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Tacos", rating: 6 },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.createMeal).not.toHaveBeenCalled();
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(mealService.createMeal).mockRejectedValue(new Error("db"));
     const res = buildFullRes();
@@ -437,6 +471,35 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     const res = buildFullRes();
     await handler(
       req({ params, body: { sourceUrl: "not-a-url" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("forwards favorite and null-clears rating through to the service", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { favorite: false, rating: null } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({ favorite: false, rating: null }),
+    );
+  });
+
+  it("400s on an out-of-range rating", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { rating: 0 } }),
       res,
       buildNext(),
     );

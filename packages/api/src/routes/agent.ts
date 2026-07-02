@@ -83,6 +83,8 @@ const createMealSchema = z.object({
   servings: z.number().int().min(1).optional(),
   sourceUrl: z.string().url().optional(),
   notes: z.string().optional(),
+  favorite: z.boolean().optional(),
+  rating: z.number().int().min(1).max(5).optional(),
   ingredients: z.array(ingredientInputSchema).optional(),
 });
 
@@ -96,6 +98,8 @@ const updateMealSchema = z
     servings: z.number().int().min(1).nullable().optional(),
     sourceUrl: z.string().url().nullable().optional(),
     notes: z.string().nullable().optional(),
+    favorite: z.boolean().optional(),
+    rating: z.number().int().min(1).max(5).nullable().optional(),
     ingredients: z.array(ingredientInputSchema).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {

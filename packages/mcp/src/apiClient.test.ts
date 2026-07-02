@@ -83,6 +83,24 @@ describe("MealPlannerApiClient", () => {
     expect(url.searchParams.get("offset")).toBe("5");
   });
 
+  it("listMeals serialises favorite and minRating as query params", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
+    await client.listMeals("fam-1", { favorite: true, minRating: 4 });
+
+    const { url } = lastCall(fetchFn);
+    expect(url.searchParams.get("favorite")).toBe("true");
+    expect(url.searchParams.get("minRating")).toBe("4");
+  });
+
+  it("listMeals omits favorite and minRating when not provided", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
+    await client.listMeals("fam-1", { search: "taco" });
+
+    const { url } = lastCall(fetchFn);
+    expect(url.searchParams.has("favorite")).toBe(false);
+    expect(url.searchParams.has("minRating")).toBe(false);
+  });
+
   it("listMeals omits the search param when not provided", async () => {
     const { client, fetchFn } = makeClient(jsonResponse([]));
     await client.listMeals("fam-1");
@@ -177,6 +195,8 @@ describe("MealPlannerApiClient", () => {
       servings: 4,
       sourceUrl: "https://example.com/tacos",
       notes: "Use fresh cilantro",
+      favorite: true,
+      rating: 5,
       ingredients: [{ name: "tortillas", category: "bakery" }],
     };
 
@@ -211,6 +231,16 @@ describe("MealPlannerApiClient", () => {
       sourceUrl: null,
       notes: "Simmer low",
     };
+    await client.updateMeal("meal-1", patch);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(patch);
+  });
+
+  it("updateMeal forwards favorite and a null-cleared rating verbatim", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
+
+    const patch = { favorite: false, rating: null };
     await client.updateMeal("meal-1", patch);
 
     const { init } = lastCall(fetchFn);

@@ -28,6 +28,8 @@ export default function MealFormPage() {
   const servingsId = useId();
   const sourceUrlId = useId();
   const notesId = useId();
+  const favoriteId = useId();
+  const ratingId = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -37,6 +39,8 @@ export default function MealFormPage() {
   const [servings, setServings] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [notes, setNotes] = useState('');
+  const [favorite, setFavorite] = useState(false);
+  const [rating, setRating] = useState('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +63,8 @@ export default function MealFormPage() {
         setServings(meal.servings != null ? String(meal.servings) : '');
         setSourceUrl(meal.sourceUrl || '');
         setNotes(meal.notes || '');
+        setFavorite(meal.favorite ?? false);
+        setRating(meal.rating != null ? String(meal.rating) : '');
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -115,6 +121,8 @@ export default function MealFormPage() {
       servings: toNum(servings),
       sourceUrl: sourceUrl.trim() || null,
       notes: notes.trim() || null,
+      favorite,
+      rating: toNum(rating),
       ingredients: validIngredients.length ? validIngredients : undefined,
     };
 
@@ -242,6 +250,31 @@ export default function MealFormPage() {
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
           />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex items-center gap-2">
+            <input
+              id={favoriteId}
+              type="checkbox"
+              checked={favorite}
+              onChange={e => setFavorite(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
+            />
+            <label htmlFor={favoriteId} className="text-sm font-medium text-gray-700 dark:text-gray-300">Favorite</label>
+          </div>
+          <div>
+            <label htmlFor={ratingId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rating (1–5)</label>
+            <input
+              id={ratingId}
+              type="number"
+              min={1}
+              max={5}
+              value={rating}
+              onChange={e => setRating(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            />
+          </div>
         </div>
 
         <div>

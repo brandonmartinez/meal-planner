@@ -21,9 +21,15 @@ export async function listMeals(
   familyId: string,
   opts: ListMealsQuery = { sort: "name", order: "asc", limit: 25, offset: 0 },
 ): Promise<MealListResponseDTO> {
-  const { search, difficulty, sort, order, limit, offset } = opts;
+  const { search, difficulty, favorite, minRating, sort, order, limit, offset } =
+    opts;
 
-  const hasFilter = Boolean(search || difficulty?.length);
+  const hasFilter = Boolean(
+    search ||
+      difficulty?.length ||
+      favorite !== undefined ||
+      minRating !== undefined,
+  );
 
   const where: Prisma.MealWhereInput = { familyId };
 
@@ -39,6 +45,16 @@ export async function listMeals(
 
   if (difficulty?.length) {
     where.difficulty = { in: difficulty };
+  }
+
+  if (favorite !== undefined) {
+    where.favorite = favorite;
+  }
+
+  // minRating filters to meals rated at or above the threshold; unrated
+  // (null) meals are excluded by the `gte` comparison.
+  if (minRating !== undefined) {
+    where.rating = { gte: minRating };
   }
 
   // lastCooked sort is derived — fetch all, enrich, sort app-side, then slice.
@@ -234,6 +250,8 @@ export async function createMeal(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -254,6 +272,8 @@ export async function createMeal(
         servings: data.servings,
         sourceUrl: data.sourceUrl,
         notes: data.notes,
+        favorite: data.favorite,
+        rating: data.rating,
         familyId,
         ingredients: data.ingredients?.length
           ? { create: data.ingredients }
@@ -278,6 +298,8 @@ export async function updateMeal(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -313,6 +335,8 @@ export async function updateMeal(
         servings: data.servings,
         sourceUrl: data.sourceUrl,
         notes: data.notes,
+        favorite: data.favorite,
+        rating: data.rating,
         ingredients:
           data.ingredients !== undefined
             ? { create: data.ingredients }
@@ -364,6 +388,8 @@ export async function importMeals(
     servings?: number | null;
     sourceUrl?: string | null;
     notes?: string | null;
+    favorite?: boolean;
+    rating?: number | null;
     ingredients?: {
       name: string;
       quantity?: string;
@@ -414,6 +440,8 @@ export async function importMeals(
               servings: data.servings,
               sourceUrl: data.sourceUrl,
               notes: data.notes,
+              favorite: data.favorite,
+              rating: data.rating,
               ingredients: data.ingredients?.length
                 ? { create: data.ingredients }
                 : undefined,
@@ -433,6 +461,8 @@ export async function importMeals(
             servings: data.servings,
             sourceUrl: data.sourceUrl,
             notes: data.notes,
+            favorite: data.favorite,
+            rating: data.rating,
             familyId,
             ingredients: data.ingredients?.length
               ? { create: data.ingredients }
@@ -478,6 +508,8 @@ export async function exportMeals(familyId: string) {
     servings: meal.servings,
     sourceUrl: meal.sourceUrl,
     notes: meal.notes,
+    favorite: meal.favorite,
+    rating: meal.rating,
     ingredients: meal.ingredients,
   }));
 }
