@@ -34,7 +34,21 @@ const FAMILY = "fam-1";
 describe("createToolHandlers", () => {
   it("list_meals forwards the family + opts and returns envelope JSON text", async () => {
     const client = stubClient();
-    const envelope = { items: [{ id: "meal-1" }], total: 1, limit: 25, offset: 0, hasMore: false };
+    const envelope = {
+      items: [
+        {
+          id: "meal-1",
+          recentlyScheduled: false,
+          lastScheduledOn: null,
+          lastCookedOn: "2026-06-15",
+          timesCooked: 5,
+        },
+      ],
+      total: 1,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    };
     client.listMeals.mockResolvedValue(envelope);
     const handlers = createToolHandlers(
       client as unknown as MealPlannerApiClient,
@@ -54,7 +68,11 @@ describe("createToolHandlers", () => {
       offset: undefined,
     });
     expect(result.isError).toBeUndefined();
-    expect(JSON.parse(textOf(result))).toEqual(envelope);
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual(envelope);
+    // Cook-history fields flow through the MCP list_meals surface (parity rows 7/8).
+    expect(parsed.items[0].lastCookedOn).toBe("2026-06-15");
+    expect(parsed.items[0].timesCooked).toBe(5);
   });
 
   it("list_meals forwards difficulty, sort, order, limit, offset to the client", async () => {

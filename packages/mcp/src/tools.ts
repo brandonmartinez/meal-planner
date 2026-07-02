@@ -224,7 +224,8 @@ export function registerTools(
       title: "List meals",
       description:
         "List the family's meal catalog, including a recently-scheduled " +
-        "indicator and last-cooked date. Supports name search, difficulty " +
+        "indicator, last-cooked date, and all-time times-cooked count. " +
+        "Supports name search, difficulty " +
         "filter, favorite filter, minimum-rating filter, sort " +
         "(name|lastCooked|created), pagination " +
         "(limit/offset), and sort order (asc|desc). Requires the " +

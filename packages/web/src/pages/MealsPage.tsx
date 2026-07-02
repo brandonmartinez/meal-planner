@@ -8,6 +8,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
+import LastCookedBadge from '../components/LastCookedBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { MealListItemDTO, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
@@ -314,6 +315,10 @@ export default function MealsPage() {
                       <RecentBadge
                         recentlyScheduled={meal.recentlyScheduled}
                         lastScheduledOn={meal.lastScheduledOn}
+                      />
+                      <LastCookedBadge
+                        timesCooked={meal.timesCooked}
+                        lastCookedOn={meal.lastCookedOn}
                       />
                       <DifficultyBadge difficulty={meal.difficulty} />
                     </>

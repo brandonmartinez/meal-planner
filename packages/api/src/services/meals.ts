@@ -70,11 +70,13 @@ export async function listMeals(
 
     const enriched = allMeals.map((meal) => {
       const last = recentByMeal.get(meal.id);
+      const cooked = lastCookedByMeal.get(meal.id);
       return {
         ...meal,
         recentlyScheduled: last !== undefined,
         lastScheduledOn: last ?? null,
-        lastCookedOn: lastCookedByMeal.get(meal.id) ?? null,
+        lastCookedOn: cooked?.lastCookedOn ?? null,
+        timesCooked: cooked?.timesCooked ?? 0,
       };
     });
 
@@ -119,13 +121,15 @@ export async function listMeals(
 
   const items = meals.map((meal) => {
     const last = recentByMeal.get(meal.id);
+    const cooked = lastCookedByMeal.get(meal.id);
     return {
       ...meal,
       description: meal.description ?? undefined,
       imageUrl: meal.imageUrl ?? undefined,
       recentlyScheduled: last !== undefined,
       lastScheduledOn: last ?? null,
-      lastCookedOn: lastCookedByMeal.get(meal.id) ?? null,
+      lastCookedOn: cooked?.lastCookedOn ?? null,
+      timesCooked: cooked?.timesCooked ?? 0,
     };
   });
 
@@ -190,16 +194,31 @@ async function getRecentlyScheduledMap(
 }
 
 /**
- * Builds a `Map<mealId, lastCookedOn>` of the most recent **approved**
- * `MealSuggestion` date for each of the given meal IDs, family-scoped on
- * **both** sides — `meal.familyId` AND `dayPlan.weekPlan.familyId` — enforcing
- * the #9 IDOR direction. Absent keys mean the meal has never been approved onto
- * a week plan. Exported for reuse by downstream features (issue #99).
+ * Cook-history derivation for a single meal (issue #99). Both fields are derived
+ * at query time from **approved** `MealSuggestion` records — nothing is persisted.
+ * - `lastCookedOn`: calendar date (`YYYY-MM-DD`) of the most recent approved
+ *   suggestion, or `null` if the meal has never been cooked.
+ * - `timesCooked`: all-time count of approved suggestions (no window).
+ */
+export interface CookHistory {
+  lastCookedOn: string;
+  timesCooked: number;
+}
+
+/**
+ * Builds a `Map<mealId, CookHistory>` deriving the most recent **approved**
+ * `MealSuggestion` date **and** the all-time approved count for each of the
+ * given meal IDs, family-scoped on **both** sides — `meal.familyId` AND
+ * `dayPlan.weekPlan.familyId` — enforcing the #9 IDOR direction. Both values
+ * come from the SAME approved-suggestion query (one round-trip), so a meal's
+ * `timesCooked` can never include another family's suggestions. Absent keys
+ * mean the meal has never been approved onto a week plan. Exported for reuse by
+ * downstream features (issue #99).
  */
 export async function getLastCookedMap(
   familyId: string,
   mealIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, CookHistory>> {
   if (mealIds.length === 0) return new Map();
 
   const suggestions = await prisma.mealSuggestion.findMany({
@@ -216,17 +235,22 @@ export async function getLastCookedMap(
   });
 
   const latest = new Map<string, Date>();
+  const counts = new Map<string, number>();
   for (const s of suggestions) {
     const d = s.dayPlan.date;
     const existing = latest.get(s.mealId);
     if (!existing || d.getTime() > existing.getTime()) {
       latest.set(s.mealId, d);
     }
+    counts.set(s.mealId, (counts.get(s.mealId) ?? 0) + 1);
   }
 
-  const result = new Map<string, string>();
+  const result = new Map<string, CookHistory>();
   for (const [mealId, date] of latest) {
-    result.set(mealId, dateLabel(date));
+    result.set(mealId, {
+      lastCookedOn: dateLabel(date),
+      timesCooked: counts.get(mealId) ?? 0,
+    });
   }
   return result;
 }

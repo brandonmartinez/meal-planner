@@ -6,6 +6,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
 import RecentBadge from './RecentBadge';
+import LastCookedBadge from './LastCookedBadge';
 import DifficultyBadge from './DifficultyBadge';
 
 interface MealPickerProps {
@@ -184,6 +185,10 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                     <RecentBadge
                       recentlyScheduled={meal.recentlyScheduled}
                       lastScheduledOn={meal.lastScheduledOn}
+                    />
+                    <LastCookedBadge
+                      timesCooked={meal.timesCooked}
+                      lastCookedOn={meal.lastCookedOn}
                     />
                     <DifficultyBadge difficulty={meal.difficulty} />
                   </div>

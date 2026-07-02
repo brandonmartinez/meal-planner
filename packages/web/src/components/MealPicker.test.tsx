@@ -7,9 +7,9 @@ import { server } from '../../tests/msw/server';
 import MealPicker from './MealPicker';
 
 const meals = [
-    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1', difficulty: 'HARD', _count: { ingredients: 3 }, recentlyScheduled: true, lastScheduledOn: '2026-06-29', lastCookedOn: '2026-06-29' },
-    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null },
-    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null },
+    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1', difficulty: 'HARD', _count: { ingredients: 3 }, recentlyScheduled: true, lastScheduledOn: '2026-06-29', lastCookedOn: '2026-06-29', timesCooked: 5 },
+    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null, timesCooked: 0 },
+    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null, timesCooked: 0 },
 ];
 
 function mealsEnvelope(items: typeof meals) {
@@ -125,6 +125,15 @@ describe('MealPicker', () => {
         // Non-recent meal (Pizza) has neither badge.
         expect(screen.queryAllByText('Recent')).toHaveLength(1);
         expect(screen.queryByLabelText('Difficulty: Easy')).not.toBeInTheDocument();
+
+        // Cook history (issue #99): Tacos (timesCooked 5) shows a text-bearing
+        // cook badge with the last-cooked date in its accessible label…
+        expect(screen.getByText('Cooked 5\u00d7')).toBeInTheDocument();
+        expect(
+            screen.getByLabelText('Cooked 5 times — last on 2026-06-29'),
+        ).toBeInTheDocument();
+        // …and a never-cooked meal (Pizza, timesCooked 0) shows no cook badge.
+        expect(screen.queryAllByText(/^Cooked /)).toHaveLength(1);
     });
 
     it('invokes onClose when the close button is clicked', async () => {
