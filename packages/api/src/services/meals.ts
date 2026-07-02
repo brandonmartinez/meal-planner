@@ -28,12 +28,12 @@ type TaxonomyJoinRows = {
  *  wire shapes, dropping `nameNormalized` and timestamps (internal only). */
 function mapTaxonomy(meal: TaxonomyJoinRows) {
   return {
-    tags: meal.tags.map((mt) => ({
+    tags: (meal.tags ?? []).map((mt) => ({
       id: mt.tag.id,
       name: mt.tag.name,
       familyId: mt.tag.familyId,
     })),
-    categories: meal.categories.map((mc) => ({
+    categories: (meal.categories ?? []).map((mc) => ({
       id: mc.category.id,
       name: mc.category.name,
       familyId: mc.category.familyId,
@@ -647,8 +647,8 @@ export async function exportMeals(familyId: string) {
     favorite: meal.favorite,
     rating: meal.rating,
     ingredients: meal.ingredients,
-    tags: meal.tags.map((mt) => mt.tag.name),
-    categories: meal.categories.map((mc) => mc.category.name),
+    tags: (meal.tags ?? []).map((mt) => mt.tag.name),
+    categories: (meal.categories ?? []).map((mc) => mc.category.name),
   }));
 }
 

@@ -452,6 +452,8 @@ describe("meals service", () => {
       expect(arg.where).not.toHaveProperty("tags");
       expect(arg.where).not.toHaveProperty("placeholderKind");
     });
+
+    it("lastCooked sort: fetches all via findMany (not $transaction), sorts nulls-last tiebreak name asc", async () => {
       prismaMock.meal.findMany.mockResolvedValue([
         { id: "m-c", name: "Zucchini soup", _count: { ingredients: 0 } },
         { id: "m-a", name: "Apple pie", _count: { ingredients: 0 } },
