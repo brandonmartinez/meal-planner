@@ -193,6 +193,11 @@ export interface ExportMealDTO {
   }[];
   tags: string[];
   categories: string[];
+  instructions: {
+    text: string;
+    timerMinutes: number | null;
+    position: number;
+  }[];
 }
 
 /** The response from `GET /families/:id/meals/export`. */

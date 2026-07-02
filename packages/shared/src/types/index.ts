@@ -46,6 +46,7 @@ export interface Meal {
   ingredients?: MealIngredient[];
   tags?: Tag[];
   categories?: Category[];
+  instructions?: MealInstruction[];
 }
 
 export interface MealIngredient {
@@ -55,6 +56,17 @@ export interface MealIngredient {
   unit?: string;
   category?: string;
   mealId: string;
+}
+
+/** An ordered preparation step for a meal. Family-scoped through `Meal`,
+ *  cascade-deleted with the meal. `position` is 0-based; steps are always
+ *  returned ordered by `position` ascending. #100. */
+export interface MealInstruction {
+  id: string;
+  mealId: string;
+  position: number;
+  text: string;
+  timerMinutes?: number | null;
 }
 
 /** A family-scoped tag. `name` is the display value (original casing); the

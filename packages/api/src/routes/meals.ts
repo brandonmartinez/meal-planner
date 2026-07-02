@@ -17,6 +17,14 @@ function paramStr(val: string | string[] | undefined): string {
 // share one validator. See that file for the http(s) scheme-allowlist rationale. #103.
 export { imageUrlSchema };
 
+/** A single ordered preparation step (issue #100). `text` is required;
+ *  `timerMinutes` is an optional non-negative countdown for the step. Order is
+ *  taken from array position, not encoded here. */
+const instructionInputSchema = z.object({
+  text: z.string().min(1),
+  timerMinutes: z.number().int().min(0).nullable().optional(),
+});
+
 export const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -41,6 +49,7 @@ export const createMealSchema = z.object({
     .optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  instructions: z.array(instructionInputSchema).optional(),
 });
 
 export const updateMealSchema = z.object({
@@ -67,6 +76,7 @@ export const updateMealSchema = z.object({
     .optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  instructions: z.array(instructionInputSchema).optional(),
 });
 
 const importMealsSchema = z.object({
@@ -97,6 +107,7 @@ const importMealsSchema = z.object({
           .optional(),
         tags: z.array(z.string()).optional(),
         categories: z.array(z.string()).optional(),
+        instructions: z.array(instructionInputSchema).optional(),
       }),
     )
     .min(1)

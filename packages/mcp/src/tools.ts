@@ -78,6 +78,17 @@ const ingredientSchema = z.object({
     ),
 });
 
+const instructionSchema = z.object({
+  text: z.string().min(1).describe("The instruction step text."),
+  timerMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe("Optional timer for this step, in minutes."),
+});
+
 /**
  * Pure, testable tool handlers bound to a client + family. Each returns an MCP
  * {@link ToolResult}. Kept separate from {@link registerTools} so unit tests
@@ -167,6 +178,10 @@ export function createToolHandlers(
       }[];
       tags?: string[];
       categories?: string[];
+      instructions?: {
+        text: string;
+        timerMinutes?: number | null;
+      }[];
     }): Promise<ToolResult> => run(() => client.createMeal(args)),
 
     update_meal: (args: {
@@ -190,6 +205,10 @@ export function createToolHandlers(
       }[];
       tags?: string[];
       categories?: string[];
+      instructions?: {
+        text: string;
+        timerMinutes?: number | null;
+      }[];
     }): Promise<ToolResult> => {
       const { mealId, ...rest } = args;
       return run(() => client.updateMeal(mealId, rest));
@@ -478,6 +497,12 @@ export function registerTools(
             "Optional category names to assign (case-insensitive, created " +
               "within the family if new).",
           ),
+        instructions: z
+          .array(instructionSchema)
+          .optional()
+          .describe(
+            "Optional ordered list of preparation steps. Order is preserved.",
+          ),
       },
     },
     (args) => handlers.create_meal(args),
@@ -491,6 +516,7 @@ export function registerTools(
         "Edit an existing meal in the family's catalog. Identify the meal by " +
         "its id (use list_meals to find it) and provide only the fields to " +
         "change. Passing `ingredients` REPLACES the meal's ingredient list. " +
+        "Passing `instructions` REPLACES the meal's instruction list. " +
         "Placeholder meals (e.g. Free Day, Leftovers) cannot be edited. " +
         "Requires the meal:write scope.",
       inputSchema: {
@@ -574,6 +600,13 @@ export function registerTools(
             "Replacement category names (replaces all existing; " +
               "case-insensitive, created within the family if new). Pass [] " +
               "to clear.",
+          ),
+        instructions: z
+          .array(instructionSchema)
+          .optional()
+          .describe(
+            "Replacement ordered list of preparation steps (replaces all " +
+              "existing; order is preserved). Pass [] to clear.",
           ),
       },
     },

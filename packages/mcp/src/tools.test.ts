@@ -255,6 +255,27 @@ describe("createToolHandlers", () => {
     expect(client.createMeal).toHaveBeenCalledWith(input);
   });
 
+  it("create_meal forwards ordered instructions (#100, parity row 7)", async () => {
+    const client = stubClient();
+    client.createMeal.mockResolvedValue({ id: "meal-new" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const input = {
+      name: "Tacos",
+      instructions: [
+        { text: "Warm the tortillas" },
+        { text: "Assemble", timerMinutes: 2 },
+      ],
+    };
+    await handlers.create_meal(input);
+
+    // Steps forwarded verbatim, in order — the API assigns position by index.
+    expect(client.createMeal).toHaveBeenCalledWith(input);
+  });
+
   it("update_meal splits mealId from the patch body", async () => {
     const client = stubClient();
     client.updateMeal.mockResolvedValue({ id: "meal-1" });
@@ -331,6 +352,23 @@ describe("createToolHandlers", () => {
     expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
       tags: ["Quick"],
       categories: [],
+    });
+  });
+
+  it("update_meal forwards a replacement instruction list (#100, parity row 7)", async () => {
+    const client = stubClient();
+    client.updateMeal.mockResolvedValue({ id: "meal-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.update_meal({
+      mealId: "meal-1",
+      instructions: [{ text: "First" }, { text: "Second", timerMinutes: 5 }],
+    });
+    expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
+      instructions: [{ text: "First" }, { text: "Second", timerMinutes: 5 }],
     });
   });
 
@@ -460,6 +498,36 @@ describe("registerTools", () => {
       .inputSchema;
     expect(schema).toHaveProperty("tags");
     expect(schema).toHaveProperty("categories");
+  });
+
+  it("documents instruction replace-all in the update_meal description and schema (#100, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const updateMealCall = registerTool.mock.calls.find(
+      (c) => c[0] === "update_meal",
+    );
+    expect(updateMealCall).toBeDefined();
+    const description = (updateMealCall?.[1] as { description: string })
+      .description;
+    // Row 8: agents must be told that passing instructions REPLACES the list.
+    expect(description).toContain("instructions` REPLACES");
+
+    // Both write tools expose an instructions param in their input schema.
+    const updateSchema = (
+      updateMealCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(updateSchema).toHaveProperty("instructions");
+    const createMealCall = registerTool.mock.calls.find(
+      (c) => c[0] === "create_meal",
+    );
+    const createSchema = (
+      createMealCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(createSchema).toHaveProperty("instructions");
   });
 });
 

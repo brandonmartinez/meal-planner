@@ -74,6 +74,11 @@ const ingredientInputSchema = z.object({
   category: z.enum(INGREDIENT_CATEGORIES).optional(),
 });
 
+const instructionInputSchema = z.object({
+  text: z.string().min(1),
+  timerMinutes: z.number().int().min(0).nullable().optional(),
+});
+
 const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -89,6 +94,7 @@ const createMealSchema = z.object({
   ingredients: z.array(ingredientInputSchema).optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  instructions: z.array(instructionInputSchema).optional(),
 });
 
 const updateMealSchema = z
@@ -107,6 +113,7 @@ const updateMealSchema = z
     ingredients: z.array(ingredientInputSchema).optional(),
     tags: z.array(z.string()).optional(),
     categories: z.array(z.string()).optional(),
+    instructions: z.array(instructionInputSchema).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field must be provided",

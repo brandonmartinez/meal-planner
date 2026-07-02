@@ -53,6 +53,35 @@ export function parseCSV(input: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim().length > 0));
 }
 
+/**
+ * Parse a single CSV `instructions` cell into ordered steps. Steps are
+ * newline-delimited (the only unambiguous separator, since commas are the field
+ * delimiter and semicolons are claimed by tags/categories). An optional leading
+ * enumerator (`1. `, `2) `, `3- `) is stripped so a numbered export re-imports
+ * cleanly. Blank lines are dropped; order is preserved. Only `text` round-trips
+ * through CSV — `timerMinutes` is not encoded. #100.
+ */
+export function parseInstructionCell(raw: string): { text: string }[] {
+  return raw
+    .split(/\r\n?|\n/)
+    .map((line) => line.replace(/^\s*\d+\s*[.)-]\s+/, "").trim())
+    .filter((text) => text.length > 0)
+    .map((text) => ({ text }));
+}
+
+/**
+ * Serialize ordered steps into a single newline-delimited CSV cell, numbering
+ * each step (`1. `, `2. `, …) for spreadsheet readability. Steps are assumed to
+ * already be in `position` order. {@link csvField} quotes the cell because it
+ * contains newlines. #100.
+ */
+export function formatInstructionCell(
+  instructions: { text: string }[] | null | undefined,
+): string {
+  if (!instructions || instructions.length === 0) return "";
+  return instructions.map((s, i) => `${i + 1}. ${s.text}`).join("\n");
+}
+
 export interface ParsedImportMeal {
   name: string;
   description?: string;
@@ -75,6 +104,9 @@ export interface ParsedImportMeal {
   tags?: string[];
   /** Meal-level category names (semicolon-delimited in CSV). #107. */
   categories?: string[];
+  /** Ordered preparation steps (newline-delimited in CSV). Only `text` and
+   *  order round-trip through CSV; `timerMinutes` is not encoded. #100. */
+  instructions?: { text: string }[];
 }
 
 export interface ParseMealsCSVResult {
@@ -139,6 +171,7 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     category: ["category", "cat"],
     tags: ["tags", "tag", "labels"],
     categories: ["categories", "cats", "category names", "meal categories"],
+    instructions: ["instructions", "steps", "directions", "method"],
   };
 
   const colIndex: Record<string, number> = {};
@@ -271,6 +304,12 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       if (parsed.length > 0) meal.categories = parsed;
     }
 
+    const instructionsRaw = get(row, "instructions");
+    if (instructionsRaw && !meal.instructions) {
+      const parsed = parseInstructionCell(instructionsRaw);
+      if (parsed.length > 0) meal.instructions = parsed;
+    }
+
     const ingredient = get(row, "ingredient");
     if (ingredient) {
       const ing: ParsedImportMeal["ingredients"] extends (infer U)[] | undefined
@@ -312,6 +351,7 @@ export const MEALS_CSV_HEADER = [
   "rating",
   "tags",
   "categories",
+  "instructions",
 ] as const;
 
 export interface ExportMeal {
@@ -336,6 +376,10 @@ export interface ExportMeal {
   tags?: string[] | null;
   /** Meal-level category names, emitted semicolon-delimited. #107. */
   categories?: string[] | null;
+  /** Ordered preparation steps, emitted newline-delimited (numbered) in a single
+   *  quoted cell, in `position` order. Only `text` and order round-trip through
+   *  CSV; `timerMinutes` is not encoded. #100. */
+  instructions?: { text: string }[] | null;
 }
 
 /** Quote a single CSV field per RFC 4180 when it contains a comma, quote, or
@@ -380,6 +424,7 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.rating),
         csvField(meal.tags?.join(";")),
         csvField(meal.categories?.join(";")),
+        csvField(formatInstructionCell(meal.instructions)),
       ].join(","),
     );
   };

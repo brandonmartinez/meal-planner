@@ -190,7 +190,7 @@ describe('MealsPage export', () => {
       reader.readAsText(capturedBlob!);
     });
     expect(text.split('\n')[0]).toBe(
-      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories',
+      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories,instructions',
     );
     expect(text).toContain('Tacos,Yum,EASY,Tortillas,6,,produce');
 

@@ -136,6 +136,7 @@ export async function importMeals(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
     categories?: string[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
   }[],
   mode: "skip" | "replace" = "skip",
 ): Promise<ImportMealsResultDTO> {

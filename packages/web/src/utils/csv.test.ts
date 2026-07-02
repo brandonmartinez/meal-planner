@@ -305,7 +305,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories,instructions",
     );
   });
 
@@ -322,8 +322,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,,,");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,,,");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -332,7 +332,7 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,,,,");
   });
 
   it("emits meal-level metadata columns, repeating them per ingredient row", () => {
@@ -354,10 +354,10 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines[1]).toBe(
-      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,",
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,",
     );
     expect(lines[2]).toBe(
-      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,",
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,",
     );
   });
 
@@ -374,8 +374,8 @@ describe("mealsToCSV", () => {
       { name: "Cereal", favorite: false, rating: null },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5,,");
-    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,,,");
+    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5,,,");
+    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,,,,");
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -489,7 +489,7 @@ describe("mealsToCSV — tags & categories (#107)", () => {
       },
     ]);
     const dataRow = csv.trim().split("\n")[1];
-    expect(dataRow.endsWith("Quick;Weeknight,Dinner;Mexican")).toBe(true);
+    expect(dataRow.endsWith("Quick;Weeknight,Dinner;Mexican,")).toBe(true);
   });
 
   it("round-trips tag and category assignments by name", () => {
@@ -531,5 +531,137 @@ describe("mealsToCSV — tags & categories (#107)", () => {
     const r = parseMealsCSV(csv);
     const tacos = r.meals.find((m) => m.name === "Tacos");
     expect(tacos?.tags).toEqual(["Quick"]);
+  });
+});
+
+describe("parseMealsCSV — instructions (#100)", () => {
+  it("parses newline-delimited ordered steps, stripping enumerators", () => {
+    const csv =
+      'meal,instructions\nTacos,"1. Warm the tortillas\n2. Assemble\n3. Serve"\n';
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions).toEqual([
+      { text: "Warm the tortillas" },
+      { text: "Assemble" },
+      { text: "Serve" },
+    ]);
+  });
+
+  it("preserves step ORDER as written, independent of any numbering", () => {
+    // Enumerators are stripped; order comes from line position, not the digits.
+    const csv = 'meal,instructions\nTacos,"3. Third\n1. First\n2. Second"\n';
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions?.map((s) => s.text)).toEqual([
+      "Third",
+      "First",
+      "Second",
+    ]);
+  });
+
+  it("keeps steps containing commas and semicolons intact", () => {
+    const csv =
+      'meal,instructions,tags\nStew,"1. Add carrots, celery; then onions\n2. Simmer 1 hour",Dinner\n';
+    const r = parseMealsCSV(csv);
+    const stew = r.meals.find((m) => m.name === "Stew");
+    expect(stew?.instructions).toEqual([
+      { text: "Add carrots, celery; then onions" },
+      { text: "Simmer 1 hour" },
+    ]);
+    // Adjacent semicolon-delimited tag column is unaffected by step content.
+    expect(stew?.tags).toEqual(["Dinner"]);
+  });
+
+  it("drops blank lines and trims surrounding whitespace", () => {
+    const csv = 'meal,instructions\nTacos,"1. Warm\n\n  2. Assemble  \n"\n';
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions).toEqual([
+      { text: "Warm" },
+      { text: "Assemble" },
+    ]);
+  });
+
+  it("supports instruction header aliases", () => {
+    const csv = "meal,steps\nTacos,1. Warm\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions).toEqual([{ text: "Warm" }]);
+  });
+
+  it("keeps the first non-empty instruction list across grouped rows", () => {
+    const csv =
+      'meal,ingredient,instructions\nTacos,Tortillas,"1. Warm\n2. Assemble"\nTacos,Salsa,"9. Ignored"\n';
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions?.map((s) => s.text)).toEqual([
+      "Warm",
+      "Assemble",
+    ]);
+  });
+
+  it("leaves instructions undefined when the column is absent or empty", () => {
+    const csv = "meal,instructions\nCereal,\n";
+    const r = parseMealsCSV(csv);
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.instructions).toBeUndefined();
+  });
+});
+
+describe("mealsToCSV — instructions (#100)", () => {
+  it("emits numbered, newline-delimited steps in a quoted cell", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        instructions: [{ text: "Warm the tortillas" }, { text: "Assemble" }],
+      },
+    ]);
+    expect(csv).toContain('"1. Warm the tortillas\n2. Assemble"');
+  });
+
+  it("round-trips instruction text and ORDER by name", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        instructions: [
+          { text: "Warm the tortillas" },
+          { text: "Add filling, then fold" },
+          { text: "Serve" },
+        ],
+      },
+      { name: "Cereal", instructions: [] },
+    ]);
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.instructions).toEqual([
+      { text: "Warm the tortillas" },
+      { text: "Add filling, then fold" },
+      { text: "Serve" },
+    ]);
+
+    // An empty instruction list exports as an empty cell → undefined on import.
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.instructions).toBeUndefined();
+  });
+
+  it("round-trips steps with commas and semicolons through the quoted cell", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Stew",
+        instructions: [
+          { text: "Add carrots, celery; then onions" },
+          { text: "Simmer, covered, 1 hour" },
+        ],
+      },
+    ]);
+    const r = parseMealsCSV(csv);
+    const stew = r.meals.find((m) => m.name === "Stew");
+    expect(stew?.instructions).toEqual([
+      { text: "Add carrots, celery; then onions" },
+      { text: "Simmer, covered, 1 hour" },
+    ]);
   });
 });

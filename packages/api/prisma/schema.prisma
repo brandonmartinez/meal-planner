@@ -71,6 +71,7 @@ model Meal {
   suggestions          MealSuggestion[]
   tags                 MealTag[]
   categories           MealCategory[]
+  instructions         MealInstruction[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -104,6 +105,24 @@ model MealIngredient {
   category String?
   meal     Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
   mealId   String
+}
+
+/// Ordered preparation steps for a meal (issue #100). Instructions are an
+/// ordered child of Meal — family-scoped THROUGH `Meal.familyId` (no direct
+/// Family relation, mirroring MealIngredient) and cascade-deleted with the
+/// meal. `position` is a dense, 0-based ordering key; the service layer uses
+/// replace-all-on-update semantics, deleting all rows for a meal and recreating
+/// them from the input array index, so no `@@unique([mealId, position])` is
+/// needed. Steps are plain text for P2 (ingredient references deferred per #92).
+model MealInstruction {
+  id           String  @id @default(uuid())
+  meal         Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId       String
+  position     Int
+  text         String
+  timerMinutes Int?
+
+  @@index([mealId])
 }
 
 /// Family-scoped, free-form tag taxonomy (issue #107). A tag belongs to exactly

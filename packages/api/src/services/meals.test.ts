@@ -551,6 +551,46 @@ describe("meals service", () => {
         expect.objectContaining({ where: { id: "m-1", familyId: "fam-1" } }),
       );
     });
+
+    // #100: instructions are included, ordered by position ascending.
+    it("includes instructions ordered by position asc", async () => {
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        instructions: [
+          { position: 0, text: "Chop", timerMinutes: null },
+          { position: 1, text: "Cook", timerMinutes: 5 },
+        ],
+        tags: [],
+        categories: [],
+      } as never);
+
+      const result = await getMealById("m-1", "fam-1");
+
+      const arg = prismaMock.meal.findFirst.mock.calls[0][0] as {
+        include: { instructions: { orderBy: { position: string } } };
+      };
+      expect(arg.include.instructions).toEqual({
+        orderBy: { position: "asc" },
+      });
+      expect(
+        (result as { instructions: { text: string }[] }).instructions.map(
+          (s) => s.text,
+        ),
+      ).toEqual(["Chop", "Cook"]);
+    });
+
+    // #100: cross-family isolation — a meal in another family is not found and
+    // no instructions leak. Family scoping is enforced through the Meal lookup.
+    it("returns null when the meal belongs to another family (no leak)", async () => {
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      const result = await getMealById("m-1", "other-fam");
+      expect(result).toBeNull();
+      expect(prismaMock.meal.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "m-1", familyId: "other-fam" },
+        }),
+      );
+    });
   });
 
   describe("createMeal", () => {
@@ -749,6 +789,55 @@ describe("meals service", () => {
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.category.upsert).not.toHaveBeenCalled();
       expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
+    });
+
+    // #100: instructions are nested-created with a dense 0-based position that
+    // preserves input order.
+    it("nested-creates instructions with 0-based position in input order", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      await createMeal("fam-1", {
+        name: "Tacos",
+        instructions: [
+          { text: "Warm tortillas" },
+          { text: "Simmer 10 min", timerMinutes: 10 },
+          { text: "Assemble" },
+        ],
+      });
+
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          instructions?: {
+            create: { text: string; timerMinutes: number | null; position: number }[];
+          };
+        };
+      };
+      expect(arg.data.instructions?.create).toEqual([
+        { text: "Warm tortillas", timerMinutes: null, position: 0 },
+        { text: "Simmer 10 min", timerMinutes: 10, position: 1 },
+        { text: "Assemble", timerMinutes: null, position: 2 },
+      ]);
+    });
+
+    it("omits the instructions clause when none are provided", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      await createMeal("fam-1", { name: "Plain" });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { instructions?: unknown };
+      };
+      expect(arg.data.instructions).toBeUndefined();
+    });
+
+    it("omits the instructions clause for an empty array", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      await createMeal("fam-1", { name: "Plain", instructions: [] });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { instructions?: unknown };
+      };
+      expect(arg.data.instructions).toBeUndefined();
     });
   });
 
@@ -1079,6 +1168,107 @@ describe("meals service", () => {
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
     });
+
+    // #100: replace-all-on-update — passing instructions deletes the existing
+    // ordered steps and recreates them from the input array (reindexed).
+    it("replace-alls instructions when instructions is provided", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.mealInstruction.deleteMany.mockResolvedValue({
+        count: 3,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", {
+        instructions: [{ text: "New step 1" }, { text: "New step 2" }],
+      } as never);
+
+      // Existing steps cleared before the new set is written.
+      expect(prismaMock.mealInstruction.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          instructions?: {
+            create: { text: string; timerMinutes: number | null; position: number }[];
+          };
+        };
+      };
+      expect(arg.data.instructions?.create).toEqual([
+        { text: "New step 1", timerMinutes: null, position: 0 },
+        { text: "New step 2", timerMinutes: null, position: 1 },
+      ]);
+    });
+
+    it("clears all instructions when instructions is an empty array (delete, no create)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.mealInstruction.deleteMany.mockResolvedValue({
+        count: 2,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { instructions: [] } as never);
+
+      expect(prismaMock.mealInstruction.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { instructions?: { create: unknown[] } };
+      };
+      // Empty array clears: deleteMany runs, but no rows are recreated.
+      expect(arg.data.instructions?.create).toEqual([]);
+    });
+
+    it("leaves instructions untouched when instructions is omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { instructions?: unknown };
+      };
+      expect(arg.data.instructions).toBeUndefined();
+    });
+
+    it("rejects instructions on a placeholder meal (guard runs first)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: "LEFTOVERS",
+      } as never);
+
+      await expect(
+        updateMeal("m-1", "fam-1", {
+          instructions: [{ text: "Nope" }],
+        } as never),
+      ).rejects.toThrow(/Cannot modify placeholder/);
+      expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("rejects instruction updates for a meal in another family (no leak)", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+
+      await expect(
+        updateMeal("m-1", "other-fam", {
+          instructions: [{ text: "Nope" }],
+        } as never),
+      ).rejects.toThrow(/Meal not found/);
+      expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   describe("deleteMeal", () => {
@@ -1343,6 +1533,90 @@ describe("meals service", () => {
         data: [{ mealId: "m-old", tagId: "t-2" }],
         skipDuplicates: true,
       });
+    });
+
+    // #100: imported instructions keep their file order on a newly created meal.
+    it("imports instructions in order on a newly created meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
+
+      const result = await importMeals("fam-1", [
+        {
+          name: "Tacos",
+          instructions: [{ text: "Step one" }, { text: "Step two" }],
+        },
+      ]);
+
+      expect(result.created).toBe(1);
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          instructions?: {
+            create: { text: string; position: number }[];
+          };
+        };
+      };
+      expect(
+        arg.data.instructions?.create.map((s) => [s.position, s.text]),
+      ).toEqual([
+        [0, "Step one"],
+        [1, "Step two"],
+      ]);
+    });
+
+    // #100: import-replace drops the existing ordered steps and recreates them.
+    it("replace-alls instructions in order when replacing an existing meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.mealInstruction.deleteMany.mockResolvedValue({
+        count: 2,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+
+      await importMeals(
+        "fam-1",
+        [
+          {
+            name: "Tacos",
+            instructions: [{ text: "A" }, { text: "B" }, { text: "C" }],
+          },
+        ],
+        { mode: "replace" },
+      );
+
+      expect(prismaMock.mealInstruction.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-old" },
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          instructions?: {
+            create: { text: string; position: number }[];
+          };
+        };
+      };
+      expect(
+        arg.data.instructions?.create.map((s) => [s.position, s.text]),
+      ).toEqual([
+        [0, "A"],
+        [1, "B"],
+        [2, "C"],
+      ]);
+    });
+
+    it("rejects a meal whose name conflicts with a reserved placeholder", async () => {
+      const result = await importMeals("fam-1", [
+        { name: "Leftovers", instructions: [{ text: "x" }] },
+      ]);
+      expect(result.errors).toEqual([
+        {
+          name: "Leftovers",
+          error: "Name conflicts with a reserved placeholder meal",
+        },
+      ]);
+      expect(prismaMock.meal.create).not.toHaveBeenCalled();
     });
   });
 
