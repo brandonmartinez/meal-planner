@@ -9,11 +9,11 @@ describe("meals api client", () => {
     server.use(
       http.get("/api/families/f-1/meals", ({ request }) => {
         url = request.url;
-        return HttpResponse.json([]);
+        return HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0, hasMore: false });
       }),
     );
-    await mealsApi.listMeals("f-1", "pizza & pasta");
-    expect(url).toContain("search=pizza%20%26%20pasta");
+    await mealsApi.listMeals("f-1", { search: "pizza & pasta" });
+    expect(url).toContain("search=pizza+%26+pasta");
   });
 
   it("listMeals omits the query string when no search is provided", async () => {
@@ -21,7 +21,7 @@ describe("meals api client", () => {
     server.use(
       http.get("/api/families/f-1/meals", ({ request }) => {
         url = request.url;
-        return HttpResponse.json([]);
+        return HttpResponse.json({ items: [], total: 0, limit: 25, offset: 0, hasMore: false });
       }),
     );
     await mealsApi.listMeals("f-1");

@@ -21,8 +21,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
 
   const loadMeals = useCallback(async () => {
     try {
-      const data = await listMeals(familyId, search || undefined);
-      setMeals(data);
+      const data = await listMeals(familyId, search ? { search } : undefined);
+      setMeals(data.items);
     } catch {
       // silently fail
     } finally {

@@ -31,8 +31,15 @@ beforeEach(() => {
 describe("GET /:familyId/meals (list)", () => {
   const handler = getRouteHandler(mealsRouter, "get", "/:familyId/meals");
 
-  it("200s and forwards the optional search filter", async () => {
-    vi.mocked(mealService.listMeals).mockResolvedValue([] as never);
+  it("200s and returns envelope shape, forwarding the optional search filter", async () => {
+    const envelope = {
+      items: [{ id: MEAL_ID, name: "Tacos", _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null }],
+      total: 1,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    };
+    vi.mocked(mealService.listMeals).mockResolvedValue(envelope as never);
     const res = buildFullRes();
     await handler(
       req({ params: { familyId: FAMILY_ID }, query: { search: "taco" } }),
@@ -42,28 +49,64 @@ describe("GET /:familyId/meals (list)", () => {
     expect(res.statusCode).toBe(200);
     expect(mealService.listMeals).toHaveBeenCalledWith(FAMILY_ID, {
       search: "taco",
+      sort: "name",
+      order: "asc",
+      limit: 25,
+      offset: 0,
     });
+    const body = res.body as typeof envelope;
+    expect(body.items).toHaveLength(1);
+    expect(body.total).toBe(1);
+    expect(body.hasMore).toBe(false);
   });
 
   it("forwards the recent-scheduling fields in the response body", async () => {
-    vi.mocked(mealService.listMeals).mockResolvedValue([
-      {
-        id: MEAL_ID,
-        name: "Tacos",
-        _count: { ingredients: 2 },
-        recentlyScheduled: true,
-        lastScheduledOn: "2026-06-30",
-      },
-    ] as never);
+    vi.mocked(mealService.listMeals).mockResolvedValue({
+      items: [
+        {
+          id: MEAL_ID,
+          name: "Tacos",
+          _count: { ingredients: 2 },
+          recentlyScheduled: true,
+          lastScheduledOn: "2026-06-30",
+          lastCookedOn: null,
+        },
+      ],
+      total: 1,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    } as never);
     const res = buildFullRes();
     await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
     expect(res.statusCode).toBe(200);
-    const body = res.body as Array<{
-      recentlyScheduled: boolean;
-      lastScheduledOn: string | null;
-    }>;
-    expect(body[0].recentlyScheduled).toBe(true);
-    expect(body[0].lastScheduledOn).toBe("2026-06-30");
+    const body = res.body as {
+      items: Array<{ recentlyScheduled: boolean; lastScheduledOn: string | null }>;
+    };
+    expect(body.items[0].recentlyScheduled).toBe(true);
+    expect(body.items[0].lastScheduledOn).toBe("2026-06-30");
+  });
+
+  it("400s when limit exceeds 100", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID }, query: { limit: "999" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.listMeals).not.toHaveBeenCalled();
+  });
+
+  it("400s when offset is negative", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID }, query: { offset: "-1" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.listMeals).not.toHaveBeenCalled();
   });
 
   it("500s when the service throws", async () => {

@@ -7,10 +7,14 @@ import { server } from '../../tests/msw/server';
 import MealPicker from './MealPicker';
 
 const meals = [
-    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1', difficulty: 'HARD', _count: { ingredients: 3 }, recentlyScheduled: true, lastScheduledOn: '2026-06-29' },
-    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null },
-    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null },
+    { id: 'm-1', name: 'Tacos', description: 'Yum', placeholderKind: null, familyId: 'f-1', difficulty: 'HARD', _count: { ingredients: 3 }, recentlyScheduled: true, lastScheduledOn: '2026-06-29', lastCookedOn: '2026-06-29' },
+    { id: 'm-2', name: 'Pizza', description: null, placeholderKind: null, familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null },
+    { id: 'p-1', name: 'Takeout / Delivery', description: null, placeholderKind: 'TAKEOUT', familyId: 'f-1', difficulty: null, _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null },
 ];
+
+function mealsEnvelope(items: typeof meals) {
+    return { items, total: items.length, limit: 25, offset: 0, hasMore: false };
+}
 
 /** Harness with a real trigger button so we can assert focus return on close. */
 function PickerHarness({ onSelect = () => { } }: { onSelect?: (id: string) => void }) {
@@ -28,7 +32,7 @@ function PickerHarness({ onSelect = () => { } }: { onSelect?: (id: string) => vo
 describe('MealPicker', () => {
     it('renders meals fetched from the API including placeholders', async () => {
         server.use(
-            http.get('/api/families/f-1/meals', () => HttpResponse.json(meals)),
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
 
         renderWithProviders(
@@ -46,7 +50,7 @@ describe('MealPicker', () => {
         server.use(
             http.get('/api/families/f-1/meals', ({ request }) => {
                 lastUrl = request.url;
-                return HttpResponse.json([]);
+                return HttpResponse.json(mealsEnvelope([]));
             }),
         );
 
@@ -61,7 +65,7 @@ describe('MealPicker', () => {
 
     it('invokes onSelect with the chosen meal id', async () => {
         server.use(
-            http.get('/api/families/f-1/meals', () => HttpResponse.json(meals)),
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
         const onSelect = vi.fn();
 
@@ -76,7 +80,7 @@ describe('MealPicker', () => {
 
     it('surfaces recent and difficulty badges on meal rows', async () => {
         server.use(
-            http.get('/api/families/f-1/meals', () => HttpResponse.json(meals)),
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
 
         renderWithProviders(
@@ -100,7 +104,7 @@ describe('MealPicker', () => {
 
     it('invokes onClose when the close button is clicked', async () => {
         server.use(
-            http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
         );
         const onClose = vi.fn();
 
@@ -115,7 +119,7 @@ describe('MealPicker', () => {
     describe('accessibility', () => {
         it('exposes dialog semantics labelled by its visible heading', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
             );
 
             renderWithProviders(
@@ -130,7 +134,7 @@ describe('MealPicker', () => {
 
         it('gives the close button a descriptive accessible name', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
             );
 
             renderWithProviders(
@@ -142,7 +146,7 @@ describe('MealPicker', () => {
 
         it('moves initial focus to the search field when opened', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
             );
 
             renderWithProviders(
@@ -156,7 +160,7 @@ describe('MealPicker', () => {
 
         it('closes when Escape is pressed', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
             );
             const onClose = vi.fn();
 
@@ -171,7 +175,7 @@ describe('MealPicker', () => {
 
         it('returns focus to the trigger when the dialog closes', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json([])),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope([]))),
             );
 
             renderWithProviders(<PickerHarness />);
@@ -188,7 +192,7 @@ describe('MealPicker', () => {
 
         it('traps Tab focus within the dialog', async () => {
             server.use(
-                http.get('/api/families/f-1/meals', () => HttpResponse.json(meals)),
+                http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
             );
 
             renderWithProviders(

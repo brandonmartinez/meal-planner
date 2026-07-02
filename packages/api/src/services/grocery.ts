@@ -1,4 +1,4 @@
-import { GrocerySource } from "@prisma/client";
+import { GrocerySource, Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
 
 /** Canonical merge key: name+unit, case-folded. Exported for #120 seam. */
@@ -118,7 +118,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
   }
 
   // Build transaction ops
-  const ops: Parameters<typeof prisma.$transaction>[0] = [];
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
 
   // Reconcile computed items against existing GENERATED items
   for (const [key, computed] of computedMap.entries()) {

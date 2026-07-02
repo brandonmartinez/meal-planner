@@ -1,5 +1,5 @@
 import type {
-  MealListItemDTO,
+  MealListResponseDTO,
   WeekPlanDTO,
   PreviousWeeksResponseDTO,
   MealSuggestionDTO,
@@ -26,7 +26,7 @@ export interface ApiClientOptions {
 }
 
 interface RequestOptions {
-  query?: Record<string, string | number | undefined>;
+  query?: Record<string, string | string[] | number | undefined>;
   body?: unknown;
 }
 
@@ -90,12 +90,30 @@ export class MealPlannerApiClient {
     return this.request<AgentIdentityDTO>("GET", `/api/agent/me`);
   }
 
-  /** List the family's meals, including the recently-scheduled indicator. */
-  listMeals(familyId: string, search?: string): Promise<MealListItemDTO[]> {
-    return this.request<MealListItemDTO[]>(
+  /** List the family's meals, including search, filter, sort, and pagination. */
+  listMeals(
+    familyId: string,
+    opts?: {
+      search?: string;
+      difficulty?: string[];
+      sort?: string;
+      order?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<MealListResponseDTO> {
+    const query: Record<string, string | string[] | number | undefined> = {
+      search: opts?.search,
+      sort: opts?.sort,
+      order: opts?.order,
+      limit: opts?.limit,
+      offset: opts?.offset,
+    };
+    if (opts?.difficulty?.length) query["difficulty"] = opts.difficulty;
+    return this.request<MealListResponseDTO>(
       "GET",
       `/api/agent/${encodeURIComponent(familyId)}/meals`,
-      { query: { search } },
+      { query },
     );
   }
 
@@ -190,7 +208,10 @@ export class MealPlannerApiClient {
     const url = new URL(`${this.baseUrl}${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
-        if (value !== undefined) {
+        if (value === undefined) continue;
+        if (Array.isArray(value)) {
+          for (const v of value) url.searchParams.append(key, v);
+        } else {
           url.searchParams.set(key, String(value));
         }
       }

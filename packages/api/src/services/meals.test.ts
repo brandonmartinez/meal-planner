@@ -5,6 +5,7 @@ vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
 const {
   listMeals,
+  getLastCookedMap,
   getMealById,
   createMeal,
   updateMeal,
@@ -41,8 +42,13 @@ describe("meals service", () => {
       prismaMock.family.findUnique.mockResolvedValue({
         timezone: "UTC",
       } as never);
-      // Default: no recent approved suggestions.
+      // Default: no recent approved suggestions (used by both getRecentlyScheduledMap
+      // and getLastCookedMap). Tests that need specific data use mockResolvedValueOnce.
       prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+      // Default count + transaction for the name/created DB-sort path. Tests that
+      // need specific meal data override $transaction in their own body.
+      prismaMock.meal.count.mockResolvedValue(0 as never);
+      prismaMock.$transaction.mockResolvedValue([0, []] as never);
     });
 
     afterEach(() => {
@@ -65,6 +71,43 @@ describe("meals service", () => {
       );
     });
 
+    it("returns a MealListResponseDTO envelope with items/total/limit/offset/hasMore", async () => {
+      prismaMock.$transaction.mockResolvedValue([
+        2,
+        [
+          { id: "m-1", name: "Tacos", _count: { ingredients: 2 } },
+          { id: "m-2", name: "Pizza", _count: { ingredients: 0 } },
+        ],
+      ] as never);
+
+      const result = await listMeals("fam-1");
+
+      expect(result).toMatchObject({
+        items: expect.any(Array),
+        total: 2,
+        limit: 25,
+        offset: 0,
+        hasMore: false,
+      });
+      expect(result.items).toHaveLength(2);
+    });
+
+    it("hasMore is true when there are more records beyond the current page", async () => {
+      prismaMock.$transaction.mockResolvedValue([
+        30,
+        Array.from({ length: 25 }, (_, i) => ({
+          id: `m-${i}`,
+          name: `Meal ${i}`,
+          _count: { ingredients: 0 },
+        })),
+      ] as never);
+
+      const result = await listMeals("fam-1");
+
+      expect(result.total).toBe(30);
+      expect(result.hasMore).toBe(true);
+    });
+
     it("applies a case-insensitive contains filter on name when search is given", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", { search: "pizza" });
@@ -78,34 +121,37 @@ describe("meals service", () => {
     });
 
     it("flags a meal scheduled this week as recent with its lastScheduledOn", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([
-        { id: "m-1", name: "Tacos" },
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
       ] as never);
       prismaMock.mealSuggestion.findMany.mockResolvedValue([
         suggestion("m-1", "2026-06-30"),
       ] as never);
 
       const result = await listMeals("fam-1");
-      expect(result[0].recentlyScheduled).toBe(true);
-      expect(result[0].lastScheduledOn).toBe("2026-06-30");
+      expect(result.items[0].recentlyScheduled).toBe(true);
+      expect(result.items[0].lastScheduledOn).toBe("2026-06-30");
     });
 
     it("flags a meal scheduled in the previous week as recent", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([
-        { id: "m-1", name: "Tacos" },
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
       ] as never);
       prismaMock.mealSuggestion.findMany.mockResolvedValue([
         suggestion("m-1", "2026-06-24"),
       ] as never);
 
       const result = await listMeals("fam-1");
-      expect(result[0].recentlyScheduled).toBe(true);
-      expect(result[0].lastScheduledOn).toBe("2026-06-24");
+      expect(result.items[0].recentlyScheduled).toBe(true);
+      expect(result.items[0].lastScheduledOn).toBe("2026-06-24");
     });
 
     it("uses the most recent approved date when a meal has multiple in-window suggestions", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([
-        { id: "m-1", name: "Tacos" },
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
       ] as never);
       // Deliberately out of order: last week then this week.
       prismaMock.mealSuggestion.findMany.mockResolvedValue([
@@ -114,20 +160,23 @@ describe("meals service", () => {
       ] as never);
 
       const result = await listMeals("fam-1");
-      expect(result[0].lastScheduledOn).toBe("2026-06-30");
+      expect(result.items[0].lastScheduledOn).toBe("2026-06-30");
     });
 
     it("marks meals with no approved in-window suggestions as not recent", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([
-        { id: "m-1", name: "Tacos" },
-        { id: "m-2", name: "Pizza" },
+      prismaMock.$transaction.mockResolvedValue([
+        2,
+        [
+          { id: "m-1", name: "Tacos", _count: { ingredients: 0 } },
+          { id: "m-2", name: "Pizza", _count: { ingredients: 0 } },
+        ],
       ] as never);
       prismaMock.mealSuggestion.findMany.mockResolvedValue([
         suggestion("m-1", "2026-06-30"),
       ] as never);
 
       const result = await listMeals("fam-1");
-      const m2 = result.find((m) => m.id === "m-2")!;
+      const m2 = result.items.find((m) => m.id === "m-2")!;
       expect(m2.recentlyScheduled).toBe(false);
       expect(m2.lastScheduledOn).toBeNull();
     });
@@ -194,17 +243,160 @@ describe("meals service", () => {
     });
 
     it("issues a bounded number of queries regardless of meal count (no N+1)", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([
-        { id: "m-1", name: "A" },
-        { id: "m-2", name: "B" },
-        { id: "m-3", name: "C" },
-      ] as never);
-      prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+      const meals = [
+        { id: "m-1", name: "A", _count: { ingredients: 0 } },
+        { id: "m-2", name: "B", _count: { ingredients: 0 } },
+        { id: "m-3", name: "C", _count: { ingredients: 0 } },
+      ];
+      prismaMock.$transaction.mockResolvedValue([3, meals] as never);
+      prismaMock.meal.findMany.mockResolvedValue(meals as never);
 
       await listMeals("fam-1");
-      // One meal query + exactly one windowed suggestion query — not per-meal.
+      // One $transaction (count + findMany) + two windowed suggestion queries
+      // (getRecentlyScheduledMap + getLastCookedMap) — not per-meal.
       expect(prismaMock.meal.findMany).toHaveBeenCalledTimes(1);
-      expect(prismaMock.mealSuggestion.findMany).toHaveBeenCalledTimes(1);
+      expect(prismaMock.mealSuggestion.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it("populates lastCookedOn from the most recent approved suggestion for the meal", async () => {
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
+      ] as never);
+      // Call 1 (getRecentlyScheduledMap): no recently-scheduled suggestions.
+      // Call 2 (getLastCookedMap): meal was last cooked 2026-05-15.
+      prismaMock.mealSuggestion.findMany
+        .mockResolvedValueOnce([] as never)
+        .mockResolvedValueOnce([
+          {
+            mealId: "m-1",
+            dayPlan: { date: new Date("2026-05-15T00:00:00.000Z") },
+          },
+        ] as never);
+
+      const result = await listMeals("fam-1");
+      expect(result.items[0].lastCookedOn).toBe("2026-05-15");
+    });
+
+    it("sets lastCookedOn to null when the meal has never been approved", async () => {
+      prismaMock.$transaction.mockResolvedValue([
+        1,
+        [{ id: "m-1", name: "Tacos", _count: { ingredients: 0 } }],
+      ] as never);
+      // Both calls return [] → no lastCookedOn.
+      const result = await listMeals("fam-1");
+      expect(result.items[0].lastCookedOn).toBeNull();
+    });
+
+    it("excludes placeholder meals when search is active", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "pizza" } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { placeholderKind?: unknown };
+      };
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("excludes placeholder meals when a difficulty filter is active", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { difficulty: ["EASY"] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { placeholderKind?: unknown };
+      };
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("does not exclude placeholders when no search or difficulty filter is active", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1");
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { placeholderKind?: unknown; familyId: string };
+      };
+      // The `placeholderKind` key must be absent from the where clause.
+      expect(arg.where).not.toHaveProperty("placeholderKind");
+    });
+
+    it("lastCooked sort: fetches all via findMany (not $transaction), sorts nulls-last tiebreak name asc", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-c", name: "Zucchini soup", _count: { ingredients: 0 } },
+        { id: "m-a", name: "Apple pie", _count: { ingredients: 0 } },
+        { id: "m-b", name: "Banana bread", _count: { ingredients: 0 } },
+      ] as never);
+      // No suggestions → all lastCookedOn = null → sort by name asc (tiebreak).
+
+      const result = await listMeals("fam-1", {
+        sort: "lastCooked",
+        order: "asc",
+        limit: 25,
+        offset: 0,
+      } as never);
+
+      expect(result.items.map((m) => m.name)).toEqual([
+        "Apple pie",
+        "Banana bread",
+        "Zucchini soup",
+      ]);
+      expect(result.items.every((m) => m.lastCookedOn === null)).toBe(true);
+      // lastCooked sort does NOT use $transaction.
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("lastCooked sort: meals with a lastCookedOn date sort before null entries (asc)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Never cooked", _count: { ingredients: 0 } },
+        { id: "m-2", name: "Often cooked", _count: { ingredients: 0 } },
+      ] as never);
+      prismaMock.mealSuggestion.findMany
+        .mockResolvedValueOnce([] as never) // getRecentlyScheduledMap
+        .mockResolvedValueOnce([
+          {
+            mealId: "m-2",
+            dayPlan: { date: new Date("2026-05-01T00:00:00.000Z") },
+          },
+        ] as never); // getLastCookedMap
+
+      const result = await listMeals("fam-1", {
+        sort: "lastCooked",
+        order: "asc",
+        limit: 25,
+        offset: 0,
+      } as never);
+
+      expect(result.items[0].name).toBe("Often cooked");
+      expect(result.items[1].name).toBe("Never cooked");
+    });
+
+    it("lastCooked sort desc: most recently cooked first, nulls still last", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "m-1", name: "Old cook", _count: { ingredients: 0 } },
+        { id: "m-2", name: "New cook", _count: { ingredients: 0 } },
+        { id: "m-3", name: "Never", _count: { ingredients: 0 } },
+      ] as never);
+      prismaMock.mealSuggestion.findMany
+        .mockResolvedValueOnce([] as never) // getRecentlyScheduledMap
+        .mockResolvedValueOnce([
+          {
+            mealId: "m-1",
+            dayPlan: { date: new Date("2026-03-01T00:00:00.000Z") },
+          },
+          {
+            mealId: "m-2",
+            dayPlan: { date: new Date("2026-06-01T00:00:00.000Z") },
+          },
+        ] as never); // getLastCookedMap
+
+      const result = await listMeals("fam-1", {
+        sort: "lastCooked",
+        order: "desc",
+        limit: 25,
+        offset: 0,
+      } as never);
+
+      expect(result.items.map((m) => m.name)).toEqual([
+        "New cook",
+        "Old cook",
+        "Never",
+      ]);
     });
   });
 
@@ -570,6 +762,71 @@ describe("meals service", () => {
           ],
         },
       ]);
+    });
+  });
+
+  describe("getLastCookedMap", () => {
+    it("returns an empty Map immediately when given no meal ids (no DB call)", async () => {
+      const result = await getLastCookedMap("fam-1", []);
+      expect(result.size).toBe(0);
+      expect(prismaMock.mealSuggestion.findMany).not.toHaveBeenCalled();
+    });
+
+    it("scopes the lookup on both sides: meal.familyId AND dayPlan.weekPlan.familyId", async () => {
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+      await getLastCookedMap("fam-1", ["m-1"]);
+      const arg = prismaMock.mealSuggestion.findMany.mock.calls[0][0] as {
+        where: {
+          meal?: { familyId?: string };
+          dayPlan?: { weekPlan?: { familyId?: string } };
+        };
+      };
+      expect(arg.where.meal?.familyId).toBe("fam-1");
+      expect(arg.where.dayPlan?.weekPlan?.familyId).toBe("fam-1");
+    });
+
+    it("returns only the most-recent approved date per meal when multiple suggestions exist", async () => {
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-03-01T00:00:00.000Z") },
+        },
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-06-15T00:00:00.000Z") },
+        },
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-01-20T00:00:00.000Z") },
+        },
+      ] as never);
+
+      const result = await getLastCookedMap("fam-1", ["m-1"]);
+      expect(result.get("m-1")).toBe("2026-06-15");
+    });
+
+    it("returns separate entries for multiple meals", async () => {
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([
+        {
+          mealId: "m-1",
+          dayPlan: { date: new Date("2026-04-10T00:00:00.000Z") },
+        },
+        {
+          mealId: "m-2",
+          dayPlan: { date: new Date("2026-05-20T00:00:00.000Z") },
+        },
+      ] as never);
+
+      const result = await getLastCookedMap("fam-1", ["m-1", "m-2"]);
+      expect(result.get("m-1")).toBe("2026-04-10");
+      expect(result.get("m-2")).toBe("2026-05-20");
+    });
+
+    it("does not include meals that have never been approved onto a week plan", async () => {
+      prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+      const result = await getLastCookedMap("fam-1", ["m-unknown"]);
+      expect(result.size).toBe(0);
+      expect(result.has("m-unknown")).toBe(false);
     });
   });
 });

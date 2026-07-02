@@ -32,9 +32,10 @@ function textOf(result: ToolResult): string {
 const FAMILY = "fam-1";
 
 describe("createToolHandlers", () => {
-  it("list_meals forwards the family + search and returns JSON text", async () => {
+  it("list_meals forwards the family + opts and returns envelope JSON text", async () => {
     const client = stubClient();
-    client.listMeals.mockResolvedValue([{ id: "meal-1" }]);
+    const envelope = { items: [{ id: "meal-1" }], total: 1, limit: 25, offset: 0, hasMore: false };
+    client.listMeals.mockResolvedValue(envelope);
     const handlers = createToolHandlers(
       client as unknown as MealPlannerApiClient,
       FAMILY,
@@ -42,9 +43,43 @@ describe("createToolHandlers", () => {
 
     const result = await handlers.list_meals({ search: "taco" });
 
-    expect(client.listMeals).toHaveBeenCalledWith(FAMILY, "taco");
+    expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
+      search: "taco",
+      difficulty: undefined,
+      sort: undefined,
+      order: undefined,
+      limit: undefined,
+      offset: undefined,
+    });
     expect(result.isError).toBeUndefined();
-    expect(JSON.parse(textOf(result))).toEqual([{ id: "meal-1" }]);
+    expect(JSON.parse(textOf(result))).toEqual(envelope);
+  });
+
+  it("list_meals forwards difficulty, sort, order, limit, offset to the client", async () => {
+    const client = stubClient();
+    const envelope = { items: [], total: 0, limit: 10, offset: 0, hasMore: false };
+    client.listMeals.mockResolvedValue(envelope);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.list_meals({
+      difficulty: ["EASY", "HARD"],
+      sort: "lastCooked",
+      order: "desc",
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
+      search: undefined,
+      difficulty: ["EASY", "HARD"],
+      sort: "lastCooked",
+      order: "desc",
+      limit: 10,
+      offset: 0,
+    });
   });
 
   it("get_current_week_plan calls the client with the family", async () => {

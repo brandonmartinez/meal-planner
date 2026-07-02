@@ -36,8 +36,13 @@ function meal(overrides: Record<string, unknown>) {
     _count: { ingredients: 0 },
     recentlyScheduled: false,
     lastScheduledOn: null,
+    lastCookedOn: null,
     ...overrides,
   };
+}
+
+function mealsEnvelope(items: ReturnType<typeof meal>[]) {
+  return { items, total: items.length, limit: 25, offset: 0, hasMore: false };
 }
 
 describe('MealsPage difficulty', () => {
@@ -45,7 +50,7 @@ describe('MealsPage difficulty', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos', difficulty: 'HARD' })]),
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos', difficulty: 'HARD' })])),
       ),
     );
 
@@ -60,7 +65,7 @@ describe('MealsPage difficulty', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([meal({ id: 'm-2', name: 'Soup', difficulty: null })]),
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-2', name: 'Soup', difficulty: null })])),
       ),
     );
 
@@ -97,7 +102,7 @@ describe('MealsPage export', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos', difficulty: 'EASY' })]),
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos', difficulty: 'EASY' })])),
       ),
       http.get(`/api/families/${FAMILY_ID}/meals/export`, () =>
         HttpResponse.json({
@@ -141,7 +146,7 @@ describe('MealsPage export', () => {
   it('surfaces an error when there are no meals to export', async () => {
     server.use(
       authMeWithFamily(),
-      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json([])),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json(mealsEnvelope([]))),
       http.get(`/api/families/${FAMILY_ID}/meals/export`, () =>
         HttpResponse.json({ meals: [] }),
       ),
@@ -161,14 +166,14 @@ describe('MealsPage recent indicator', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([
+        HttpResponse.json(mealsEnvelope([
           meal({
             id: 'm-1',
             name: 'Tacos',
             recentlyScheduled: true,
             lastScheduledOn: '2026-06-29',
           }),
-        ]),
+        ])),
       ),
     );
 
@@ -188,14 +193,14 @@ describe('MealsPage recent indicator', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([
+        HttpResponse.json(mealsEnvelope([
           meal({
             id: 'm-2',
             name: 'Soup',
             recentlyScheduled: false,
             lastScheduledOn: null,
           }),
-        ]),
+        ])),
       ),
     );
 
@@ -212,7 +217,7 @@ describe('MealsPage accessibility', () => {
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, async () => {
         await delay(40);
-        return HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
       }),
     );
 
@@ -225,7 +230,7 @@ describe('MealsPage accessibility', () => {
   it('gives the search field an accessible name', async () => {
     server.use(
       authMeWithFamily(),
-      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json([])),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () => HttpResponse.json(mealsEnvelope([]))),
     );
 
     renderWithProviders(<MealsPage />);
@@ -237,7 +242,7 @@ describe('MealsPage accessibility', () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
-        HttpResponse.json([meal({ id: 'm-1', name: 'Tacos' })]),
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
       ),
     );
 

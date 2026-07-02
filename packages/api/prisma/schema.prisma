@@ -62,6 +62,9 @@ model Meal {
   updatedAt            DateTime         @updatedAt
 
   @@unique([familyId, placeholderKind])
+  @@index([familyId, name])
+  @@index([familyId, difficulty])
+  @@index([familyId, createdAt])
 }
 
 enum MealPlaceholderKind {
@@ -129,6 +132,8 @@ model MealSuggestion {
   approvedById        String?
   approvedAt          DateTime?
   createdAt DateTime @default(now())
+
+  @@index([mealId, approved])
 }
 
 model GroceryList {
