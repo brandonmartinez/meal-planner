@@ -4,12 +4,29 @@ import { listMeals, deleteMeal, exportMeals } from '../api/meals';
 import { mealsToCSV } from '../utils/csv';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { MealListItemDTO } from '@meal-planner/shared';
-import { MEAL_PLACEHOLDERS } from '@meal-planner/shared';
+import type { MealListItemDTO, Difficulty } from '@meal-planner/shared';
+import { MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
+
+// Page size for the meal library. Passed explicitly so Load-more offset math is
+// deterministic and independent of the backend default.
+const PAGE_SIZE = 24;
+
+const SORT_OPTIONS: { value: 'name' | 'created' | 'lastCooked'; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'created', label: 'Recently added' },
+  { value: 'lastCooked', label: 'Recently cooked' },
+];
+
+const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  EASY: 'Easy',
+  MEDIUM: 'Medium',
+  HARD: 'Hard',
+};
 
 export default function MealsPage() {
   const { familyId, hasFamilies } = useFamily();
@@ -17,27 +34,84 @@ export default function MealsPage() {
   const navigate = useNavigate();
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
+  const [sort, setSort] = useState<'name' | 'created' | 'lastCooked'>('name');
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // Debounce the raw search input so fast typing does not spam the list API.
+  const debouncedSearch = useDebouncedValue(search, 300);
+
   const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
   const isParent = currentMembership?.role === 'PARENT';
 
+  const hasActiveFilters = debouncedSearch.trim() !== '' || difficulty.length > 0;
+
+  // Load the first page (replaces the grid). Runs whenever any filter/sort input
+  // changes; a new search/filter always resets pagination to offset 0.
   const loadMeals = useCallback(async () => {
     if (!familyId) return;
     try {
-      const data = await listMeals(familyId, search ? { search } : undefined);
+      const data = await listMeals(familyId, {
+        search: debouncedSearch || undefined,
+        difficulty: difficulty.length ? difficulty : undefined,
+        sort,
+        order,
+        limit: PAGE_SIZE,
+        offset: 0,
+      });
       setMeals(data.items);
+      setTotal(data.total);
+      setHasMore(data.hasMore);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load meals');
     } finally {
       setLoading(false);
     }
-  }, [familyId, search]);
+  }, [familyId, debouncedSearch, difficulty, sort, order]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
+
+  // Append the next page onto the existing grid without clearing it.
+  const loadMore = async () => {
+    if (!familyId || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await listMeals(familyId, {
+        search: debouncedSearch || undefined,
+        difficulty: difficulty.length ? difficulty : undefined,
+        sort,
+        order,
+        limit: PAGE_SIZE,
+        offset: meals.length,
+      });
+      setMeals(prev => [...prev, ...data.items]);
+      setTotal(data.total);
+      setHasMore(data.hasMore);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more meals');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const toggleDifficulty = (value: Difficulty) => {
+    setDifficulty(prev =>
+      prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value],
+    );
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setDifficulty([]);
+  };
 
   const handleDelete = async (mealId: string) => {
     if (!familyId || !confirm('Delete this meal?')) return;
@@ -117,21 +191,94 @@ export default function MealsPage() {
         />
       )}
 
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search meals..."
-        aria-label="Search meals"
-        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded mb-6"
-      />
+      {/* Discovery filter bar (#112). Only surfaces capabilities the #111 backend
+          exposes: search, difficulty[], sort, order, offset pagination.
+          TODO(#98,#107): add favorite / rating / tag & category filters here once
+          their backend list params land — do NOT stub them before then. */}
+      <div className="mb-6 space-y-3">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search meals..."
+          aria-label="Search meals"
+          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+        />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div
+            role="group"
+            aria-label="Filter by difficulty"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {MEAL_DIFFICULTIES.map(value => {
+              const active = difficulty.includes(value);
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleDifficulty(value)}
+                  className={`rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
+                    active
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {DIFFICULTY_LABELS[value]}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <label htmlFor="meals-sort" className="text-sm text-gray-600 dark:text-gray-300">
+              Sort
+            </label>
+            <select
+              id="meals-sort"
+              value={sort}
+              onChange={e => setSort(e.target.value as typeof sort)}
+              className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+            >
+              {SORT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+              aria-label={order === 'asc' ? 'Sort ascending' : 'Sort descending'}
+              className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              {order === 'asc' ? '↑ Asc' : '↓ Desc'}
+            </button>
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
       {meals.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-center py-8">No meals yet. Add your first meal!</p>
+        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+          {hasActiveFilters ? 'No meals match your filters.' : 'No meals yet. Add your first meal!'}
+        </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <>
+          <p className="mb-3 text-sm text-gray-500 dark:text-gray-400" aria-live="polite">
+            Showing {meals.length} of {total}
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {meals.map(meal => {
             const isPlaceholder = meal.placeholderKind !== null;
             const meta = isPlaceholder ? MEAL_PLACEHOLDERS[meal.placeholderKind!] : null;
@@ -217,7 +364,21 @@ export default function MealsPage() {
               </div>
             );
           })}
-        </div>
+          </div>
+
+          {hasMore && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
