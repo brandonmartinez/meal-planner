@@ -170,6 +170,11 @@ export interface ExportMealDTO {
   name: string;
   description: string | null;
   difficulty: Difficulty | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  servings: number | null;
+  sourceUrl: string | null;
+  notes: string | null;
   ingredients: {
     name: string;
     quantity: string | null;

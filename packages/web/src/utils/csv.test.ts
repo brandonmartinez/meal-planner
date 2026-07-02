@@ -141,6 +141,72 @@ Soup,easy`;
     expect(r.meals[0].difficulty).toBe("EASY");
   });
 
+  it("parses integer metadata columns (prep, cook, servings)", () => {
+    const csv = `meal,prepTimeMinutes,cookTimeMinutes,servings
+Tacos,10,20,4`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0]).toMatchObject({
+      name: "Tacos",
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 20,
+      servings: 4,
+    });
+  });
+
+  it("parses sourceUrl and notes columns", () => {
+    const csv = `meal,sourceUrl,notes
+Tacos,https://example.com/tacos,Use fresh cilantro`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].sourceUrl).toBe("https://example.com/tacos");
+    expect(r.meals[0].notes).toBe("Use fresh cilantro");
+  });
+
+  it("supports metadata header aliases", () => {
+    const csv = `meal,prep,cook,serves,source,note
+Tacos,5,15,2,https://ex.com,quick`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0]).toMatchObject({
+      prepTimeMinutes: 5,
+      cookTimeMinutes: 15,
+      servings: 2,
+      sourceUrl: "https://ex.com",
+      notes: "quick",
+    });
+  });
+
+  it("warns and ignores non-numeric integer metadata", () => {
+    const csv = `meal,prepTimeMinutes,servings
+Tacos,abc,4.5`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].prepTimeMinutes).toBeUndefined();
+    expect(r.meals[0].servings).toBeUndefined();
+    expect(r.warnings.some((w) => /non-numeric prep time "abc"/.test(w))).toBe(
+      true,
+    );
+    expect(r.warnings.some((w) => /non-numeric servings "4.5"/.test(w))).toBe(
+      true,
+    );
+  });
+
+  it("rejects servings below its minimum of 1", () => {
+    const csv = `meal,servings
+Tacos,0`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals[0].servings).toBeUndefined();
+    expect(r.warnings.some((w) => /non-numeric servings "0"/.test(w))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the first non-empty metadata across grouped rows", () => {
+    const csv = `meal,prepTimeMinutes,ingredient
+Tacos,10,Tortillas
+Tacos,99,Salsa`;
+    const r = parseMealsCSV(csv);
+    expect(r.meals).toHaveLength(1);
+    expect(r.meals[0].prepTimeMinutes).toBe(10);
+  });
+
   it("handles empty input gracefully", () => {
     const r = parseMealsCSV("");
     expect(r.meals).toEqual([]);
@@ -152,7 +218,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,notes",
     );
   });
 
@@ -169,8 +235,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -179,7 +245,33 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,");
+  });
+
+  it("emits meal-level metadata columns, repeating them per ingredient row", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        description: "Yum",
+        difficulty: "EASY",
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+          { name: "Salsa", quantity: "1", unit: "cup", category: "condiments" },
+        ],
+      },
+    ]);
+    const lines = csv.trim().split("\n");
+    expect(lines[1]).toBe(
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,Use fresh cilantro",
+    );
+    expect(lines[2]).toBe(
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,Use fresh cilantro",
+    );
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -196,6 +288,11 @@ describe("mealsToCSV", () => {
         name: "Tacos",
         description: "Yum",
         difficulty: "MEDIUM",
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
         ingredients: [
           { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
         ],
@@ -207,11 +304,17 @@ describe("mealsToCSV", () => {
     const tacos = r.meals.find((m) => m.name === "Tacos");
     expect(tacos?.difficulty).toBe("MEDIUM");
     expect(tacos?.description).toBe("Yum");
+    expect(tacos?.prepTimeMinutes).toBe(10);
+    expect(tacos?.cookTimeMinutes).toBe(20);
+    expect(tacos?.servings).toBe(4);
+    expect(tacos?.sourceUrl).toBe("https://example.com/tacos");
+    expect(tacos?.notes).toBe("Use fresh cilantro");
     expect(tacos?.ingredients).toEqual([
       { name: "Tortillas", quantity: "6", category: "produce" },
     ]);
     const cereal = r.meals.find((m) => m.name === "Cereal");
     expect(cereal?.difficulty).toBeUndefined();
+    expect(cereal?.prepTimeMinutes).toBeUndefined();
     expect(cereal?.ingredients).toBeUndefined();
   });
 });

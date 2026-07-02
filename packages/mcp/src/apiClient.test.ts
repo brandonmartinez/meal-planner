@@ -172,6 +172,11 @@ describe("MealPlannerApiClient", () => {
     const input = {
       name: "Tacos",
       difficulty: "EASY" as const,
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 20,
+      servings: 4,
+      sourceUrl: "https://example.com/tacos",
+      notes: "Use fresh cilantro",
       ingredients: [{ name: "tortillas", category: "bakery" }],
     };
 
@@ -194,6 +199,22 @@ describe("MealPlannerApiClient", () => {
     expect(init.method).toBe("PATCH");
     expect(url.pathname).toBe("/api/agent/meals/meal-1");
     expect(JSON.parse(init.body as string)).toEqual({ name: "Better Tacos" });
+  });
+
+  it("updateMeal forwards core metadata and explicit null-clearing verbatim", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
+
+    const patch = {
+      prepTimeMinutes: 15,
+      cookTimeMinutes: null,
+      servings: 6,
+      sourceUrl: null,
+      notes: "Simmer low",
+    };
+    await client.updateMeal("meal-1", patch);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(patch);
   });
 
   it("updateMeal encodes the mealId path segment", async () => {

@@ -472,6 +472,54 @@ describe("meals service", () => {
       };
       expect(arg.data.difficulty).toBeUndefined();
     });
+
+    it("persists core metadata fields when provided", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-6" } as never);
+      await createMeal("fam-1", {
+        name: "Tacos",
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+      });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          cookTimeMinutes?: unknown;
+          servings?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBe(10);
+      expect(arg.data.cookTimeMinutes).toBe(20);
+      expect(arg.data.servings).toBe(4);
+      expect(arg.data.sourceUrl).toBe("https://example.com/tacos");
+      expect(arg.data.notes).toBe("Use fresh cilantro");
+    });
+
+    it("passes through null metadata fields (clearing on create)", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-7" } as never);
+      await createMeal("fam-1", {
+        name: "Soup",
+        prepTimeMinutes: null,
+        sourceUrl: null,
+        notes: null,
+      });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBeNull();
+      expect(arg.data.sourceUrl).toBeNull();
+      expect(arg.data.notes).toBeNull();
+    });
   });
 
   describe("updateMeal", () => {
@@ -584,6 +632,92 @@ describe("meals service", () => {
       };
       expect(arg.data.difficulty).toBeUndefined();
     });
+
+    it("persists core metadata fields when provided", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", {
+        prepTimeMinutes: 15,
+        cookTimeMinutes: 30,
+        servings: 6,
+        sourceUrl: "https://example.com/stew",
+        notes: "Simmer low and slow",
+      });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          cookTimeMinutes?: unknown;
+          servings?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBe(15);
+      expect(arg.data.cookTimeMinutes).toBe(30);
+      expect(arg.data.servings).toBe(6);
+      expect(arg.data.sourceUrl).toBe("https://example.com/stew");
+      expect(arg.data.notes).toBe("Simmer low and slow");
+    });
+
+    it("clears metadata fields to null when null", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", {
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        servings: null,
+        sourceUrl: null,
+        notes: null,
+      });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          cookTimeMinutes?: unknown;
+          servings?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBeNull();
+      expect(arg.data.cookTimeMinutes).toBeNull();
+      expect(arg.data.servings).toBeNull();
+      expect(arg.data.sourceUrl).toBeNull();
+      expect(arg.data.notes).toBeNull();
+    });
+
+    it("leaves metadata fields untouched when omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBeUndefined();
+      expect(arg.data.sourceUrl).toBeUndefined();
+      expect(arg.data.notes).toBeUndefined();
+    });
   });
 
   describe("deleteMeal", () => {
@@ -658,6 +792,57 @@ describe("meals service", () => {
       expect(arg.data.difficulty).toBe("HARD");
     });
 
+    it("persists core metadata on a newly created meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue(null);
+      prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
+
+      await importMeals("fam-1", [
+        {
+          name: "Tacos",
+          prepTimeMinutes: 10,
+          cookTimeMinutes: 20,
+          servings: 4,
+          sourceUrl: "https://example.com/tacos",
+          notes: "Weeknight favorite",
+        },
+      ]);
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          prepTimeMinutes?: unknown;
+          cookTimeMinutes?: unknown;
+          servings?: unknown;
+          sourceUrl?: unknown;
+          notes?: unknown;
+        };
+      };
+      expect(arg.data.prepTimeMinutes).toBe(10);
+      expect(arg.data.cookTimeMinutes).toBe(20);
+      expect(arg.data.servings).toBe(4);
+      expect(arg.data.sourceUrl).toBe("https://example.com/tacos");
+      expect(arg.data.notes).toBe("Weeknight favorite");
+    });
+
+    it("persists core metadata when replacing an existing meal", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+
+      await importMeals(
+        "fam-1",
+        [{ name: "Tacos", prepTimeMinutes: 5, servings: 2 }],
+        { mode: "replace" },
+      );
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { prepTimeMinutes?: unknown; servings?: unknown };
+      };
+      expect(arg.data.prepTimeMinutes).toBe(5);
+      expect(arg.data.servings).toBe(2);
+    });
+
     it("skips an existing meal in skip mode", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
@@ -728,6 +913,11 @@ describe("meals service", () => {
           name: "Tacos",
           description: "Yum",
           difficulty: "EASY",
+          prepTimeMinutes: 10,
+          cookTimeMinutes: 20,
+          servings: 4,
+          sourceUrl: "https://example.com/tacos",
+          notes: "Use fresh cilantro",
           ingredients: [
             {
               name: "salsa",
@@ -752,6 +942,11 @@ describe("meals service", () => {
           name: "Tacos",
           description: "Yum",
           difficulty: "EASY",
+          prepTimeMinutes: 10,
+          cookTimeMinutes: 20,
+          servings: 4,
+          sourceUrl: "https://example.com/tacos",
+          notes: "Use fresh cilantro",
           ingredients: [
             {
               name: "salsa",
@@ -883,6 +1078,111 @@ describe("meal difficulty route validation", () => {
 
     it("rejects an invalid difficulty value", () => {
       expect(() => updateMealSchema.parse({ difficulty: "HARDISH" })).toThrow();
+    });
+  });
+});
+
+describe("meal core metadata route validation", () => {
+  describe("createMealSchema", () => {
+    it("accepts valid integer + string metadata", () => {
+      const parsed = createMealSchema.parse({
+        name: "Tacos",
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+      });
+      expect(parsed).toMatchObject({
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+      });
+    });
+
+    it("accepts explicit null metadata", () => {
+      const parsed = createMealSchema.parse({
+        name: "Soup",
+        prepTimeMinutes: null,
+        sourceUrl: null,
+        notes: null,
+      });
+      expect(parsed.prepTimeMinutes).toBeNull();
+      expect(parsed.sourceUrl).toBeNull();
+      expect(parsed.notes).toBeNull();
+    });
+
+    it("accepts omitted metadata", () => {
+      const parsed = createMealSchema.parse({ name: "Salad" });
+      expect(parsed.prepTimeMinutes).toBeUndefined();
+      expect(parsed.servings).toBeUndefined();
+      expect(parsed.sourceUrl).toBeUndefined();
+    });
+
+    it("rejects a negative prep time", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", prepTimeMinutes: -1 }),
+      ).toThrow();
+    });
+
+    it("rejects a non-integer cook time", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", cookTimeMinutes: 1.5 }),
+      ).toThrow();
+    });
+
+    it("rejects servings below 1", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", servings: 0 }),
+      ).toThrow();
+    });
+
+    it("rejects a malformed sourceUrl (SSRF-safe: validated but never fetched)", () => {
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", sourceUrl: "not-a-url" }),
+      ).toThrow();
+    });
+  });
+
+  describe("updateMealSchema", () => {
+    it("accepts valid metadata", () => {
+      const parsed = updateMealSchema.parse({
+        prepTimeMinutes: 15,
+        cookTimeMinutes: 30,
+        servings: 6,
+        sourceUrl: "https://example.com/stew",
+        notes: "Simmer low",
+      });
+      expect(parsed).toMatchObject({
+        prepTimeMinutes: 15,
+        cookTimeMinutes: 30,
+        servings: 6,
+        sourceUrl: "https://example.com/stew",
+        notes: "Simmer low",
+      });
+    });
+
+    it("accepts explicit null metadata (clearing)", () => {
+      const parsed = updateMealSchema.parse({
+        prepTimeMinutes: null,
+        servings: null,
+        sourceUrl: null,
+        notes: null,
+      });
+      expect(parsed.prepTimeMinutes).toBeNull();
+      expect(parsed.servings).toBeNull();
+      expect(parsed.sourceUrl).toBeNull();
+      expect(parsed.notes).toBeNull();
+    });
+
+    it("rejects a negative servings value", () => {
+      expect(() => updateMealSchema.parse({ servings: -2 })).toThrow();
+    });
+
+    it("rejects a malformed sourceUrl", () => {
+      expect(() => updateMealSchema.parse({ sourceUrl: "not a url" })).toThrow();
     });
   });
 });

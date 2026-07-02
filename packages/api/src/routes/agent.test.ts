@@ -173,4 +173,84 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.statusCode).toBe(403);
     expect(prismaMock.weekPlan.findFirst).not.toHaveBeenCalled();
   });
+
+  it("write: POST meals forwards core metadata to the service (meal:write)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      {
+        name: "Tacos",
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 20,
+        servings: 4,
+        sourceUrl: "https://example.com/tacos",
+        notes: "Use fresh cilantro",
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const createArg = prismaMock.meal.create.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArg.data).toMatchObject({
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 20,
+      servings: 4,
+      sourceUrl: "https://example.com/tacos",
+      notes: "Use fresh cilantro",
+    });
+  });
+
+  it("write: POST meals 400s on a malformed sourceUrl (validated, never fetched)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { name: "Tacos", sourceUrl: "not-a-url" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+  });
+
+  it("write: PATCH meals forwards metadata and null-clearing to the service", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.meal.update.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq(
+      { mealId: "meal-1" },
+      { prepTimeMinutes: 15, servings: 6, sourceUrl: null, notes: null },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    const updateArg = prismaMock.meal.update.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(updateArg.data).toMatchObject({
+      prepTimeMinutes: 15,
+      servings: 6,
+      sourceUrl: null,
+      notes: null,
+    });
+  });
 });

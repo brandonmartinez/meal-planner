@@ -105,6 +105,116 @@ describe('MealFormPage difficulty', () => {
   });
 });
 
+describe('MealFormPage core metadata', () => {
+  it('sends prep/cook/servings/sourceUrl/notes when creating a meal', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Prep time (min)' }), '10');
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Cook time (min)' }), '20');
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Servings' }), '4');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Source URL' }),
+      'https://example.com/tacos',
+    );
+    await userEvent.type(screen.getByRole('textbox', { name: 'Notes' }), 'Use fresh cilantro');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({
+      prepTimeMinutes: 10,
+      cookTimeMinutes: 20,
+      servings: 4,
+      sourceUrl: 'https://example.com/tacos',
+      notes: 'Use fresh cilantro',
+    });
+  });
+
+  it('sends nulls for blank metadata fields on create', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Soup');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      servings: null,
+      sourceUrl: null,
+      notes: null,
+    });
+  });
+
+  it('populates metadata inputs from an existing meal and can clear them', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Lasagna',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          prepTimeMinutes: 15,
+          cookTimeMinutes: 45,
+          servings: 6,
+          sourceUrl: 'https://example.com/lasagna',
+          notes: 'Rest before slicing',
+          familyId: FAMILY_ID,
+          ingredients: [],
+        }),
+      ),
+      http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    const prep = await screen.findByRole<HTMLInputElement>('spinbutton', {
+      name: 'Prep time (min)',
+    });
+    await waitFor(() => expect(prep.value).toBe('15'));
+    expect(
+      screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Servings' }).value,
+    ).toBe('6');
+    expect(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'Source URL' }).value,
+    ).toBe('https://example.com/lasagna');
+
+    // Clear source URL + notes, then save — cleared strings become null.
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Source URL' }));
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Notes' }));
+    await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body).toMatchObject({
+      prepTimeMinutes: 15,
+      servings: 6,
+      sourceUrl: null,
+      notes: null,
+    });
+  });
+});
+
 describe('MealFormPage accessibility', () => {
   it('associates accessible names with the meal name and description controls', async () => {
     renderForm('/meals/new');

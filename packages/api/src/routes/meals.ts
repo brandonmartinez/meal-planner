@@ -17,6 +17,11 @@ export const createMealSchema = z.object({
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
+  prepTimeMinutes: z.number().int().min(0).nullable().optional(),
+  cookTimeMinutes: z.number().int().min(0).nullable().optional(),
+  servings: z.number().int().min(1).nullable().optional(),
+  sourceUrl: z.string().url().nullable().optional(),
+  notes: z.string().nullable().optional(),
   ingredients: z
     .array(
       z.object({
@@ -34,6 +39,11 @@ export const updateMealSchema = z.object({
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
+  prepTimeMinutes: z.number().int().min(0).nullable().optional(),
+  cookTimeMinutes: z.number().int().min(0).nullable().optional(),
+  servings: z.number().int().min(1).nullable().optional(),
+  sourceUrl: z.string().url().nullable().optional(),
+  notes: z.string().nullable().optional(),
   ingredients: z
     .array(
       z.object({
@@ -54,6 +64,11 @@ const importMealsSchema = z.object({
         name: z.string().min(1),
         description: z.string().optional(),
         difficulty: z.enum(MEAL_DIFFICULTIES).nullable().optional(),
+        prepTimeMinutes: z.number().int().min(0).nullable().optional(),
+        cookTimeMinutes: z.number().int().min(0).nullable().optional(),
+        servings: z.number().int().min(1).nullable().optional(),
+        sourceUrl: z.string().url().nullable().optional(),
+        notes: z.string().nullable().optional(),
         ingredients: z
           .array(
             z.object({

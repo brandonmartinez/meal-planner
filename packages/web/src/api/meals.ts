@@ -61,6 +61,11 @@ export async function createMeal(
     name: string;
     description?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
@@ -77,6 +82,11 @@ export async function updateMeal(
     name: string;
     description?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   },
 ): Promise<Meal> {
@@ -101,6 +111,11 @@ export async function importMeals(
     name: string;
     description?: string;
     difficulty?: Difficulty | null;
+    prepTimeMinutes?: number | null;
+    cookTimeMinutes?: number | null;
+    servings?: number | null;
+    sourceUrl?: string | null;
+    notes?: string | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
   }[],
   mode: "skip" | "replace" = "skip",

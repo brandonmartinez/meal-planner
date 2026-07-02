@@ -23,10 +23,20 @@ export default function MealFormPage() {
 
   const nameId = useId();
   const descriptionId = useId();
+  const prepTimeId = useId();
+  const cookTimeId = useId();
+  const servingsId = useId();
+  const sourceUrlId = useId();
+  const notesId = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState('');
+  const [cookTimeMinutes, setCookTimeMinutes] = useState('');
+  const [servings, setServings] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [notes, setNotes] = useState('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +54,11 @@ export default function MealFormPage() {
         setName(meal.name);
         setDescription(meal.description || '');
         setDifficulty(meal.difficulty ?? '');
+        setPrepTimeMinutes(meal.prepTimeMinutes != null ? String(meal.prepTimeMinutes) : '');
+        setCookTimeMinutes(meal.cookTimeMinutes != null ? String(meal.cookTimeMinutes) : '');
+        setServings(meal.servings != null ? String(meal.servings) : '');
+        setSourceUrl(meal.sourceUrl || '');
+        setNotes(meal.notes || '');
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -84,10 +99,22 @@ export default function MealFormPage() {
         category: i.category || undefined,
       }));
 
+    const toNum = (s: string): number | null => {
+      const t = s.trim();
+      if (t === '') return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    };
+
     const data = {
       name: name.trim(),
       description: description.trim() || undefined,
       difficulty: difficulty === '' ? null : difficulty,
+      prepTimeMinutes: toNum(prepTimeMinutes),
+      cookTimeMinutes: toNum(cookTimeMinutes),
+      servings: toNum(servings),
+      sourceUrl: sourceUrl.trim() || null,
+      notes: notes.trim() || null,
       ingredients: validIngredients.length ? validIngredients : undefined,
     };
 
@@ -156,6 +183,65 @@ export default function MealFormPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label htmlFor={prepTimeId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prep time (min)</label>
+            <input
+              id={prepTimeId}
+              type="number"
+              min={0}
+              value={prepTimeMinutes}
+              onChange={e => setPrepTimeMinutes(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            />
+          </div>
+          <div>
+            <label htmlFor={cookTimeId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cook time (min)</label>
+            <input
+              id={cookTimeId}
+              type="number"
+              min={0}
+              value={cookTimeMinutes}
+              onChange={e => setCookTimeMinutes(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            />
+          </div>
+          <div>
+            <label htmlFor={servingsId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Servings</label>
+            <input
+              id={servingsId}
+              type="number"
+              min={1}
+              value={servings}
+              onChange={e => setServings(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor={sourceUrlId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source URL</label>
+          <input
+            id={sourceUrlId}
+            type="url"
+            value={sourceUrl}
+            onChange={e => setSourceUrl(e.target.value)}
+            placeholder="https://example.com/recipe"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+          />
+        </div>
+
+        <div>
+          <label htmlFor={notesId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+          <textarea
+            id={notesId}
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={4}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+          />
         </div>
 
         <div>
