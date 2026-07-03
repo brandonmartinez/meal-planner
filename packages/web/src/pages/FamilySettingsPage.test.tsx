@@ -90,6 +90,21 @@ describe('FamilySettingsPage', () => {
     expect(screen.getByRole('heading', { name: /api keys/i })).toBeInTheDocument();
   });
 
+  it('opts the API key name field out of password-manager autofill', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+      http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+      http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    const name = await screen.findByRole('textbox', { name: 'API key name' });
+    expect(name).toHaveAttribute('data-1p-ignore');
+    expect(name).toHaveAttribute('autocomplete', 'off');
+  });
+
   it('hides parent-only sections for a child member', async () => {
     server.use(
       authMe('CHILD'),

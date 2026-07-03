@@ -345,4 +345,19 @@ describe('TemplateFormModal', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(body!.name).toBe('Taco Week v2');
   });
+
+  it('opts the name field out of password-manager autofill', async () => {
+    useMeals();
+    renderWithProviders(
+      <TemplateFormModal
+        familyId={FAMILY_ID}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    const name = await screen.findByLabelText(/^Name/);
+    expect(name).toHaveAttribute('data-1p-ignore');
+    expect(name).toHaveAttribute('autocomplete', 'off');
+  });
 });
