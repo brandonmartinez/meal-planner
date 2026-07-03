@@ -40,6 +40,14 @@ export const handlers = [
   http.get("/api/families/:id/collections", () =>
     HttpResponse.json({ collections: [] }),
   ),
+  // Planning templates (issue #117) — TemplatesPage and the WeekPlanPage
+  // "apply a template" flow load these on mount. Default to empty so tests that
+  // don't exercise templates (e.g. WeekPlanPage suggestion tests) don't trip the
+  // `onUnhandledRequest: "error"` guard. Tests that assert on the templates UI
+  // override this with a populated list.
+  http.get("/api/families/:id/templates", () =>
+    HttpResponse.json({ templates: [] }),
+  ),
   // Meal image assets (issue #105). Default handlers so image upload/preview UX
   // doesn't trip `onUnhandledRequest: "error"`. Tests that assert on validation
   // failures (413/400) override POST per-case via server.use(...).
