@@ -42,8 +42,17 @@ const meals = [
   },
 ];
 
-function mealsEnvelope(items: typeof meals) {
-  return { items, total: items.length, limit: 500, offset: 0, hasMore: false };
+function mealsEnvelope(
+  items: typeof meals,
+  extra?: { total?: number; offset?: number; hasMore?: boolean },
+) {
+  return {
+    items,
+    total: extra?.total ?? items.length,
+    limit: 100,
+    offset: extra?.offset ?? 0,
+    hasMore: extra?.hasMore ?? false,
+  };
 }
 
 /** Register a meals handler returning the given list. */
@@ -73,6 +82,49 @@ describe('TemplateFormModal', () => {
     expect(within(monday).getByRole('option', { name: 'Tacos' })).toBeInTheDocument();
     expect(within(monday).getByRole('option', { name: 'Pizza' })).toBeInTheDocument();
     expect(screen.getByLabelText('Add a meal to Sunday')).toBeInTheDocument();
+  });
+
+  it('pages through the list-meals endpoint so >100 meals all load (limit>100 regression)', async () => {
+    // The endpoint caps `limit` at 100; a single 500-item request 400s. The modal
+    // must page (offset 0 → hasMore:true, offset 100 → hasMore:false) and merge
+    // every page, or meals past the first 100 silently vanish.
+    const pageOne = { ...meals[0], id: 'p1', name: 'First Page Meal' };
+    const pageTwo = { ...meals[0], id: 'p2', name: 'Second Page Meal' };
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        const url = new URL(request.url);
+        // Reject over-cap limits the way the real backend does, to prove the
+        // client never sends limit>100.
+        if (Number(url.searchParams.get('limit')) > 100) {
+          return HttpResponse.json({ error: 'limit too high' }, { status: 400 });
+        }
+        const offset = Number(url.searchParams.get('offset') ?? '0');
+        return HttpResponse.json(
+          offset === 0
+            ? mealsEnvelope([pageOne], { total: 2, offset: 0, hasMore: true })
+            : mealsEnvelope([pageTwo], { total: 2, offset: 100, hasMore: false }),
+        );
+      }),
+    );
+
+    renderWithProviders(
+      <TemplateFormModal
+        familyId={FAMILY_ID}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+
+    const monday = await screen.findByLabelText('Add a meal to Monday');
+    // A meal from the SECOND page proves paging merged both responses.
+    expect(
+      await within(monday).findByRole('option', { name: 'Second Page Meal' }),
+    ).toBeInTheDocument();
+    expect(
+      within(monday).getByRole('option', { name: 'First Page Meal' }),
+    ).toBeInTheDocument();
+    // And no error banner surfaced (the over-cap request was never made).
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('adds a meal pill to a day and resets the select', async () => {
