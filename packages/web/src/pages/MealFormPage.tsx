@@ -390,7 +390,7 @@ export default function MealFormPage() {
                   value={ing.category}
                   onChange={e => handleIngredientChange(index, 'category', e.target.value)}
                   aria-label={`Category for ${rowLabel}`}
-                  className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
+                  className="w-32 h-[1.875rem] px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
                 >
                   <option value="">Category</option>
                   {(ing.category &&
