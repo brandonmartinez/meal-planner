@@ -35,13 +35,18 @@ export const ALLOWED_IMAGE_TYPES: Readonly<Record<string, string>> = {
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** Strict UUID (v4-shaped, but we accept any RFC-4122 layout) matcher. Used to
- *  validate BOTH the family id and the asset id before they ever touch a path. */
-const UUID_RE =
+ *  validate BOTH the family id and the asset id before they ever touch a path.
+ *  Exported so out-of-band tooling (e.g. the #106 orphan-cleanup scanner) can
+ *  validate on-disk entry names against the EXACT same rule the storage layer
+ *  enforces — a single source of truth for what a legal id looks like. */
+export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Reverse lookup: canonical extension -> true. Guards `get`/`delete` so a
- *  caller cannot pass an arbitrary extension string into the path. */
-const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(
+ *  caller cannot pass an arbitrary extension string into the path. Exported for
+ *  the same single-source-of-truth reason as `UUID_RE`: the cleanup scanner must
+ *  recognise exactly the extensions this backend writes, and nothing else. */
+export const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(
   Object.values(ALLOWED_IMAGE_TYPES),
 );
 
@@ -64,6 +69,14 @@ export interface ImageStorage {
     assetId: string,
     extension: string,
   ): Promise<void>;
+  /** Report whether the bytes for `(familyId, assetId, extension)` are present.
+   *  Read-only; validates ids/extension identically to `get`/`delete`. Used by
+   *  the #106 cleanup to detect rows whose backing file has gone missing. */
+  exists(
+    familyId: string,
+    assetId: string,
+    extension: string,
+  ): Promise<boolean>;
 }
 
 /** Thrown when an id/extension fails validation, or a resolved path would
@@ -158,6 +171,25 @@ export class FilesystemImageStorage implements ImageStorage {
       // A missing file means the desired end-state (gone) already holds.
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return;
+      }
+      throw err;
+    }
+  }
+
+  async exists(
+    familyId: string,
+    assetId: string,
+    extension: string,
+  ): Promise<boolean> {
+    // Validate through the same builder as get/delete: a malformed reference is
+    // rejected rather than silently reported "missing".
+    const filePath = this.resolvePath(familyId, assetId, extension);
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return false;
       }
       throw err;
     }
