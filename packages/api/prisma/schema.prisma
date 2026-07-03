@@ -22,6 +22,7 @@ model Family {
   tags             Tag[]
   categories       Category[]
   imageAssets      ImageAsset[]
+  recipeCollections RecipeCollection[]
 }
 
 model User {
@@ -74,6 +75,7 @@ model Meal {
   categories           MealCategory[]
   instructions         MealInstruction[]
   imageAssets          ImageAsset[]
+  collections          MealRecipeCollection[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -346,4 +348,41 @@ model ImageAsset {
 
   @@index([familyId])
   @@index([mealId])
+}
+
+/// Family-scoped, curated recipe collection (issue #109) — a named list a meal
+/// can belong to (e.g. "Weeknight Dinners", "Holiday Baking"). Deliberately a
+/// DISTINCT model from Tag/Category (curated lists, not free-form taxonomy) and
+/// structurally mirrors them: case-insensitively unique within a family via
+/// `nameNormalized` (`lower(trim(name))`, computed in the service layer) while
+/// `name` preserves display casing. Adds an optional `description` (a curated
+/// list carries a blurb; only the collection NAME round-trips through CSV). The
+/// Family relation is `onDelete: Restrict`, mirroring Tag/Category.
+model RecipeCollection {
+  id             String                 @id @default(uuid())
+  name           String
+  nameNormalized String
+  description    String?
+  family         Family                 @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  familyId       String
+  meals          MealRecipeCollection[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// Explicit many-to-many join between Meal and RecipeCollection. Composite
+/// primary key prevents duplicate memberships; `onDelete: Cascade` on BOTH
+/// foreign keys means deleting a meal OR a collection cleans up its join rows
+/// automatically (same dual-cascade semantics as MealTag/MealCategory).
+model MealRecipeCollection {
+  meal               Meal             @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId             String
+  recipeCollection   RecipeCollection @relation(fields: [recipeCollectionId], references: [id], onDelete: Cascade)
+  recipeCollectionId String
+
+  @@id([mealId, recipeCollectionId])
+  @@index([recipeCollectionId])
 }
