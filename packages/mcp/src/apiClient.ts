@@ -10,6 +10,7 @@ import type {
   GroceryList,
   Difficulty,
   RecipeCollection,
+  PlanningTemplate,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -209,6 +210,15 @@ export class MealPlannerApiClient {
     return res.collections;
   }
 
+  /** List the family's reusable planning templates (#116). Read-only surface. */
+  async listTemplates(familyId: string): Promise<PlanningTemplate[]> {
+    const res = await this.request<{ templates: PlanningTemplate[] }>(
+      "GET",
+      `/api/agent/${encodeURIComponent(familyId)}/templates`,
+    );
+    return res.templates;
+  }
+
   // --- Mutation tools -------------------------------------------------------
 
   /** Schedule a meal onto a calendar date (creates an unapproved suggestion). */
@@ -251,6 +261,24 @@ export class MealPlannerApiClient {
         targetWeekStart,
       )}/repeat`,
       { body: { sourceWeekStart, existingMode } },
+    );
+  }
+
+  /** Apply a planning template into a target week: materialize its entries as
+   *  new unapproved suggestions (#116). `existingMode` (default "error") decides
+   *  how a target week that already has suggestions is treated. */
+  applyTemplate(
+    familyId: string,
+    templateId: string,
+    targetWeekStart: string,
+    existingMode?: RepeatWeekExistingMode,
+  ): Promise<WeekPlanDTO> {
+    return this.request<WeekPlanDTO>(
+      "POST",
+      `/api/agent/${encodeURIComponent(familyId)}/templates/${encodeURIComponent(
+        templateId,
+      )}/apply`,
+      { body: { targetWeekStart, existingMode } },
     );
   }
 

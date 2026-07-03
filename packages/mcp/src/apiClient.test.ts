@@ -222,6 +222,63 @@ describe("MealPlannerApiClient", () => {
     expect(url.pathname).toBe("/api/agent/fam-1/weeks/a%2Fb/repeat");
   });
 
+  it("listTemplates GETs the family templates and unwraps the envelope (#116)", async () => {
+    const templates = [
+      {
+        id: "tmpl-1",
+        familyId: "fam-1",
+        name: "Taco Tuesday",
+        entries: [{ id: "e-1", dayOfWeek: 1, mealId: "meal-1" }],
+      },
+    ];
+    const { client, fetchFn } = makeClient(jsonResponse({ templates }));
+
+    const result = await client.listTemplates("fam-1");
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/fam-1/templates");
+    // The client unwraps the { templates } envelope and returns the array.
+    expect(result).toEqual(templates);
+  });
+
+  it("applyTemplate POSTs to the template apply endpoint with target + mode (#116)", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "2026-07-06", days: [] }, 201),
+    );
+    await client.applyTemplate("fam-1", "tmpl-1", "2026-07-06", "replace");
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("POST");
+    expect(url.pathname).toBe("/api/agent/fam-1/templates/tmpl-1/apply");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({
+      targetWeekStart: "2026-07-06",
+      existingMode: "replace",
+    });
+  });
+
+  it("applyTemplate omits existingMode from the body when not provided (#116)", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "2026-07-06", days: [] }, 201),
+    );
+    await client.applyTemplate("fam-1", "tmpl-1", "2026-07-06");
+    const { init } = lastCall(fetchFn);
+    // undefined existingMode is dropped by JSON serialisation → server default.
+    expect(JSON.parse(init.body as string)).toEqual({
+      targetWeekStart: "2026-07-06",
+    });
+  });
+
+  it("applyTemplate encodes the template id path segment (#116)", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "x", days: [] }, 201),
+    );
+    await client.applyTemplate("fam-1", "a/b", "2026-07-06");
+    const { url } = lastCall(fetchFn);
+    expect(url.pathname).toBe("/api/agent/fam-1/templates/a%2Fb/apply");
+  });
+
   it("approveSuggestion PATCHes the approve endpoint", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "s-1" }));
     await client.approveSuggestion("fam-1", "s-1");

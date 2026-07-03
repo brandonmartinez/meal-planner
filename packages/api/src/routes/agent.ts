@@ -14,6 +14,7 @@ import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";
 import * as mealService from "../services/meals.js";
 import * as collectionService from "../services/recipeCollections.js";
+import * as templateService from "../services/planningTemplates.js";
 import * as groceryService from "../services/grocery.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
@@ -64,6 +65,17 @@ const repeatWeekSchema = z.object({
   sourceWeekStart: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "sourceWeekStart must be YYYY-MM-DD"),
+  existingMode: z.enum(["error", "skip", "replace"]).optional(),
+});
+
+// MCP: apply a family-scoped planning template into a target week as new
+// UNAPPROVED suggestions. `targetWeekStart` must be a Monday; `existingMode`
+// (default "error") is the deliberate policy for a target week that already has
+// suggestions. Applying a template IS scheduling — reuses meal_plan:schedule.
+const applyTemplateSchema = z.object({
+  targetWeekStart: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "targetWeekStart must be YYYY-MM-DD"),
   existingMode: z.enum(["error", "skip", "replace"]).optional(),
 });
 
@@ -641,6 +653,89 @@ agentRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to repeat week" });
+    }
+  },
+);
+// GET /api/agent/:familyId/templates — scope: meal_plan:read
+// List the family's reusable planning templates (with entries). Read-only,
+// family-scoped. Authoring (create/edit/delete) is browser-JWT-only by design.
+agentRouter.get(
+  "/:familyId/templates",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.READ),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    try {
+      const templates = await templateService.listTemplates(familyId);
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.READ,
+        outcome: "allowed",
+        targetType: "planningTemplate",
+        targetIds: templates.map((t) => t.id),
+      });
+      res.json({ templates });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  },
+);
+
+// POST /api/agent/:familyId/templates/:templateId/apply — scope: meal_plan:schedule
+// Apply a planning template into a target week as new UNAPPROVED suggestions
+// (preserving the parent approval workflow). Reuses meal_plan:schedule —
+// materializing unapproved suggestions IS scheduling. `suggestedBy` is
+// attributed to the provisioning parent; the audit trail records the agent
+// credential as the true actor.
+agentRouter.post(
+  "/:familyId/templates/:templateId/apply",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.SCHEDULE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    const templateId = paramStr(req.params.templateId);
+    try {
+      const parsed = applyTemplateSchema.parse(req.body);
+      const plan = await templateService.applyTemplate({
+        familyId,
+        templateId,
+        targetWeekStart: new Date(`${parsed.targetWeekStart}T00:00:00Z`),
+        userId: agent.createdBy,
+        existingMode: parsed.existingMode,
+      });
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.SCHEDULE,
+        outcome: "allowed",
+        targetType: "planningTemplate",
+        targetIds: [templateId, parsed.targetWeekStart],
+      });
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof templateService.TemplateError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId,
+          action: AGENT_SCOPES.SCHEDULE,
+          outcome: "denied",
+          targetType: "planningTemplate",
+          targetIds: [templateId],
+          reason: `error_${error.status}`,
+        });
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to apply template" });
     }
   },
 );
