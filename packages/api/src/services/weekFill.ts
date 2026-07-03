@@ -13,7 +13,7 @@ import {
 } from "./weekPlan.js";
 
 /**
- * Category/collection-based week filling (issue #115).
+ * Tag/collection-based week filling (issue #115).
  *
  * Fills the OPEN days of a target week with meals picked at random from the
  * family's eligible catalog, filtered by the same vocabulary as random

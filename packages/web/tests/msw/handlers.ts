@@ -16,13 +16,10 @@ export const handlers = [
   http.get("/api/families/:id/agent-credentials", () => HttpResponse.json([])),
   // Family taxonomy lists (issue #107) — MealsPage, MealPicker, and MealFormPage
   // load these via useTaxonomy on mount to populate filter/assign controls.
-  // Default to empty so existing meal tests that don't exercise tags/categories
-  // don't trip the `onUnhandledRequest: "error"` guard. Tests that assert on the
-  // taxonomy UI override these with populated lists.
+  // Default to empty so existing meal tests that don't exercise tags don't trip
+  // the `onUnhandledRequest: "error"` guard. Tests that assert on the taxonomy
+  // UI override these with populated lists.
   http.get("/api/families/:id/tags", () => HttpResponse.json({ tags: [] })),
-  http.get("/api/families/:id/categories", () =>
-    HttpResponse.json({ categories: [] }),
-  ),
   // Family grocery categories (issue #119) — MealFormPage and GroceryListPage
   // load these via useGroceryCategories on mount to populate ingredient/item
   // category selects. Default to empty so the hook falls back to the shared

@@ -126,10 +126,8 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">notes</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">favorite</code>,{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">rating</code>,{' '}
-                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tags</code>,{' '}
-                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">categories</code>.{' '}
-                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tags</code> and{' '}
-                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">categories</code> are{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tags</code>.{' '}
+                            <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">tags</code> are{' '}
                             semicolon-separated name lists (e.g.{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">quick;vegetarian</code>).{' '}
                             <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">imageUrl</code> must be an{' '}

@@ -290,23 +290,18 @@ function tag(id: string, name: string) {
     return { id, name, familyId: 'f-1' };
 }
 
-function taxonomyHandlers(
-    tags: ReturnType<typeof tag>[],
-    categories: ReturnType<typeof tag>[],
-) {
+function taxonomyHandlers(tags: ReturnType<typeof tag>[]) {
     return [
         http.get('/api/families/f-1/tags', () => HttpResponse.json({ tags })),
-        http.get('/api/families/f-1/categories', () => HttpResponse.json({ categories })),
     ];
 }
 
-describe('MealPicker tags and categories', () => {
-    it('renders compact tag/category pills on meal rows with +N overflow', async () => {
+describe('MealPicker tags', () => {
+    it('renders compact tag pills on meal rows with +N overflow', async () => {
         const withTags = [
             {
                 ...meals[0],
-                tags: [tag('t-1', 'Weeknight'), tag('t-2', 'Spicy')],
-                categories: [tag('c-1', 'Dinner')],
+                tags: [tag('t-1', 'Weeknight'), tag('t-2', 'Spicy'), tag('t-3', 'Fresh')],
             },
         ];
         server.use(
@@ -318,14 +313,14 @@ describe('MealPicker tags and categories', () => {
         );
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
-        // max=2 → first two chips (tags) show; the category collapses into +1.
+        // max=2 → first two tag chips show; the third collapses into +1.
         expect(screen.getByText('Weeknight')).toBeInTheDocument();
         expect(screen.getByText('Spicy')).toBeInTheDocument();
         expect(screen.getByLabelText('1 more')).toBeInTheDocument();
     });
 
     it('row tag pills are non-interactive spans nested in the option button', async () => {
-        const withTags = [{ ...meals[0], tags: [tag('t-1', 'Weeknight')], categories: [] }];
+        const withTags = [{ ...meals[0], tags: [tag('t-1', 'Weeknight')] }];
         server.use(
             http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(withTags))),
         );
@@ -346,7 +341,7 @@ describe('MealPicker tags and categories', () => {
     it('filters by tag and sends repeated tags params', async () => {
         let lastUrl = '';
         server.use(
-            ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+            ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
             http.get('/api/families/f-1/meals', ({ request }) => {
                 lastUrl = request.url;
                 return HttpResponse.json(mealsEnvelope(meals));
@@ -369,31 +364,9 @@ describe('MealPicker tags and categories', () => {
         );
     });
 
-    it('filters by category and sends repeated categories params', async () => {
-        let lastUrl = '';
-        server.use(
-            ...taxonomyHandlers([], [tag('c-1', 'Dinner')]),
-            http.get('/api/families/f-1/meals', ({ request }) => {
-                lastUrl = request.url;
-                return HttpResponse.json(mealsEnvelope(meals));
-            }),
-        );
-
-        renderWithProviders(
-            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
-        );
-        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
-
-        await userEvent.click(await screen.findByRole('button', { name: 'Dinner' }));
-
-        await waitFor(() =>
-            expect(new URL(lastUrl).searchParams.getAll('categories')).toEqual(['Dinner']),
-        );
-    });
-
     it('still invokes onSelect when a taxonomy filter is present', async () => {
         server.use(
-            ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+            ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
             http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
         const onSelect = vi.fn();

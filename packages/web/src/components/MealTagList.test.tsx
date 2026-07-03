@@ -1,27 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import MealTagList from './MealTagList';
-import type { Tag, Category } from '../api/taxonomy';
+import type { Tag } from '../api/taxonomy';
 
 function tag(id: string, name: string): Tag {
   return { id, name, familyId: 'f-1' };
 }
-function category(id: string, name: string): Category {
-  return { id, name, familyId: 'f-1' };
-}
 
 describe('MealTagList', () => {
-  it('renders tags before categories as pills', () => {
-    render(
-      <MealTagList
-        tags={[tag('t-1', 'Weeknight')]}
-        categories={[category('c-1', 'Dinner')]}
-      />,
-    );
+  it('renders tags as pills', () => {
+    render(<MealTagList tags={[tag('t-1', 'Weeknight')]} />);
 
-    const region = screen.getByLabelText('Tags and categories');
-    const pills = within(region).getAllByText(/Weeknight|Dinner/);
-    expect(pills.map(p => p.textContent)).toEqual(['Weeknight', 'Dinner']);
+    const region = screen.getByLabelText('Tags');
+    const pills = within(region).getAllByText(/Weeknight/);
+    expect(pills.map(p => p.textContent)).toEqual(['Weeknight']);
   });
 
   it('caps the visible pills and collapses the rest into a +N chip', () => {
@@ -49,33 +41,26 @@ describe('MealTagList', () => {
     expect(screen.getByLabelText('2 more')).toBeInTheDocument();
   });
 
-  it('renders nothing when there are no tags or categories', () => {
-    const { container } = render(<MealTagList tags={[]} categories={[]} />);
+  it('renders nothing when there are no tags', () => {
+    const { container } = render(<MealTagList tags={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('reserves a placeholder row when asked, even with no pills', () => {
-    const { container } = render(
-      <MealTagList tags={[]} categories={[]} reserveHeight />,
-    );
+    const { container } = render(<MealTagList tags={[]} reserveHeight />);
     // A spacer div is rendered so sibling cards stay aligned.
     expect(container.firstChild).not.toBeNull();
-    expect(screen.queryByLabelText('Tags and categories')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Tags')).not.toBeInTheDocument();
   });
 
-  it('color-codes tags and categories differently', () => {
-    render(
-      <MealTagList tags={[tag('t-1', 'Weeknight')]} categories={[category('c-1', 'Dinner')]} />,
-    );
+  it('color-codes tag pills', () => {
+    render(<MealTagList tags={[tag('t-1', 'Weeknight')]} />);
     expect(screen.getByText('Weeknight').className).toContain('text-blue-700');
-    expect(screen.getByText('Dinner').className).toContain('text-purple-700');
   });
 
   it('renders pills as non-interactive elements (no buttons or links)', () => {
-    render(
-      <MealTagList tags={[tag('t-1', 'Weeknight')]} categories={[category('c-1', 'Dinner')]} />,
-    );
-    const region = screen.getByLabelText('Tags and categories');
+    render(<MealTagList tags={[tag('t-1', 'Weeknight')]} />);
+    const region = screen.getByLabelText('Tags');
     expect(within(region).queryByRole('button')).not.toBeInTheDocument();
     expect(within(region).queryByRole('link')).not.toBeInTheDocument();
   });

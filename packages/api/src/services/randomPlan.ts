@@ -27,8 +27,6 @@ export type Rng = () => number;
  * empty filter set selects from the family's entire non-placeholder catalog.
  */
 export interface RandomSelectFilters {
-  /** Category names (case-insensitive). OR-within, matched on `nameNormalized`. */
-  categories?: string[];
   /** Tag names (case-insensitive). OR-within, matched on `nameNormalized`. */
   tags?: string[];
   /**
@@ -65,9 +63,6 @@ export function buildCandidateWhere(
   const tagNames = (filters.tags ?? [])
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
-  const categoryNames = (filters.categories ?? [])
-    .map((c) => c.trim().toLowerCase())
-    .filter(Boolean);
   const collectionNames = (filters.collections ?? [])
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
@@ -80,11 +75,6 @@ export function buildCandidateWhere(
   }
   if (tagNames.length) {
     where.tags = { some: { tag: { nameNormalized: { in: tagNames } } } };
-  }
-  if (categoryNames.length) {
-    where.categories = {
-      some: { category: { nameNormalized: { in: categoryNames } } },
-    };
   }
   if (collectionNames.length) {
     where.collections = {

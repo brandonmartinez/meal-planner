@@ -361,12 +361,12 @@ describe('MealFormPage accessibility', () => {
   });
 });
 
-describe('MealFormPage tags and categories', () => {
-  it('sends tags and categories arrays when creating a meal', async () => {
-    let body: { tags?: unknown; categories?: unknown } = {};
+describe('MealFormPage tags', () => {
+  it('sends a tags array when creating a meal', async () => {
+    let body: { tags?: unknown } = {};
     server.use(
       http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
-        body = (await request.json()) as { tags?: unknown; categories?: unknown };
+        body = (await request.json()) as { tags?: unknown };
         return HttpResponse.json({ id: 'm-1' });
       }),
     );
@@ -375,19 +375,17 @@ describe('MealFormPage tags and categories', () => {
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
     await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'Weeknight{Enter}');
-    await userEvent.type(screen.getByRole('combobox', { name: 'Categories' }), 'Dinner{Enter}');
     await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
     expect(body.tags).toEqual(['Weeknight']);
-    expect(body.categories).toEqual(['Dinner']);
   });
 
-  it('sends empty tags/categories arrays when none are assigned', async () => {
-    let body: { tags?: unknown; categories?: unknown } = {};
+  it('sends an empty tags array when none are assigned', async () => {
+    let body: { tags?: unknown } = {};
     server.use(
       http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
-        body = (await request.json()) as { tags?: unknown; categories?: unknown };
+        body = (await request.json()) as { tags?: unknown };
         return HttpResponse.json({ id: 'm-1' });
       }),
     );
@@ -399,11 +397,10 @@ describe('MealFormPage tags and categories', () => {
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
     expect(body.tags).toEqual([]);
-    expect(body.categories).toEqual([]);
   });
 
-  it('seeds existing tags/categories and persists a removal on edit', async () => {
-    let body: { tags?: unknown; categories?: unknown } = {};
+  it('seeds existing tags and persists a removal on edit', async () => {
+    let body: { tags?: unknown } = {};
     server.use(
       http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
         HttpResponse.json({
@@ -417,12 +414,11 @@ describe('MealFormPage tags and categories', () => {
             { id: 't-1', name: 'Weeknight', familyId: FAMILY_ID },
             { id: 't-2', name: 'Vegetarian', familyId: FAMILY_ID },
           ],
-          categories: [{ id: 'c-1', name: 'Dinner', familyId: FAMILY_ID }],
           ingredients: [],
         }),
       ),
       http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
-        body = (await request.json()) as { tags?: unknown; categories?: unknown };
+        body = (await request.json()) as { tags?: unknown };
         return HttpResponse.json({ id: 'm-1' });
       }),
     );
@@ -432,7 +428,6 @@ describe('MealFormPage tags and categories', () => {
     // Existing assignments hydrate as removable pills.
     expect(await screen.findByRole('button', { name: 'Remove Weeknight' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove Vegetarian' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Remove Dinner' })).toBeInTheDocument();
 
     // Drop one tag, then save — the reduced array is sent.
     await userEvent.click(screen.getByRole('button', { name: 'Remove Vegetarian' }));
@@ -440,7 +435,6 @@ describe('MealFormPage tags and categories', () => {
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
     expect(body.tags).toEqual(['Weeknight']);
-    expect(body.categories).toEqual(['Dinner']);
   });
 });
 

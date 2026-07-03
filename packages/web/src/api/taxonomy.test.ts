@@ -22,18 +22,6 @@ describe("taxonomy api client", () => {
     ]);
   });
 
-  it("listCategories unwraps the { categories } envelope into a plain array", async () => {
-    server.use(
-      http.get("/api/families/f-1/categories", () =>
-        HttpResponse.json({
-          categories: [{ id: "c-1", name: "Dinner", familyId: "f-1" }],
-        }),
-      ),
-    );
-    const categories = await taxonomyApi.listCategories("f-1");
-    expect(categories).toEqual([{ id: "c-1", name: "Dinner", familyId: "f-1" }]);
-  });
-
   it("listTags propagates the parsed backend error message", async () => {
     server.use(
       http.get("/api/families/f-1/tags", () =>
@@ -41,16 +29,5 @@ describe("taxonomy api client", () => {
       ),
     );
     await expect(taxonomyApi.listTags("f-1")).rejects.toThrow("family not found");
-  });
-
-  it("listCategories propagates the parsed backend error message", async () => {
-    server.use(
-      http.get("/api/families/f-1/categories", () =>
-        HttpResponse.json({ error: "family not found" }, { status: 404 }),
-      ),
-    );
-    await expect(taxonomyApi.listCategories("f-1")).rejects.toThrow(
-      "family not found",
-    );
   });
 });

@@ -20,7 +20,6 @@ model Family {
   weekPlans        WeekPlan[]
   agentCredentials AgentCredential[]
   tags             Tag[]
-  categories       Category[]
   imageAssets      ImageAsset[]
   recipeCollections RecipeCollection[]
   planningTemplates PlanningTemplate[]
@@ -74,7 +73,6 @@ model Meal {
   ingredients          MealIngredient[]
   suggestions          MealSuggestion[]
   tags                 MealTag[]
-  categories           MealCategory[]
   instructions         MealInstruction[]
   imageAssets          ImageAsset[]
   collections          MealRecipeCollection[]
@@ -152,31 +150,13 @@ model Tag {
   @@index([familyId])
 }
 
-/// Family-scoped category taxonomy (issue #107). Structurally identical to Tag
-/// but a separate model so a tag and a category may share a name without
-/// colliding. Same case-insensitive per-family uniqueness and Restrict on the
-/// Family relation.
-model Category {
-  id             String         @id @default(uuid())
-  name           String
-  nameNormalized String
-  family         Family         @relation(fields: [familyId], references: [id], onDelete: Restrict)
-  familyId       String
-  meals          MealCategory[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  @@unique([familyId, nameNormalized])
-  @@index([familyId])
-}
-
-/// Family-scoped grocery aisle categories (issue #119). Unlike Tag/Category
-/// (which are FK-joined to meals), this model is an advisory *pick-list* layered
+/// Family-scoped grocery aisle categories (issue #119). Unlike Tag
+/// (which is FK-joined to meals), this model is an advisory *pick-list* layered
 /// over the shared INGREDIENT_CATEGORIES defaults: `MealIngredient.category` and
 /// `GroceryItem.category` remain free-form `String?` and are NOT foreign keys to
 /// this table. Families add custom aisle names here; the effective list a client
 /// offers is `INGREDIENT_CATEGORIES ∪ custom rows`. Same case-insensitive
-/// per-family uniqueness and Restrict on the Family relation as Tag/Category.
+/// per-family uniqueness and Restrict on the Family relation as Tag.
 model GroceryCategory {
   id             String   @id @default(uuid())
   name           String
@@ -202,18 +182,6 @@ model MealTag {
 
   @@id([mealId, tagId])
   @@index([tagId])
-}
-
-/// Explicit many-to-many join between Meal and Category. Same composite PK and
-/// dual-cascade semantics as MealTag.
-model MealCategory {
-  meal       Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  mealId     String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  categoryId String
-
-  @@id([mealId, categoryId])
-  @@index([categoryId])
 }
 
 model WeekPlan {
@@ -375,12 +343,12 @@ model ImageAsset {
 
 /// Family-scoped, curated recipe collection (issue #109) — a named list a meal
 /// can belong to (e.g. "Weeknight Dinners", "Holiday Baking"). Deliberately a
-/// DISTINCT model from Tag/Category (curated lists, not free-form taxonomy) and
-/// structurally mirrors them: case-insensitively unique within a family via
+/// DISTINCT model from Tag (curated lists, not free-form taxonomy) and
+/// structurally mirrors it: case-insensitively unique within a family via
 /// `nameNormalized` (`lower(trim(name))`, computed in the service layer) while
 /// `name` preserves display casing. Adds an optional `description` (a curated
 /// list carries a blurb; only the collection NAME round-trips through CSV). The
-/// Family relation is `onDelete: Restrict`, mirroring Tag/Category.
+/// Family relation is `onDelete: Restrict`, mirroring Tag.
 model RecipeCollection {
   id             String                 @id @default(uuid())
   name           String
@@ -399,7 +367,7 @@ model RecipeCollection {
 /// Explicit many-to-many join between Meal and RecipeCollection. Composite
 /// primary key prevents duplicate memberships; `onDelete: Cascade` on BOTH
 /// foreign keys means deleting a meal OR a collection cleans up its join rows
-/// automatically (same dual-cascade semantics as MealTag/MealCategory).
+/// automatically (same dual-cascade semantics as MealTag).
 model MealRecipeCollection {
   meal               Meal             @relation(fields: [mealId], references: [id], onDelete: Cascade)
   mealId             String
@@ -416,7 +384,7 @@ model MealRecipeCollection {
 /// scheduleMeal). Structurally mirrors RecipeCollection: case-insensitively
 /// unique within a family via `nameNormalized` (`lower(trim(name))`, computed in
 /// the service layer) while `name` preserves display casing. The Family relation
-/// is `onDelete: Restrict`, mirroring RecipeCollection/Tag/Category so family
+/// is `onDelete: Restrict`, mirroring RecipeCollection/Tag so family
 /// deletion stays guarded consistently.
 model PlanningTemplate {
   id             String                  @id @default(uuid())
@@ -438,7 +406,7 @@ model PlanningTemplate {
 /// is reusable across weeks. `onDelete: Cascade` on BOTH foreign keys: deleting
 /// the template drops its entries, and deleting a meal silently removes the
 /// entries that referenced it (same dual-cascade join semantics as
-/// MealTag/MealCategory/MealRecipeCollection). This keeps the template valid and
+/// MealTag/MealRecipeCollection). This keeps the template valid and
 /// ensures `apply` never dereferences a dangling meal.
 model PlanningTemplateEntry {
   id         String           @id @default(uuid())

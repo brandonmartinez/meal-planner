@@ -190,7 +190,7 @@ describe('MealsPage export', () => {
       reader.readAsText(capturedBlob!);
     });
     expect(text.split('\n')[0]).toBe(
-      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories,collections,instructions',
+      'meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,collections,instructions',
     );
     expect(text).toContain('Tacos,Yum,EASY,Tortillas,6,,produce');
 
@@ -495,20 +495,14 @@ function tag(id: string, name: string) {
   return { id, name, familyId: FAMILY_ID };
 }
 
-function taxonomyHandlers(
-  tags: ReturnType<typeof tag>[],
-  categories: ReturnType<typeof tag>[],
-) {
+function taxonomyHandlers(tags: ReturnType<typeof tag>[]) {
   return [
     http.get(`/api/families/${FAMILY_ID}/tags`, () => HttpResponse.json({ tags })),
-    http.get(`/api/families/${FAMILY_ID}/categories`, () =>
-      HttpResponse.json({ categories }),
-    ),
   ];
 }
 
-describe('MealsPage tags and categories', () => {
-  it('renders compact tag/category pills on cards with +N overflow', async () => {
+describe('MealsPage tags', () => {
+  it('renders compact tag pills on cards with +N overflow', async () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
@@ -517,8 +511,12 @@ describe('MealsPage tags and categories', () => {
             meal({
               id: 'm-1',
               name: 'Tacos',
-              tags: [tag('t-1', 'Weeknight'), tag('t-2', 'Spicy'), tag('t-3', 'Quick')],
-              categories: [tag('c-1', 'Dinner')],
+              tags: [
+                tag('t-1', 'Weeknight'),
+                tag('t-2', 'Spicy'),
+                tag('t-3', 'Quick'),
+                tag('t-4', 'Fresh'),
+              ],
             }),
           ]),
         ),
@@ -528,7 +526,7 @@ describe('MealsPage tags and categories', () => {
     renderWithProviders(<MealsPage />);
 
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
-    // First 3 chips (tags first) render; the 4th (category) collapses into +1.
+    // First 3 tag chips render; the 4th collapses into +1.
     expect(screen.getByText('Weeknight')).toBeInTheDocument();
     expect(screen.getByText('Spicy')).toBeInTheDocument();
     expect(screen.getByText('Quick')).toBeInTheDocument();
@@ -539,7 +537,7 @@ describe('MealsPage tags and categories', () => {
     const urls: string[] = [];
     server.use(
       authMeWithFamily(),
-      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
       http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
         urls.push(request.url);
         return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
@@ -562,34 +560,11 @@ describe('MealsPage tags and categories', () => {
     );
   });
 
-  it('filters by category and sends repeated categories params', async () => {
-    const urls: string[] = [];
-    server.use(
-      authMeWithFamily(),
-      ...taxonomyHandlers([], [tag('c-1', 'Dinner')]),
-      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
-        urls.push(request.url);
-        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
-      }),
-    );
-
-    renderWithProviders(<MealsPage />);
-    expect(await screen.findByText('Tacos')).toBeInTheDocument();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Dinner' }));
-
-    await waitFor(() =>
-      expect(new URL(urls[urls.length - 1]).searchParams.getAll('categories')).toEqual([
-        'Dinner',
-      ]),
-    );
-  });
-
   it('OR-within-facet: selecting two tags sends both as repeated params', async () => {
     const urls: string[] = [];
     server.use(
       authMeWithFamily(),
-      ...taxonomyHandlers([tag('t-1', 'Weeknight'), tag('t-2', 'Vegan')], []),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight'), tag('t-2', 'Vegan')]),
       http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
         urls.push(request.url);
         return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
@@ -613,7 +588,7 @@ describe('MealsPage tags and categories', () => {
     const urls: string[] = [];
     server.use(
       authMeWithFamily(),
-      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
       http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
         urls.push(request.url);
         return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
@@ -637,7 +612,7 @@ describe('MealsPage tags and categories', () => {
     const urls: string[] = [];
     server.use(
       authMeWithFamily(),
-      ...taxonomyHandlers([tag('t-1', 'Weeknight')], []),
+      ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
       http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
         urls.push(request.url);
         return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
@@ -660,7 +635,7 @@ describe('MealsPage tags and categories', () => {
     );
   });
 
-  it('hides the tag/category filter groups when the family has no taxonomy', async () => {
+  it('hides the tag filter group when the family has no taxonomy', async () => {
     server.use(
       authMeWithFamily(),
       http.get(`/api/families/${FAMILY_ID}/meals`, () =>
@@ -673,9 +648,6 @@ describe('MealsPage tags and categories', () => {
 
     // Default MSW taxonomy handlers return empty lists → no filter groups.
     expect(screen.queryByRole('group', { name: 'Filter by tag' })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('group', { name: 'Filter by category' }),
-    ).not.toBeInTheDocument();
   });
 });
 
@@ -700,7 +672,7 @@ describe('MealsPage collection filter', () => {
     renderWithProviders(<MealsPage />);
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
 
-    // The collection filter is a dropdown (distinct from the tag/category chip
+    // The collection filter is a dropdown (distinct from the tag chip
     // rows), and only appears once at least one collection exists.
     const select = await screen.findByLabelText('Collection');
     fireEvent.change(select, { target: { value: 'Weeknight' } });

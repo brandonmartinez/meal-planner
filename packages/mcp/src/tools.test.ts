@@ -135,7 +135,7 @@ describe("createToolHandlers", () => {
     });
   });
 
-  it("list_meals forwards tag and category filters to the client (#107, parity rows 7/8)", async () => {
+  it("list_meals forwards tag filters to the client (#107, parity rows 7/8)", async () => {
     const client = stubClient();
     const envelope = { items: [], total: 0, limit: 25, offset: 0, hasMore: false };
     client.listMeals.mockResolvedValue(envelope);
@@ -146,7 +146,6 @@ describe("createToolHandlers", () => {
 
     await handlers.list_meals({
       tags: ["Quick", "Weeknight"],
-      categories: ["Dinner"],
     });
 
     expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
@@ -155,7 +154,6 @@ describe("createToolHandlers", () => {
       favorite: undefined,
       minRating: undefined,
       tags: ["Quick", "Weeknight"],
-      categories: ["Dinner"],
       sort: undefined,
       order: undefined,
       limit: undefined,
@@ -287,7 +285,7 @@ describe("createToolHandlers", () => {
     expect(JSON.parse(textOf(result))).toEqual({ id: "meal-new" });
   });
 
-  it("create_meal forwards tags and categories by name (#107, parity row 7)", async () => {
+  it("create_meal forwards tags by name (#107, parity row 7)", async () => {
     const client = stubClient();
     client.createMeal.mockResolvedValue({ id: "meal-new" });
     const handlers = createToolHandlers(
@@ -298,7 +296,6 @@ describe("createToolHandlers", () => {
     const input = {
       name: "Tacos",
       tags: ["Quick", "Weeknight"],
-      categories: ["Dinner"],
     };
     await handlers.create_meal(input);
 
@@ -406,7 +403,7 @@ describe("createToolHandlers", () => {
     });
   });
 
-  it("update_meal forwards tags and clears categories with [] (#107, parity row 7)", async () => {
+  it("update_meal forwards tags and clears them with [] (#107, parity row 7)", async () => {
     const client = stubClient();
     client.updateMeal.mockResolvedValue({ id: "meal-1" });
     const handlers = createToolHandlers(
@@ -416,12 +413,10 @@ describe("createToolHandlers", () => {
 
     await handlers.update_meal({
       mealId: "meal-1",
-      tags: ["Quick"],
-      categories: [],
+      tags: [],
     });
     expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
-      tags: ["Quick"],
-      categories: [],
+      tags: [],
     });
   });
 
@@ -773,7 +768,6 @@ describe("createToolHandlers", () => {
 
     const result = await handlers.fill_week({
       weekStart: "2026-07-06",
-      categories: ["dinner"],
       tags: ["quick"],
       collections: ["Weeknights"],
       difficulty: ["EASY"],
@@ -784,7 +778,6 @@ describe("createToolHandlers", () => {
     });
 
     expect(client.fillWeek).toHaveBeenCalledWith(FAMILY, "2026-07-06", {
-      categories: ["dinner"],
       tags: ["quick"],
       collections: ["Weeknights"],
       difficulty: ["EASY"],
@@ -847,7 +840,7 @@ describe("registerTools", () => {
     }
   });
 
-  it("documents the tag/category filter facets in the list_meals description (#107, parity row 8)", () => {
+  it("documents the tag filter facets in the list_meals description (#107, parity row 8)", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -860,19 +853,18 @@ describe("registerTools", () => {
     expect(listMealsCall).toBeDefined();
     const description = (listMealsCall?.[1] as { description: string })
       .description;
-    // Row 8: the tool description must advertise the new filter facets so an
-    // agent knows tag/category filtering exists and how it composes.
+    // Row 8: the tool description must advertise the filter facets so an
+    // agent knows tag filtering exists and how it composes.
     expect(description).toContain("tag filter");
-    expect(description).toContain("category filter");
     // OR-within-facet / AND-across-facets semantics are documented.
     expect(description).toMatch(/OR'd/);
     expect(description).toMatch(/AND'd/);
 
-    // The input schema exposes tags + categories filter params.
+    // The input schema exposes the tags filter param.
     const schema = (listMealsCall?.[1] as { inputSchema: Record<string, unknown> })
       .inputSchema;
     expect(schema).toHaveProperty("tags");
-    expect(schema).toHaveProperty("categories");
+    expect(schema).not.toHaveProperty("categories");
   });
 
   it("documents instruction replace-all in the update_meal description and schema (#100, parity row 8)", () => {

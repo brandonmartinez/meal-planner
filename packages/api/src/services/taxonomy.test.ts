@@ -3,16 +3,8 @@ import { prismaMock } from "../../tests/helpers/prisma.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
 
-const {
-  normalizeName,
-  syncMealTaxonomy,
-  listTags,
-  listCategories,
-  createTag,
-  createCategory,
-  deleteTag,
-  deleteCategory,
-} = await import("./taxonomy.js");
+const { normalizeName, syncMealTaxonomy, listTags, createTag, deleteTag } =
+  await import("./taxonomy.js");
 
 describe("taxonomy service", () => {
   describe("normalizeName", () => {
@@ -27,16 +19,14 @@ describe("taxonomy service", () => {
 
   describe("syncMealTaxonomy", () => {
     it("leaves tags untouched when tags is undefined (no delete/upsert)", async () => {
-      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", undefined, undefined);
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", undefined);
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
-      expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
-      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
     });
 
     it("clears all tags when passed an empty array (delete, no create)", async () => {
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 1 } as never);
-      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", [], undefined);
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", []);
       expect(prismaMock.mealTag.deleteMany).toHaveBeenCalledWith({
         where: { mealId: "m-1" },
       });
@@ -51,13 +41,7 @@ describe("taxonomy service", () => {
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.mealTag.createMany.mockResolvedValue({ count: 2 } as never);
 
-      await syncMealTaxonomy(
-        prismaMock,
-        "fam-1",
-        "m-1",
-        ["Quick", "Vegetarian"],
-        undefined,
-      );
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", ["Quick", "Vegetarian"]);
 
       // Upsert is keyed by (familyId, nameNormalized) so names can never
       // resolve across families.
@@ -92,13 +76,7 @@ describe("taxonomy service", () => {
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
 
-      await syncMealTaxonomy(
-        prismaMock,
-        "fam-1",
-        "m-1",
-        ["Quick", "quick", "QUICK"],
-        undefined,
-      );
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", ["Quick", "quick", "QUICK"]);
 
       // Only one upsert despite three case variants.
       expect(prismaMock.tag.upsert).toHaveBeenCalledTimes(1);
@@ -115,13 +93,7 @@ describe("taxonomy service", () => {
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
 
-      await syncMealTaxonomy(
-        prismaMock,
-        "fam-1",
-        "m-1",
-        ["  ", "", "Real"],
-        undefined,
-      );
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", ["  ", "", "Real"]);
 
       expect(prismaMock.tag.upsert).toHaveBeenCalledTimes(1);
       const arg = prismaMock.tag.upsert.mock.calls[0][0] as {
@@ -132,40 +104,14 @@ describe("taxonomy service", () => {
 
     it("does not create join rows when all resolved names are blank (empty after dedupe)", async () => {
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
-      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", ["  "], undefined);
+      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", ["  "]);
       // deleteMany still runs (replace-set), but nothing to create.
       expect(prismaMock.mealTag.deleteMany).toHaveBeenCalled();
       expect(prismaMock.mealTag.createMany).not.toHaveBeenCalled();
     });
-
-    it("syncs categories independently of tags via category upsert", async () => {
-      prismaMock.category.upsert.mockResolvedValue({ id: "c-1" } as never);
-      prismaMock.mealCategory.deleteMany.mockResolvedValue({
-        count: 0,
-      } as never);
-      prismaMock.mealCategory.createMany.mockResolvedValue({
-        count: 1,
-      } as never);
-
-      await syncMealTaxonomy(prismaMock, "fam-1", "m-1", undefined, ["Dinner"]);
-
-      // Tags untouched, categories resolved+assigned.
-      expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
-      const arg = prismaMock.category.upsert.mock.calls[0][0] as {
-        where: { familyId_nameNormalized: unknown };
-      };
-      expect(arg.where.familyId_nameNormalized).toEqual({
-        familyId: "fam-1",
-        nameNormalized: "dinner",
-      });
-      const createArg = prismaMock.mealCategory.createMany.mock.calls[0][0] as {
-        data: { mealId: string; categoryId: string }[];
-      };
-      expect(createArg.data).toEqual([{ mealId: "m-1", categoryId: "c-1" }]);
-    });
   });
 
-  describe("listTags / listCategories", () => {
+  describe("listTags", () => {
     it("lists tags scoped to the family, sorted by display name", async () => {
       prismaMock.tag.findMany.mockResolvedValue([] as never);
       await listTags("fam-1");
@@ -174,18 +120,9 @@ describe("taxonomy service", () => {
         orderBy: { name: "asc" },
       });
     });
-
-    it("lists categories scoped to the family, sorted by display name", async () => {
-      prismaMock.category.findMany.mockResolvedValue([] as never);
-      await listCategories("fam-2");
-      expect(prismaMock.category.findMany).toHaveBeenCalledWith({
-        where: { familyId: "fam-2" },
-        orderBy: { name: "asc" },
-      });
-    });
   });
 
-  describe("createTag / createCategory", () => {
+  describe("createTag", () => {
     it("upserts a tag within the family (idempotent by normalized name)", async () => {
       prismaMock.tag.upsert.mockResolvedValue({ id: "t-1" } as never);
       await createTag("fam-1", "  Quick  ");
@@ -211,16 +148,9 @@ describe("taxonomy service", () => {
       );
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
     });
-
-    it("throws on an empty category name", async () => {
-      await expect(createCategory("fam-1", "")).rejects.toThrow(
-        /Category name cannot be empty/,
-      );
-      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
-    });
   });
 
-  describe("deleteTag / deleteCategory (cross-family isolation)", () => {
+  describe("deleteTag (cross-family isolation)", () => {
     it("deletes a tag scoped to the family", async () => {
       prismaMock.tag.deleteMany.mockResolvedValue({ count: 1 } as never);
       await deleteTag("fam-1", "t-1");
@@ -234,21 +164,6 @@ describe("taxonomy service", () => {
       // Family B trying to delete Family A's tag id resolves to 0 rows.
       await expect(deleteTag("fam-B", "t-owned-by-A")).rejects.toThrow(
         /Tag not found/,
-      );
-    });
-
-    it("deletes a category scoped to the family", async () => {
-      prismaMock.category.deleteMany.mockResolvedValue({ count: 1 } as never);
-      await deleteCategory("fam-1", "c-1");
-      expect(prismaMock.category.deleteMany).toHaveBeenCalledWith({
-        where: { id: "c-1", familyId: "fam-1" },
-      });
-    });
-
-    it("throws when the category does not belong to the family (count 0)", async () => {
-      prismaMock.category.deleteMany.mockResolvedValue({ count: 0 } as never);
-      await expect(deleteCategory("fam-B", "c-owned-by-A")).rejects.toThrow(
-        /Category not found/,
       );
     });
   });

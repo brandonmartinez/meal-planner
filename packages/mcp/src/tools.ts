@@ -109,7 +109,6 @@ export function createToolHandlers(
       favorite?: boolean;
       minRating?: number;
       tags?: string[];
-      categories?: string[];
       collections?: string[];
       sort?: string;
       order?: string;
@@ -123,7 +122,6 @@ export function createToolHandlers(
           favorite: args.favorite,
           minRating: args.minRating,
           tags: args.tags,
-          categories: args.categories,
           collections: args.collections,
           sort: args.sort,
           order: args.order,
@@ -168,7 +166,6 @@ export function createToolHandlers(
 
     schedule_random_meal: (args: {
       date: string;
-      categories?: string[];
       tags?: string[];
       difficulty?: ("EASY" | "MEDIUM" | "HARD")[];
       favorite?: boolean;
@@ -177,7 +174,6 @@ export function createToolHandlers(
       run(() =>
         client.scheduleRandomMeal(familyId, {
           date: args.date,
-          categories: args.categories,
           tags: args.tags,
           difficulty: args.difficulty,
           favorite: args.favorite,
@@ -220,7 +216,6 @@ export function createToolHandlers(
 
     fill_week: (args: {
       weekStart: string;
-      categories?: string[];
       tags?: string[];
       collections?: string[];
       difficulty?: ("EASY" | "MEDIUM" | "HARD")[];
@@ -254,7 +249,6 @@ export function createToolHandlers(
         category?: string;
       }[];
       tags?: string[];
-      categories?: string[];
       collections?: string[];
       instructions?: {
         text: string;
@@ -282,7 +276,6 @@ export function createToolHandlers(
         category?: string;
       }[];
       tags?: string[];
-      categories?: string[];
       collections?: string[];
       instructions?: {
         text: string;
@@ -360,11 +353,11 @@ export function registerTools(
         "indicator, last-cooked date, and all-time times-cooked count. " +
         "Supports name search, difficulty " +
         "filter, favorite filter, minimum-rating filter, tag filter, " +
-        "category filter, collection filter, sort " +
+        "collection filter, sort " +
         "(name|lastCooked|created), pagination " +
         "(limit/offset), and sort order (asc|desc). Multiple values within " +
-        "the tags (or categories, or collections) filter are OR'd; the tags, " +
-        "categories, and collections filters are AND'd together and with the " +
+        "the tags (or collections) filter are OR'd; the tags " +
+        "and collections filters are AND'd together and with the " +
         "other filters. Requires the " +
         "meal_plan:read scope.",
       inputSchema: {
@@ -393,12 +386,6 @@ export function registerTools(
           .optional()
           .describe(
             "Filter by tag names (case-insensitive). Multiple tags are OR'd.",
-          ),
-        categories: z
-          .array(z.string().min(1))
-          .optional()
-          .describe(
-            "Filter by category names (case-insensitive). Multiple categories are OR'd.",
           ),
         collections: z
           .array(z.string().min(1))
@@ -631,23 +618,16 @@ export function registerTools(
         "Pick an ELIGIBLE meal at random and schedule it onto a calendar " +
         "date. Creates an unapproved meal suggestion; a parent (or an agent " +
         "with the approve scope) must approve it separately. Optional filters " +
-        "narrow the candidate pool before the random pick: categories, tags, " +
+        "narrow the candidate pool before the random pick: tags, " +
         "difficulty, favorite-only, and avoid-recent (exclude meals cooked " +
-        "within the last N days). Multiple values within the categories (or " +
-        "tags, or difficulty) filter are OR'd; the filters are AND'd together. " +
+        "within the last N days). Multiple values within the tags " +
+        "(or difficulty) filter are OR'd; the filters are AND'd together. " +
         "Fails with a 422 when no meal matches. Requires the meal_plan:schedule " +
         "scope.",
       inputSchema: {
         date: dateString.describe(
           "The calendar date to schedule the meal on (YYYY-MM-DD).",
         ),
-        categories: z
-          .array(z.string().min(1))
-          .optional()
-          .describe(
-            "Restrict candidates to these category names (case-insensitive). " +
-              "Multiple categories are OR'd.",
-          ),
         tags: z
           .array(z.string().min(1))
           .optional()
@@ -743,10 +723,10 @@ export function registerTools(
   server.registerTool(
     "fill_week",
     {
-      title: "Fill a week from categories/collections",
+      title: "Fill a week from tags/collections",
       description:
         "Fill the OPEN days of a target week (a Monday) with meals chosen at " +
-        "random from the eligible catalog, filtered by categories, tags, " +
+        "random from the eligible catalog, filtered by tags, " +
         "collections, difficulty, and favorite status. Each chosen meal becomes " +
         "a new UNAPPROVED suggestion on an open day, preserving the parent " +
         "approval workflow. Recently-cooked meals are avoided when " +
@@ -761,10 +741,6 @@ export function registerTools(
         weekStart: dateString.describe(
           "The Monday (YYYY-MM-DD) of the week to fill.",
         ),
-        categories: z
-          .array(z.string())
-          .optional()
-          .describe("Only choose meals in ANY of these categories."),
         tags: z
           .array(z.string())
           .optional()
@@ -907,13 +883,6 @@ export function registerTools(
             "Optional tag names to assign (case-insensitive, created within " +
               "the family if new).",
           ),
-        categories: z
-          .array(z.string().min(1))
-          .optional()
-          .describe(
-            "Optional category names to assign (case-insensitive, created " +
-              "within the family if new).",
-          ),
         collections: z
           .array(z.string().min(1))
           .optional()
@@ -1016,14 +985,6 @@ export function registerTools(
           .describe(
             "Replacement tag names (replaces all existing; case-insensitive, " +
               "created within the family if new). Pass [] to clear.",
-          ),
-        categories: z
-          .array(z.string().min(1))
-          .optional()
-          .describe(
-            "Replacement category names (replaces all existing; " +
-              "case-insensitive, created within the family if new). Pass [] " +
-              "to clear.",
           ),
         collections: z
           .array(z.string().min(1))

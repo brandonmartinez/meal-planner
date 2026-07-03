@@ -1,13 +1,12 @@
 import prisma from "../config/database.js";
 import type { Prisma } from "@prisma/client";
 
-/** The two family-scoped taxonomies meals can be assigned to. Kept as a shared
- *  helper (rather than two copy-pasted services) so tag and category behavior
- *  can never drift apart. */
-export type TaxonomyKind = "tag" | "category";
+/** The family-scoped taxonomy meals can be assigned to. Kept as a shared helper
+ *  (rather than an inline service) so tag behavior lives in one place. */
+export type TaxonomyKind = "tag";
 
-/** Case-insensitive uniqueness key. A tag/category is unique per family by this
- *  value; the original casing is preserved separately in `name` for display. */
+/** Case-insensitive uniqueness key. A tag is unique per family by this value;
+ *  the original casing is preserved separately in `name` for display. */
 export function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -52,24 +51,6 @@ async function resolveTagIds(
   return ids;
 }
 
-/** Category counterpart of {@link resolveTagIds}. */
-async function resolveCategoryIds(
-  tx: Prisma.TransactionClient,
-  familyId: string,
-  names: string[],
-): Promise<string[]> {
-  const ids: string[] = [];
-  for (const { name, nameNormalized } of dedupeNames(names)) {
-    const category = await tx.category.upsert({
-      where: { familyId_nameNormalized: { familyId, nameNormalized } },
-      create: { name, nameNormalized, familyId },
-      update: {},
-    });
-    ids.push(category.id);
-  }
-  return ids;
-}
-
 /** Replace-set the tag assignments for a meal. Clears existing joins then
  *  re-creates from `tagIds`. Caller must have already verified the meal is
  *  family-scoped and non-placeholder. */
@@ -87,53 +68,25 @@ async function assignTags(
   }
 }
 
-/** Category counterpart of {@link assignTags}. */
-async function assignCategories(
-  tx: Prisma.TransactionClient,
-  mealId: string,
-  categoryIds: string[],
-): Promise<void> {
-  await tx.mealCategory.deleteMany({ where: { mealId } });
-  if (categoryIds.length > 0) {
-    await tx.mealCategory.createMany({
-      data: categoryIds.map((categoryId) => ({ mealId, categoryId })),
-      skipDuplicates: true,
-    });
-  }
-}
-
-/** Resolve + assign tags and/or categories for a meal by name, within a family
- *  transaction. `undefined` means "leave untouched"; an empty array means
- *  "clear all". Intended to be called from inside the meal create/update
- *  `$transaction` after the meal row exists and the placeholder guard has run. */
+/** Resolve + assign tags for a meal by name, within a family transaction.
+ *  `undefined` means "leave untouched"; an empty array means "clear all".
+ *  Intended to be called from inside the meal create/update `$transaction`
+ *  after the meal row exists and the placeholder guard has run. */
 export async function syncMealTaxonomy(
   tx: Prisma.TransactionClient,
   familyId: string,
   mealId: string,
   tags: string[] | undefined,
-  categories: string[] | undefined,
 ): Promise<void> {
   if (tags !== undefined) {
     const tagIds = await resolveTagIds(tx, familyId, tags);
     await assignTags(tx, mealId, tagIds);
-  }
-  if (categories !== undefined) {
-    const categoryIds = await resolveCategoryIds(tx, familyId, categories);
-    await assignCategories(tx, mealId, categoryIds);
   }
 }
 
 /** List every tag for a family, sorted by display name. Family-scoped. */
 export async function listTags(familyId: string) {
   return prisma.tag.findMany({
-    where: { familyId },
-    orderBy: { name: "asc" },
-  });
-}
-
-/** List every category for a family, sorted by display name. Family-scoped. */
-export async function listCategories(familyId: string) {
-  return prisma.category.findMany({
     where: { familyId },
     orderBy: { name: "asc" },
   });
@@ -151,31 +104,9 @@ export async function createTag(familyId: string, name: string) {
   });
 }
 
-/** Create a single category by name within a family. See {@link createTag}. */
-export async function createCategory(familyId: string, name: string) {
-  const nameNormalized = normalizeName(name);
-  if (!nameNormalized) throw new Error("Category name cannot be empty");
-  return prisma.category.upsert({
-    where: { familyId_nameNormalized: { familyId, nameNormalized } },
-    create: { name: name.trim(), nameNormalized, familyId },
-    update: {},
-  });
-}
-
 /** Delete a tag by id, scoped to the family. Throws if the tag does not belong
  *  to the family (cross-family delete is impossible). Cascade removes joins. */
 export async function deleteTag(familyId: string, tagId: string): Promise<void> {
   const result = await prisma.tag.deleteMany({ where: { id: tagId, familyId } });
   if (result.count === 0) throw new Error("Tag not found");
-}
-
-/** Delete a category by id, scoped to the family. See {@link deleteTag}. */
-export async function deleteCategory(
-  familyId: string,
-  categoryId: string,
-): Promise<void> {
-  const result = await prisma.category.deleteMany({
-    where: { id: categoryId, familyId },
-  });
-  if (result.count === 0) throw new Error("Category not found");
 }

@@ -45,7 +45,6 @@ export interface Meal {
   familyId: string;
   ingredients?: MealIngredient[];
   tags?: Tag[];
-  categories?: Category[];
   instructions?: MealInstruction[];
   collections?: RecipeCollection[];
 }
@@ -79,16 +78,8 @@ export interface Tag {
   familyId: string;
 }
 
-/** A family-scoped category. Same shape and rules as {@link Tag} — a separate
- *  model so a "quick" tag and a "quick" category can coexist per family. */
-export interface Category {
-  id: string;
-  name: string;
-  familyId: string;
-}
-
 /** A family-scoped custom grocery aisle category (issue #119). Same shape and
- *  per-family uniqueness rules as {@link Tag}/{@link Category}, but it is an
+ *  per-family uniqueness rules as {@link Tag}, but it is an
  *  advisory pick-list layered over the shared `INGREDIENT_CATEGORIES` defaults —
  *  ingredient/grocery `category` values are stored as free-form strings and are
  *  NOT foreign keys to this record. The effective list a client offers is
@@ -101,7 +92,7 @@ export interface GroceryCategory {
 }
 
 /** A family-scoped, curated recipe collection (issue #109) — a named list a
- *  meal can belong to. Like {@link Tag}/{@link Category} the `nameNormalized`
+ *  meal can belong to. Like {@link Tag} the `nameNormalized`
  *  uniqueness key is a service-internal detail and NOT part of the wire
  *  contract, but a collection additionally carries an optional display
  *  `description` (a curated list may have a blurb). Only the collection `name`
