@@ -295,12 +295,10 @@ describe('DayCard', () => {
         expect(stamp).toBeInTheDocument();
         // object-cover prevents distortion
         expect(stamp).toHaveClass('object-cover');
-        // Definite non-zero width utility (w-16) — NOT the collapsed aspect-square-from-stretch pattern.
-        // This catches any regression back to absolute/inset-0 which caused the zero-width production bug.
-        expect(stamp).toHaveClass('w-16');
+        // Definite square (size-16) — both w+h are fixed px, NOT derived from stretch height.
+        // Catches any regression back to absolute/inset-0 or aspect-square-from-stretch (zero-width bug).
+        expect(stamp).toHaveClass('size-16');
         expect(stamp).not.toHaveClass('absolute');
-        // self-stretch keeps the stamp flush to the chip's top and bottom edges
-        expect(stamp).toHaveClass('self-stretch');
     });
 
     it('shows no stamp img when meal has no imageUrl', () => {

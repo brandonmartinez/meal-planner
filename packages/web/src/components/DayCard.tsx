@@ -151,7 +151,7 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
             <img
               src={imageUrl!}
               alt={mealName}
-              className="shrink-0 self-stretch w-16 sm:w-20 object-cover block"
+              className="shrink-0 size-16 sm:size-20 object-cover block"
             />
           )}
           <div className="flex-1 min-w-0 px-3 py-2">
