@@ -141,7 +141,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(prismaMock.recipeCollection.findMany).not.toHaveBeenCalled();
   });
 
-
+  it("schedule: POST suggestion attributes suggestedBy to the provisioning parent", async () => {
     mockCredential(["meal_plan:schedule"]);
     prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);
     prismaMock.meal.findFirst.mockResolvedValue({ id: "meal-1" } as never);
