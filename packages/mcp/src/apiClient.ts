@@ -3,6 +3,7 @@ import type {
   WeekPlanDTO,
   PreviousWeeksResponseDTO,
   MealSuggestionDTO,
+  RandomScheduleInputDTO,
   RepeatWeekExistingMode,
   AgentIdentityDTO,
   Meal,
@@ -218,6 +219,19 @@ export class MealPlannerApiClient {
     return this.request<MealSuggestionDTO>(
       "POST",
       `/api/agent/${encodeURIComponent(familyId)}/schedule`,
+      { body: input },
+    );
+  }
+
+  /** Pick an eligible meal at random (by optional filters) and schedule it onto
+   *  a calendar date (creates an unapproved suggestion). */
+  scheduleRandomMeal(
+    familyId: string,
+    input: RandomScheduleInputDTO,
+  ): Promise<MealSuggestionDTO> {
+    return this.request<MealSuggestionDTO>(
+      "POST",
+      `/api/agent/${encodeURIComponent(familyId)}/schedule/random`,
       { body: input },
     );
   }

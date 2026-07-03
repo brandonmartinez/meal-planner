@@ -32,9 +32,11 @@ vi.mock("../services/weekPlan.js", () => {
     repeatWeek: vi.fn(),
   };
 });
+vi.mock("../services/randomPlan.js", () => ({ scheduleRandomMeal: vi.fn() }));
 
 const { weekPlanRouter } = await import("./weekPlan.js");
 const weekPlanService = await import("../services/weekPlan.js");
+const randomPlanService = await import("../services/randomPlan.js");
 const { SuggestionError, MoveSuggestionError } = weekPlanService;
 
 const FAMILY_ID = "fam-1";
@@ -365,6 +367,111 @@ describe("POST /:familyId/weeks/:weekStart/repeat", () => {
     const res = buildFullRes();
     await handler(
       req("PARENT", { params, body: { sourceWeekStart: "2026-05-04" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("POST /:familyId/schedule/random", () => {
+  const handler = getRouteHandler(
+    weekPlanRouter,
+    "post",
+    "/:familyId/schedule/random",
+  );
+
+  const params = { familyId: FAMILY_ID };
+
+  it("201s with the unapproved suggestion and forwards normalized date + filters", async () => {
+    vi.mocked(randomPlanService.scheduleRandomMeal).mockResolvedValue({
+      id: "sug-1",
+      approved: false,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", {
+        params,
+        body: {
+          date: "2026-05-20",
+          categories: ["Dinner"],
+          difficulty: ["EASY"],
+          favorite: true,
+          avoidRecentDays: 7,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toEqual({ id: "sug-1", approved: false });
+    expect(randomPlanService.scheduleRandomMeal).toHaveBeenCalledWith({
+      familyId: FAMILY_ID,
+      date: new Date("2026-05-20T00:00:00Z"),
+      userId: USER_ID,
+      filters: {
+        categories: ["Dinner"],
+        difficulty: ["EASY"],
+        favorite: true,
+        avoidRecentDays: 7,
+      },
+    });
+  });
+
+  it("400s on Zod failure (missing date)", async () => {
+    const res = buildFullRes();
+    await handler(req("PARENT", { params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(randomPlanService.scheduleRandomMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a malformed date", async () => {
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { date: "05/20/2026" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(randomPlanService.scheduleRandomMeal).not.toHaveBeenCalled();
+  });
+
+  it("maps a 422 (no eligible meals) SuggestionError to its status code", async () => {
+    vi.mocked(randomPlanService.scheduleRandomMeal).mockRejectedValue(
+      new SuggestionError(422, "No eligible meals match the given filters"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { date: "2026-05-20" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+      error: "No eligible meals match the given filters",
+    });
+  });
+
+  it("maps a cross-family 404 SuggestionError to its status code", async () => {
+    vi.mocked(randomPlanService.scheduleRandomMeal).mockRejectedValue(
+      new SuggestionError(404, "Meal not found"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { date: "2026-05-20" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(randomPlanService.scheduleRandomMeal).mockRejectedValue(
+      new Error("db"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { date: "2026-05-20" } }),
       res,
       buildNext(),
     );

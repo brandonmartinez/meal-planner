@@ -278,6 +278,22 @@ export interface ScheduleMealRequestDTO {
   date: string;
 }
 
+/** The request body for `POST /families/:id/schedule/random` and the agent
+ *  mirror `POST /agent/:id/schedule/random` — pick an ELIGIBLE meal at random
+ *  by filters and schedule it onto `date` as a new UNAPPROVED suggestion (issue
+ *  #113). `date` is `YYYY-MM-DD`. Filters mirror the meals list vocabulary
+ *  (OR-within a facet, AND-across facets); all are optional. `avoidRecentDays`
+ *  excludes any meal cooked within that many days before `date`. Response reuses
+ *  `MealSuggestionDTO`. */
+export interface RandomScheduleInputDTO {
+  date: string;
+  categories?: string[];
+  tags?: string[];
+  difficulty?: Difficulty[];
+  favorite?: boolean;
+  avoidRecentDays?: number;
+}
+
 /** How a repeat-week copy treats a target week that already has suggestions:
  *  - `"error"` (default): refuse the whole operation with a 409 before writing,
  *    so an already-populated week is never silently duplicated.
