@@ -1,0 +1,62 @@
+# Autonomous Run Log — v0.5.0 completion
+
+**Operator:** Squad (Coordinator), running autonomously at brandonmartinez's request.
+**Mandate (2026-07-03T01:50 EDT):** *"Once this sprint ends, queue up the next one. For all remaining issues, organize into sprints and complete the work. If there are decisions that should be made, go with your recommended option, but create a detailed log that we can review at the end and we can make adjustments if needed."*
+
+This log records every non-trivial decision made while Brandon is away, with the option(s) considered, the option chosen, and rationale — so it can be reviewed and adjusted afterward.
+
+---
+
+## Scope reconciliation (start of run)
+
+Pulled all open issues + PRs at 2026-07-03T01:50 EDT. **Finding: every open issue already falls inside the existing Sprint 3 plan or the tracking epic — there are no net-new issues requiring a brand-new sprint.**
+
+| Issue | Title | State at start | Bucket |
+|---|---|---|---|
+| #104 | Uploaded image asset backend | merged (PR #137 `a9a5df5`), issue still open | close straggler |
+| #105 | Meal image upload UI | merged (PR #143 `9bb530d`), issue still open | close straggler |
+| #106 | Image cleanup/backup docs | merged (PR #141 `32c70de`), issue still open | close straggler |
+| #109 | Recipe collections backend | merged (PR #142 `68f57d3`), issue still open | close straggler |
+| #113 | Random meal selection | merged (PR #140 `e95372c`), issue still open | close straggler |
+| #120 | Ingredient normalization | PR #144 GREEN, gated | Sprint 3 Wave 3 |
+| #116 | Planning templates backend | building | Sprint 3 Wave 3 (migration keystone) |
+| #110 | Collections UI | building | Sprint 3 Wave 3 |
+| #115 | Category/collection week filling | not started | Sprint 3 Wave 4 |
+| #117 | Planning templates UI | not started | Sprint 3 Wave 4 |
+| #119 | Family-configurable grocery categories | not started | Sprint 3 Wave 4 (migration) |
+| #91 | Epic: expand recipe management | open | tracking — closes when children land |
+
+All issues are labeled `release:v0.5.0`.
+
+---
+
+## Decisions
+
+### D1 — Mandate interpretation: no separate "Sprint 4" needed
+- **Options:** (a) Invent a new Sprint 4 and re-file remaining issues into it; (b) Recognize all remaining open work already lives in Sprint 3 Waves 3–4 + epic #91, and drive that to completion.
+- **Chosen: (b).** Re-filing would be busywork — the plan already covers everything open. "The next sprint" is effectively finishing Sprint 3 Wave 4, then closing the release.
+- **Adjust if:** Brandon wants remaining work formally re-labeled into a distinct sprint milestone.
+
+### D2 — Close 5 done-but-open issues now
+- Issues #104/#105/#106/#109/#113 each have a verified merged PR on main but stayed open (PR bodies used "Refs #N", not a closing keyword).
+- **Chosen:** Close all 5 with a comment citing the merged PR + squash SHA. Low-risk housekeeping.
+
+### D3 — Wave 3 merge order: keystone-first
+- **Chosen:** Merge #116 (planning-templates backend, the wave's only migration) FIRST, then update-branch + merge #120 (PR #144), then #110 (collections UI). Migration keystone lands before dependents to avoid drift/rebase churn. #120 is migration-free and independent; #110 is web-only.
+
+### D4 — Wave 4 composition (one migration per wave)
+- **Chosen:** #119 (Saul, family grocery categories — the wave's ONLY schema/migration touch) + #115 (Livingston, category/collection week filling — service logic, no schema) + #117 (Linus, planning-templates UI — web-only, depends on #116 backend). Same conflict-isolation discipline as prior waves: exactly one migration-bearing lane.
+
+### D5 — v0.5.0 release: prepare, but HOLD publish for review
+- After all issues land and epic #91 closes, I will PREPARE release notes / changelog and stage the release, but I will NOT cut a git tag or publish a GitHub release autonomously.
+- **Rationale:** A tag/published release is user-facing and awkward to reverse. This is the one decision I'm deliberately leaving for Brandon rather than auto-executing. Everything up to "ready to tag" I will complete.
+- **Adjust if:** Brandon would rather I fully cut v0.5.0 unattended.
+
+---
+
+## Timeline / heartbeat
+- **01:50 EDT** — Autonomous run started. Scope reconciled; log created. Closing 5 stragglers. Wave 3 in flight (#116 building, #120 gated-green, #110 building).
+- **02:14 EDT** — Wave 3 keystone #116 (PR #146) MERGED → squash `e3083fe`. CI authoritatively green on Postgres 16.
+- **02:16 EDT** — #120 (PR #144) update-branch → CI green → MERGED squash `e604ab3`.
+- **02:19 EDT** — #110 (PR #145) update-branch → CI green → MERGED squash `e3b2651`. **Wave 3 COMPLETE** (all 3 issues on main). Local main synced to `e3b2651`. Merge order held keystone-first per D3.
+- **02:20 EDT** — Launching Wave 4 (autopilot): #119 (Saul, grocery categories migration keystone) + #115 (Livingston, week filling, no schema) + #117 (Linus, planning-templates UI, web-only). Scribe reconcile of Wave 3 decision inbox dispatched in parallel.

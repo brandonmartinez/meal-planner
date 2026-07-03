@@ -7,3 +7,7 @@
 📌 Team update (2026-07-02T19:16:33-04:00): Sprint 2 Waves 5–6 complete. #107 (family-scoped Tags & Categories backend) shipped PR #134 SHA 49343e7 with full REST + agent + MCP parity, CSV round-trip by name, `nameNormalized` unique per family, taxonomy service + join models, 958 tests green. #100 (rich recipe instructions) shipped PR #136 SHA 233597b with newline-delimited CSV, text + timerMinutes, position-based ordering, replace-all semantics, full parity + deny-by-default. Migration authoring standard established: offline `prisma migrate diff --script`, no shared-DB `migrate dev`. v0.4.0 recipe-metadata vertical complete. — logged by Scribe
 
 📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #109 recipe collections backend merged via PR #142 (68f57d3): additive RecipeCollection schema/join migration, CSV lockstep, REST/agent/MCP parity, and cross-family coverage. CI lesson: `pnpm -r run lint` runs ALL packages before tests and a single parse error short-circuits the whole job — lint-parse-check new test files locally before pushing. — logged by Scribe
+
+## 2026-07-03T02:23:57-0400 — Wave 3 shipped
+
+- Shipped #116 planning templates backend as the Wave 3 migration keystone; PR #146 squash `e3083fe` merged first. State reconciled by Scribe after Livingston #120 and Linus #110 also merged.

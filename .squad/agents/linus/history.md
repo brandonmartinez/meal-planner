@@ -36,3 +36,7 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 📌 Team update (2026-07-02T21:37:00-0400): Sprint 3 Wave 1 complete. Linus shipped #102 local cooking mode (frontend-only `/meals/:mealId/cook` + timers); Basher shipped #104 image asset backend; Livingston shipped #114 repeat previous week planning. Merges: #104 PR #137 SHA a9a5df5; #102 PR #138 SHA 6acf0d0; #114 PR #139 SHA 68b6637. — logged by Scribe
 
 📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #105 meal image upload UI merged via PR #143 (9bb530d): MealImageField link/upload mode, web image API + MSW handlers, unified imageUrl, and thumbnails. — logged by Scribe
+
+## 2026-07-03T02:23:57-0400 — Wave 3 shipped
+
+- Shipped #110 collections UI; PR #145 squash `e3b2651` merged after Saul #116 and Livingston #120. State reconciled by Scribe.

@@ -2,7 +2,6 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { Difficulty } from "@prisma/client";
 import {
-  INGREDIENT_CATEGORIES,
   MEAL_DIFFICULTIES,
 } from "@meal-planner/shared";
 import { authenticateAgent, requireScope } from "../middleware/agentAuth.js";
@@ -16,6 +15,7 @@ import * as mealService from "../services/meals.js";
 import * as collectionService from "../services/recipeCollections.js";
 import * as templateService from "../services/planningTemplates.js";
 import * as groceryService from "../services/grocery.js";
+import * as groceryCategoryService from "../services/groceryCategories.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
 /**
@@ -108,7 +108,10 @@ const ingredientInputSchema = z.object({
   name: z.string().min(1),
   quantity: z.string().min(1).optional(),
   unit: z.string().min(1).optional(),
-  category: z.enum(INGREDIENT_CATEGORIES).optional(),
+  // Grocery aisle category. Family-configurable as of #119 — validated as a
+  // non-empty free-form string (not a closed enum) so custom categories and any
+  // legacy value both pass. The effective pick-list is advisory, not enforced.
+  category: z.string().min(1).optional(),
 });
 
 const instructionInputSchema = z.object({
@@ -381,11 +384,40 @@ agentRouter.get(
   },
 );
 
+// GET /api/agent/:familyId/grocery-categories — scope: meal_plan:read
+// Lists the family's *effective* grocery categories (issue #119): the shared
+// INGREDIENT_CATEGORIES defaults unioned with the family's custom categories, so
+// an agent can offer the same category pick-list a human sees. Read-only; there
+// is intentionally no agent create/rename/delete surface (management is
+// browser-only, mirroring the tag/category precedent from #108).
+agentRouter.get(
+  "/:familyId/grocery-categories",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.READ),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    try {
+      const [categories, custom] = await Promise.all([
+        groceryCategoryService.listEffectiveGroceryCategories(familyId),
+        groceryCategoryService.listGroceryCategories(familyId),
+      ]);
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.READ,
+        outcome: "allowed",
+        targetType: "groceryCategory",
+        targetIds: custom.map((c) => c.id),
+      });
+      res.json({ categories });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch grocery categories" });
+    }
+  },
+);
+
 // GET /api/agent/:familyId/weeks/current — scope: meal_plan:read
-// MCP-friendly current-week read. Resolves "current" in the family timezone and
-// returns a fully-formed week (creating the empty week if it doesn't exist).
-// MUST be registered before the `/:weekStart` route so "current" is not matched
-// as a weekStart param.
 agentRouter.get(
   "/:familyId/weeks/current",
   authenticateAgent,
