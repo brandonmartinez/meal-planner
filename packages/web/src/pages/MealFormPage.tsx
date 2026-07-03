@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
 import { useFamily } from '../hooks/useFamily';
@@ -7,6 +7,7 @@ import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TokenField from '../components/TokenField';
+import { MealImageField, type MealImageFieldHandle } from '../components/MealImageField';
 
 interface IngredientRow {
   name: string;
@@ -30,7 +31,6 @@ export default function MealFormPage() {
   const cookTimeId = useId();
   const servingsId = useId();
   const sourceUrlId = useId();
-  const imageUrlId = useId();
   const notesId = useId();
   const favoriteId = useId();
   const ratingId = useId();
@@ -52,6 +52,7 @@ export default function MealFormPage() {
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const imageFieldRef = useRef<MealImageFieldHandle>(null);
 
   useEffect(() => {
     if (!isEdit || !familyId || !mealId) return;
@@ -147,6 +148,7 @@ export default function MealFormPage() {
       } else {
         await createMeal(familyId, data);
       }
+      imageFieldRef.current?.commitCleanup();
       navigate('/meals');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal');
@@ -274,16 +276,13 @@ export default function MealFormPage() {
         </div>
 
         <div>
-          <label htmlFor={imageUrlId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
-          <input
-            id={imageUrlId}
-            type="url"
+          <MealImageField
+            ref={imageFieldRef}
+            familyId={familyId}
             value={imageUrl}
-            onChange={e => setImageUrl(e.target.value)}
-            placeholder="https://example.com/photo.jpg"
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+            onChange={setImageUrl}
+            mealId={mealId}
           />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Link to an external photo of this meal. Displayed as a thumbnail.</p>
         </div>
 
         <div>
@@ -398,7 +397,10 @@ export default function MealFormPage() {
           </button>
           <button
             type="button"
-            onClick={() => navigate('/meals')}
+            onClick={() => {
+              imageFieldRef.current?.abandon();
+              navigate('/meals');
+            }}
             className="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
           >
             Cancel

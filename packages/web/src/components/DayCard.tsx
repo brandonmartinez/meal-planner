@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DayPlan, MealSuggestion } from '@meal-planner/shared';
 import { DAYS_OF_WEEK, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
+import { MealThumbnail } from './MealThumbnail';
 
 interface DayCardProps {
   day: DayPlan;
@@ -121,6 +122,11 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
         <span className="font-medium truncate flex items-center gap-1 flex-1 min-w-0">
           {suggestion.approved && <span className="text-green-600 dark:text-green-400">✓</span>}
           {placeholderEmoji && <span>{placeholderEmoji}</span>}
+          <MealThumbnail
+            src={suggestion.meal?.imageUrl}
+            alt=""
+            className="h-5 w-5 rounded object-cover shrink-0"
+          />
           <span className="truncate">{suggestion.meal?.name || 'Unknown'}</span>
         </span>
         <div
