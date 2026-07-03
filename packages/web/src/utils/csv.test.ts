@@ -627,6 +627,7 @@ describe("mealsToCSV — collections (#109)", () => {
   });
 });
 
+describe("parseMealsCSV — instructions (#100)", () => {
   it("parses newline-delimited ordered steps, stripping enumerators", () => {
     const csv =
       'meal,instructions\nTacos,"1. Warm the tortillas\n2. Assemble\n3. Serve"\n';
