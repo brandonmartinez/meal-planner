@@ -113,6 +113,13 @@ export default function MealDetailPage() {
         <DifficultyBadge difficulty={meal.difficulty} />
       </header>
 
+      <Link
+        to={`/meals/${meal.id}/cook`}
+        className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-base font-medium text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+      >
+        <span aria-hidden="true">👩‍🍳</span> Start cooking
+      </Link>
+
       {meal.description && (
         <p className="mt-3 text-gray-700 dark:text-gray-300">{meal.description}</p>
       )}

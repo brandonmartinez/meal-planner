@@ -155,4 +155,30 @@ describe('MealDetailPage', () => {
     // No recipe scaffolding for placeholders.
     expect(screen.queryByRole('heading', { name: 'Ingredients' })).not.toBeInTheDocument();
   });
+
+  it('shows a "Start cooking" CTA linking to cooking mode for a real meal', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(meal({ name: 'Chicken Curry' })),
+      ),
+    );
+
+    renderDetail();
+
+    const cta = await screen.findByRole('link', { name: /start cooking/i });
+    expect(cta).toHaveAttribute('href', '/meals/m-1/cook');
+  });
+
+  it('does not show a "Start cooking" CTA for placeholder meals', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(meal({ name: 'Leftovers', placeholderKind: 'LEFTOVERS' })),
+      ),
+    );
+
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Leftovers' });
+    expect(screen.queryByRole('link', { name: /start cooking/i })).not.toBeInTheDocument();
+  });
 });
