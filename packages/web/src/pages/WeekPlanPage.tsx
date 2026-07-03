@@ -20,7 +20,7 @@ import {
     removeSuggestion,
     moveSuggestion,
 } from '../api/weekPlan';
-import { formatWeekRange } from '../utils/date';
+import { formatWeekRange, getCurrentWeekStart } from '../utils/date';
 import DayCard from '../components/DayCard';
 import MealPicker from '../components/MealPicker';
 import ApplyTemplateModal from '../components/ApplyTemplateModal';
@@ -42,6 +42,7 @@ export default function WeekPlanPage() {
 
     const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
     const isParent = currentMembership?.role === 'PARENT';
+    const isPastWeek = weekStart < getCurrentWeekStart();
 
     // Reset the transient modal open-state as the user navigates between weeks.
     useEffect(() => {
@@ -158,35 +159,45 @@ export default function WeekPlanPage() {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Week Plan</h1>
-                <p className="text-gray-600 dark:text-gray-300 text-lg">{formatWeekRange(weekStart)}</p>
-            </div>
+            {/* Responsive toolbar: single row on desktop, two rows on mobile */}
+            <div className="flex flex-wrap items-center gap-3 mb-6">
+                {/* Left cluster: title + date range */}
+                <div className="flex items-baseline gap-2">
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Week Plan</h1>
+                    <p className="text-gray-600 dark:text-gray-300 text-lg">{formatWeekRange(weekStart)}</p>
+                </div>
 
-            <div className="flex justify-center gap-3 mb-6">
-                <Link
-                    to="/grocery"
-                    className="px-4 py-2 bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60 text-sm font-medium"
-                >
-                    🛒 Grocery List
-                </Link>
-                {isParent && (
-                    <button
-                        type="button"
-                        onClick={() => setShowRepeat(true)}
-                        className="px-4 py-2 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60 text-sm font-medium"
+                {/* Grocery List — hidden when viewing a past week */}
+                {!isPastWeek && (
+                    <Link
+                        to="/grocery"
+                        className="px-4 py-2 bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60 text-sm font-medium"
                     >
-                        🔁 Repeat a previous week
-                    </button>
+                        🛒 Grocery List
+                    </Link>
                 )}
-                {isParent && (
-                    <button
-                        type="button"
-                        onClick={() => setShowApply(true)}
-                        className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/60 text-sm font-medium"
-                    >
-                        🗓️ Apply a template
-                    </button>
+
+                {/* Spacer: pushes parent actions to the far right on desktop; invisible on mobile */}
+                <div className="hidden sm:block flex-1" aria-hidden="true" />
+
+                {/* Parent-only actions — hidden on past weeks; wrap to their own row on mobile */}
+                {isParent && !isPastWeek && (
+                    <div className="flex gap-3 w-full sm:w-auto">
+                        <button
+                            type="button"
+                            onClick={() => setShowRepeat(true)}
+                            className="px-4 py-2 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60 text-sm font-medium"
+                        >
+                            🔁 Repeat a previous week
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowApply(true)}
+                            className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/60 text-sm font-medium"
+                        >
+                            🗓️ Apply a template
+                        </button>
+                    </div>
                 )}
             </div>
 

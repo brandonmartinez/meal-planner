@@ -214,6 +214,41 @@ describe('WeekPlanPage', () => {
     );
   });
 
+  it('shows all three action buttons on a current/future week for a parent', async () => {
+    // localStorage cleared in beforeEach → weekStart defaults to getCurrentWeekStart() → !isPastWeek
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([suggestion()])),
+      ),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+    await screen.findByText('Tacos');
+
+    expect(screen.getByRole('link', { name: /grocery list/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /repeat a previous week/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /apply a template/i })).toBeInTheDocument();
+  });
+
+  it('hides all action buttons when viewing a past week', async () => {
+    // Set a clearly past Monday so isPastWeek = true
+    localStorage.setItem('meal-planner-selected-week', '2020-01-06');
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([suggestion()])),
+      ),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+    await screen.findByText('Tacos');
+
+    expect(screen.queryByRole('link', { name: /grocery list/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /repeat a previous week/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply a template/i })).not.toBeInTheDocument();
+  });
+
   it('shows the repeat-week action to parents and hides it from children', async () => {
     server.use(
       authMe('CHILD'),
