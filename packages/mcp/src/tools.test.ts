@@ -26,6 +26,7 @@ function stubClient() {
     listCollections: vi.fn(),
     listTemplates: vi.fn(),
     applyTemplate: vi.fn(),
+    fillWeek: vi.fn(),
   };
 }
 
@@ -615,10 +616,58 @@ describe("createToolHandlers", () => {
       undefined,
     );
   });
+
+  it("fill_week threads weekStart + filters/existingMode/allowPartial to the client (row 7/8)", async () => {
+    const client = stubClient();
+    const weekPlan = { id: "wp-1", weekStart: "2026-07-06", days: [] };
+    client.fillWeek.mockResolvedValue(weekPlan);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.fill_week({
+      weekStart: "2026-07-06",
+      categories: ["dinner"],
+      tags: ["quick"],
+      collections: ["Weeknights"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 14,
+      existingMode: "skip",
+      allowPartial: false,
+    });
+
+    expect(client.fillWeek).toHaveBeenCalledWith(FAMILY, "2026-07-06", {
+      categories: ["dinner"],
+      tags: ["quick"],
+      collections: ["Weeknights"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 14,
+      existingMode: "skip",
+      allowPartial: false,
+    });
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual(weekPlan);
+  });
+
+  it("fill_week forwards only weekStart when no filters are provided", async () => {
+    const client = stubClient();
+    client.fillWeek.mockResolvedValue({ id: "wp-1", days: [] });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.fill_week({ weekStart: "2026-07-06" });
+
+    expect(client.fillWeek).toHaveBeenCalledWith(FAMILY, "2026-07-06", {});
+  });
 });
 
 describe("registerTools", () => {
-  it("registers all fourteen meal-planning tools", () => {
+  it("registers all fifteen meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -637,6 +686,7 @@ describe("registerTools", () => {
       "schedule_random_meal",
       "repeat_week",
       "apply_template",
+      "fill_week",
       "approve_suggestion",
       "create_meal",
       "update_meal",
@@ -833,6 +883,7 @@ describe("TOOL_SCOPES", () => {
       schedule_random_meal: "meal_plan:schedule",
       repeat_week: "meal_plan:schedule",
       apply_template: "meal_plan:schedule",
+      fill_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",

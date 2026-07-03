@@ -5,6 +5,7 @@ import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";
+import * as weekFillService from "../services/weekFill.js";
 
 export const weekPlanRouter = Router();
 
@@ -53,6 +54,23 @@ const scheduleRandomSchema = z.object({
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
   favorite: z.boolean().optional(),
   avoidRecentDays: z.number().int().min(0).optional(),
+});
+
+// Fill the OPEN days of the target week with meals chosen at random from the
+// eligible catalog, filtered by the random-scheduling vocabulary plus recipe
+// `collections`. Every created suggestion is UNAPPROVED. `existingMode`
+// (default "error") is the deliberate policy for a target week that already has
+// suggestions; `allowPartial` (default true) fills as many open days as the
+// eligible pool allows.
+const fillWeekSchema = z.object({
+  categories: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  collections: z.array(z.string()).optional(),
+  difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
+  favorite: z.boolean().optional(),
+  avoidRecentDays: z.number().int().min(0).optional(),
+  existingMode: z.enum(["error", "skip", "replace"]).optional(),
+  allowPartial: z.boolean().optional(),
 });
 
 function paramStr(val: string | string[] | undefined): string {
@@ -202,6 +220,52 @@ weekPlanRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to repeat week" });
+    }
+  },
+);
+
+// POST /api/families/:familyId/weeks/:weekStart/fill
+// Fill the OPEN days of the target week (a Monday) with meals chosen at random
+// from the eligible catalog, filtered by categories/tags/collections/etc., as
+// new UNAPPROVED suggestions (issue #115). `existingMode` (default "error") is
+// the non-destructive policy for an already-populated target week; `allowPartial`
+// (default true) fills as many open days as the eligible pool allows. The
+// distinct `/fill` suffix keeps this off the `/:weekStart` param routes. 201 on
+// success: the target week is the created/updated resource.
+weekPlanRouter.post(
+  "/:familyId/weeks/:weekStart/fill",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const weekStart = new Date(paramStr(req.params.weekStart) + "T00:00:00Z");
+      const { existingMode, allowPartial, ...filters } = fillWeekSchema.parse(
+        req.body,
+      );
+      const user = req.user as { id: string };
+
+      const plan = await weekFillService.fillWeek({
+        familyId,
+        weekStart,
+        userId: user.id,
+        filters,
+        existingMode,
+        allowPartial,
+      });
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to fill week" });
     }
   },
 );

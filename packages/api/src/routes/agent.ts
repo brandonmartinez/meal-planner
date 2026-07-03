@@ -12,6 +12,7 @@ import {
 } from "../services/agentCredential.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";
+import * as weekFillService from "../services/weekFill.js";
 import * as mealService from "../services/meals.js";
 import * as collectionService from "../services/recipeCollections.js";
 import * as templateService from "../services/planningTemplates.js";
@@ -89,6 +90,23 @@ const scheduleRandomSchema = z.object({
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
   favorite: z.boolean().optional(),
   avoidRecentDays: z.number().int().min(0).optional(),
+});
+
+// MCP: fill the OPEN days of a target week (a Monday) with meals chosen at
+// random by category/collection/etc. filters, as new UNAPPROVED suggestions
+// (issue #115). `existingMode` (default "error") is the non-destructive policy
+// for an already-populated week; `allowPartial` (default true) fills as many
+// open days as the eligible pool allows. Filling IS scheduling — reuses
+// meal_plan:schedule.
+const fillWeekSchema = z.object({
+  categories: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  collections: z.array(z.string()).optional(),
+  difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
+  favorite: z.boolean().optional(),
+  avoidRecentDays: z.number().int().min(0).optional(),
+  existingMode: z.enum(["error", "skip", "replace"]).optional(),
+  allowPartial: z.boolean().optional(),
 });
 
 function paramStr(val: string | string[] | undefined): string {
@@ -653,6 +671,66 @@ agentRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to repeat week" });
+    }
+  },
+);
+
+// POST /api/agent/:familyId/weeks/:weekStart/fill — scope: meal_plan:schedule
+// Fill the OPEN days of the target week (a Monday) with meals chosen at random
+// by category/collection/etc. filters, as new UNAPPROVED suggestions (#115).
+// Reuses meal_plan:schedule — filling unapproved suggestions IS scheduling.
+// `suggestedBy` is attributed to the provisioning parent; the audit trail
+// records the agent credential as the true actor.
+agentRouter.post(
+  "/:familyId/weeks/:weekStart/fill",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.SCHEDULE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    const weekStart = paramStr(req.params.weekStart);
+    try {
+      const { existingMode, allowPartial, ...filters } = fillWeekSchema.parse(
+        req.body,
+      );
+      const plan = await weekFillService.fillWeek({
+        familyId,
+        weekStart: new Date(`${weekStart}T00:00:00Z`),
+        userId: agent.createdBy,
+        filters,
+        existingMode,
+        allowPartial,
+      });
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.SCHEDULE,
+        outcome: "allowed",
+        targetType: "weekPlan",
+        targetIds: [weekStart],
+      });
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId,
+          action: AGENT_SCOPES.SCHEDULE,
+          outcome: "denied",
+          targetType: "weekPlan",
+          targetIds: [weekStart],
+          reason: `error_${error.status}`,
+        });
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to fill week" });
     }
   },
 );

@@ -5,6 +5,7 @@ import type {
   MealSuggestionDTO,
   RandomScheduleInputDTO,
   RepeatWeekExistingMode,
+  FillWeekRequestDTO,
   AgentIdentityDTO,
   Meal,
   GroceryList,
@@ -279,6 +280,25 @@ export class MealPlannerApiClient {
         templateId,
       )}/apply`,
       { body: { targetWeekStart, existingMode } },
+    );
+  }
+
+  /** Fill the OPEN days of a target week with meals chosen at random by
+   *  category/collection/etc. filters, as new unapproved suggestions (#115).
+   *  `existingMode` (default "error") decides how a target week that already has
+   *  suggestions is treated; `allowPartial` (default true) fills as many open
+   *  days as the eligible pool allows. */
+  fillWeek(
+    familyId: string,
+    weekStart: string,
+    input: FillWeekRequestDTO,
+  ): Promise<WeekPlanDTO> {
+    return this.request<WeekPlanDTO>(
+      "POST",
+      `/api/agent/${encodeURIComponent(familyId)}/weeks/${encodeURIComponent(
+        weekStart,
+      )}/fill`,
+      { body: input },
     );
   }
 

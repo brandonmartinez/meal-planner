@@ -311,6 +311,27 @@ export interface RepeatWeekRequestDTO {
   existingMode?: RepeatWeekExistingMode;
 }
 
+/** The request body for `POST /families/:id/weeks/:weekStart/fill` — fill the
+ *  OPEN days of the `:weekStart` target week (a `YYYY-MM-DD` Monday) with meals
+ *  chosen at random from the family's eligible catalog, filtered by the random-
+ *  scheduling vocabulary plus recipe `collections` (issue #115). Every created
+ *  suggestion is UNAPPROVED (a parent approves separately). `existingMode`
+ *  (default `"error"`) is the deliberate policy for a target week that already
+ *  contains suggestions, mirroring repeat/apply-template. `allowPartial`
+ *  (default `true`) fills as many open days as the eligible pool allows; when
+ *  `false`, an eligible pool smaller than the open-day count is a 422. Response
+ *  reuses `WeekPlanDTO`. */
+export interface FillWeekRequestDTO {
+  categories?: string[];
+  tags?: string[];
+  collections?: string[];
+  difficulty?: Difficulty[];
+  favorite?: boolean;
+  avoidRecentDays?: number;
+  existingMode?: RepeatWeekExistingMode;
+  allowPartial?: boolean;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Agent-credential identity contract                                         */
 /* -------------------------------------------------------------------------- */
