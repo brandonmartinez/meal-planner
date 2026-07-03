@@ -293,6 +293,31 @@ describe('DayCard', () => {
         );
         const stamp = screen.getByRole('img', { name: /tacos/i });
         expect(stamp).toBeInTheDocument();
+        // Image fills its container with object-cover (no distortion)
+        expect(stamp).toHaveClass('object-cover');
+        // Container is a square flush to the chip's left/top/bottom edges
+        const container = stamp.parentElement!;
+        expect(container).toHaveClass('aspect-square');
+        expect(container).toHaveClass('self-stretch');
+    });
+
+    it('shows no stamp img when meal has no imageUrl', () => {
+        // baseSuggestion has no imageUrl → showStamp is false → compact inline layout
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [baseSuggestion] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={() => { }}
+            />,
+        );
+        // No named stamp image — MealThumbnail returns null when src is absent
+        expect(screen.queryByRole('img', { name: /tacos/i })).toBeNull();
+        // Meal name still present in the compact layout
+        expect(screen.getByText('Tacos')).toBeInTheDocument();
     });
 });
 
