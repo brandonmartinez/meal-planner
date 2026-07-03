@@ -446,33 +446,6 @@ force-push.
 
 **Migration discipline:** Authored offline via `prisma migrate diff --script` (shared dev DB locked — `migrate dev` FORBIDDEN). Hand-placed at `20260702200000_add_recipe_instructions`.
 
-### 2026-07-02: Sprint-2 migration workflow + servings type (issue #97)
-**By:** Saul (Data/Migrations)
-**Requested by:** Brandon (@brandonmartinez)
-**Merge:** PR #127, SHA TBD
-
-**Decision 1 — `servings` is `Int?`.**
-Modeled as `Int?` (nullable), matching `prepTimeMinutes`/`cookTimeMinutes`. Ranges ("4–6") explicitly out of scope. Zod: `z.number().int().min(1)`.
-
-**Decision 2 — all 5 metadata fields nullable, reuse `meal:write`.**
-`prepTimeMinutes Int?`, `cookTimeMinutes Int?`, `servings Int?`, `sourceUrl String?`, `notes String?`. Nullable for safe migration. No new scope — all use existing `meal:write`. `sourceUrl` STORED ONLY (SSRF guard): `z.string().url()`, never fetched server-side.
-
-**Decision 3 (CROSS-CUTTING) — Sprint-2 migration workflow under shared devcontainer + shared dev DB.**
-INCIDENT: running `prisma migrate dev` against shared dev DB from a worktree produced DESTRUCTIVE spurious migration that dropped `Meal_name_trgm_idx`.
-Root causes: (a) devcontainer binds the MAIN checkout (stuck on main), NOT the agent worktree — worktree schema edits invisible to container. (b) ~13 worktrees share ONE `.git`, ONE devcontainer, ONE dev Postgres — any `migrate dev` racy/destructive across agents.
-
-**SANCTIONED STANDARD (coordinator sign-off 2026-07-02)** — required for #97 and EVERY later Sprint-2 field migration:
-- **`prisma migrate dev` against shared dev DB is FORBIDDEN.**
-- **MIGRATION AUTHORING:** `prisma migrate diff --from-schema-datamodel <main schema> --to-schema-datamodel <worktree schema> --script` → yields clean `ALTER TABLE` statements. Generate schema inputs race-free from git branch refs (`git show main:packages/api/prisma/schema.prisma`), NOT from `/workspace` (swapped concurrently). Hand-place resulting SQL in properly-named migration folder committed to the agent's BRANCH.
-- **VALIDATION:** for #97 the hand-placed `20260702173523_add_core_recipe_metadata/migration.sql` was confirmed BYTE-IDENTICAL to fresh `migrate diff` output.
-
-**Decision 4 (coordinator-refined 2026-07-02) — verify via detached git worktree, NOT docker cp.**
-- `git worktree add --detach /tmp/verify-<issue> <committed-sha>`. Shared `.git` object store, detached = no branch-conflict, no main-tree writes, shared Postgres untouched.
-- Run db:generate + shared/mcp/api builds + lint + test inside `/tmp/verify-<issue>` (prismaMock/no-DB).
-- Cleanup: `git worktree remove /tmp/verify-<issue>`.
-
-**MAIN-RED DRIFT GATE:** #111's raw-SQL pg_trgm GIN index undeclared in schema.prisma causes every PR to fail the drift gate. Fix in flight: Livingston's hotfix (above). MERGE ORDER: hotfix → main green → #126 (Linus) → #97 (Saul).
-
 ### 2026-07-02: Issue #99 — derive `timesCooked` in the same query as `lastCookedOn`
 **By:** Livingston (Backend)
 **Requested by:** @brandonmartinez
@@ -554,4 +527,29 @@ New `packages/web/src/components/MealThumbnail.tsx` renders `null` when `!src` o
 **What:** Created `.github/instructions/parity.instructions.md` — the enforcement artifact for recipe API/MCP parity, operationalizing the design approved on issue #96. Transcribes the 11-row parity checklist (§1), CSV sub-checklist (§1b), scope-change sub-checklist (§1c), scope decision (§2a: reuse `meal:write` for all recipe metadata incl. rating + external imageUrl; `meal:image` deferred to #103/#104; no agent DELETE), display deny-by-default (§3), placeholder limitations (§4), and the HARD RULE (§5).
 
 **Why:** Sprint 2 gate — this file auto-governs all P2 recipe build issues (#97–#112) via `applyTo` globs before any build PR opens.
+
+
+## 2026-07-02T21:37:00-0400: Sprint 3 Wave 1
+
+### 2026-07-02: ImageAsset backend — schema, storage, security, and parity decisions (#104)
+**By:** Basher
+**What:** Shipped the concrete uploaded-image asset backend on top of the #93 storage abstraction. Key decisions:
+- **Schema (`ImageAsset`):** family-scoped, optional meal association. `family onDelete: Cascade` (an asset must not outlive its family — isolation/cleanup), `meal onDelete: SetNull` (an asset may outlive its meal; deleting a meal only releases the association). Server-derived `extension` (from MIME allowlist, never user input) and `createdBy` (uploader `User.id`) persisted. Indexes on `familyId` and `mealId`.
+- **Migration:** authored OFFLINE via `prisma migrate diff --from-schema-datamodel <main> --to-schema-datamodel <worktree> --script` inside the devcontainer (shared dev DB has a wedged advisory lock; `migrate dev` is forbidden). Folder `20260702210000_add_image_asset` — next timestamp after `20260702200000_add_recipe_instructions`. Pure `CREATE TABLE` + 2 indexes + 2 FKs, no destructive statements.
+- **Storage service (`imageStorage.ts`):** dependency-free `FilesystemImageStorage`. Path layout `{root}/{familyId}/{assetId}.{ext}`. Path-traversal defense-in-depth: strict UUID regex on both `familyId` and `assetId`, extension only from the fixed MIME→ext allowlist, and a post-`resolve` assertion that the path stays under the storage root. **Opaque IDs** — the filesystem path is never returned, logged, or accepted as input; clients only ever see `assetId`.
+- **Upload transport:** `express.raw({ type: () => true, limit })` (single raw body, explicit 5 MB limit) instead of a multipart library — smaller attack surface, consistent with the repo's minimal-dependency posture. **Magic-byte sniff** validates the real image type; `Content-Type` alone is not trusted.
+- **Config:** `config.imageStorage.root` from `IMAGE_STORAGE_ROOT` (dev default `<cwd>/.data/images`). Deliberately **NOT** in `PRODUCTION_REQUIRED_VARS` — the default path is safe and the K8s deploy sets the env to the RWX PVC mount (#93 deferred backend). Documented so prod ops know to point it at durable storage.
+- **Parity (rows 4/7/8) — REST-only, NO agent route / NO MCP tool (justified exclusion):** per `parity.instructions.md` §2a, binary upload is scope `meal:image`, explicitly deferred and not on the agent surface. MCP agents speak JSON-RPC text and cannot stream raw/multipart binary; the agent-appropriate image capability (external image URL, `meal:write`) already shipped in #103; §1b excludes binary bytes / opaque asset ids from CSV. Binary asset upload is a human web-UI interaction, not catalog-CRUD text — so the parity gate is satisfied by explicit exclusion, not by adding surfaces.
+- **Placeholder guard:** attaching an image to a placeholder meal (`meal.placeholderKind !== null`) returns 400, mirroring the meals-service guard.
+**Why:** #104 is the Sprint 3 Wave 1 MIGRATION keystone. Cross-family isolation, opaque path-traversal-safe IDs, and server-side MIME/size/extension validation are the security-critical requirements. On-disk file GC on family/row deletion is out of scope (families are never deleted in current flows) and is flagged as a future caveat.
+
+### 2026-07-02: Local cooking mode — frontend-only, in-memory state (#102)
+**By:** Linus
+**What:** Shipped local cooking mode (Sprint 3 Wave 1). New immersive route `/meals/:mealId/cook` (ProtectedRoute + Layout), entered via a "Start cooking" CTA on `MealDetailPage` (real meals only, hidden for placeholders). Components: `pages/CookingModePage.tsx` (data fetch + checklist/step-completion state), `components/CookTimer.tsx` (per-step Start/Pause/Reset countdown), `hooks/useCountdown.ts` (extracted, unit-testable timer logic). ALL state is in-memory React `useState` — `checkedIngredients: Set`, `completedSteps: Set`, per-step timers — NO backend/API/schema/CSV/MCP change, NO localStorage. Resets on refresh. Relies on merged #100 (PR #136) single-meal GET returning ordered `instructions` (`text` + `timerMinutes?`).
+**Why:** #102 is a human web-UI interaction with no server-persisted progress. Accessibility gate held: native checkboxes, 44×44 touch targets, aria-labeled timer buttons, a single `role="alert"` on timer completion (no per-tick SR spam), h1→h2 heading order, full keyboard nav. CSP intact (timers are bundled React; no inline scripts). Note: reconstructed by coordinator from Linus's completion report — original worktree inbox file did not survive worktree removal.
+
+### 2026-07-02: Repeat previous week planning — no migration, explicit existing-target modes (#114)
+**By:** Livingston
+**What:** Shipped `repeatWeek()` in the week-plan service (Sprint 3 Wave 1). Copies APPROVED source-week suggestions into a target week as NEW `approved: false` suggestions, preserving the parent approval workflow. No schema change — reuses existing WeekPlan/DayPlan/MealSuggestion. Day mapping by date offset (both weeks Monday-anchored, 7 days). Empty/nonexistent source = no-op. Existing-target handling via tested `existingMode` param: `error` (DEFAULT — 409 before any write if target already populated; never silently dup/overwrite), `skip` (fill only empty target days), `replace` (clear target week then copy). Surfaces at full parity 4/7/8: browser REST `POST /families/:familyId/weeks/:weekStart/repeat` (JWT+membership), agent route reusing `meal_plan:schedule` scope (no new scope, audited allowed/denied), MCP `repeat_week` tool + client, plus a parent-gated WeekPlanPage action. Shared `RepeatWeekRequest` DTO + mode union. CSV rule not triggered (no persisted meal field).
+**Why:** #114 preserves the family approval gate — repeated meals arrive unapproved so a parent still confirms. Default `error` mode is the safest/most explicit choice (forces a conscious skip/replace on an already-populated week). Cross-family isolation enforced on both source and target (family-scoped queries → cross-family source treated as empty/404). Note: reconstructed by coordinator from Livingston's completion report — original worktree inbox file did not survive worktree removal.
 
