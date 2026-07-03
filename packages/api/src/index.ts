@@ -15,6 +15,7 @@ import { familyRouter } from "./routes/families.js";
 import { mealsRouter } from "./routes/meals.js";
 import { weekPlanRouter } from "./routes/weekPlan.js";
 import { groceryRouter } from "./routes/grocery.js";
+import { imagesRouter } from "./routes/images.js";
 import { displayRouter } from "./routes/display.js";
 import { agentRouter } from "./routes/agent.js";
 import { mcpRouter } from "./routes/mcp.js";
@@ -88,6 +89,7 @@ app.use("/api/families", familyRouter);
 app.use("/api/families", mealsRouter);
 app.use("/api/families", weekPlanRouter);
 app.use("/api/families", groceryRouter);
+app.use("/api/families", imagesRouter);
 // displayLimiter runs BEFORE the router's authenticateApiKey, so floods are
 // rejected before any key lookup or DB fan-out.
 app.use("/api/display", displayLimiter, displayRouter);
