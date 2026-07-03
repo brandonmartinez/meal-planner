@@ -218,6 +218,21 @@ export function createToolHandlers(
         ),
       ),
 
+    fill_week: (args: {
+      weekStart: string;
+      categories?: string[];
+      tags?: string[];
+      collections?: string[];
+      difficulty?: ("EASY" | "MEDIUM" | "HARD")[];
+      favorite?: boolean;
+      avoidRecentDays?: number;
+      existingMode?: "error" | "skip" | "replace";
+      allowPartial?: boolean;
+    }): Promise<ToolResult> => {
+      const { weekStart, ...input } = args;
+      return run(() => client.fillWeek(familyId, weekStart, input));
+    },
+
     // Family-from-key tools: the API resolves the family from the presented
     // key, so these do not thread `familyId` into the request path.
     create_meal: (args: {
@@ -299,6 +314,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   schedule_random_meal: "meal_plan:schedule",
   repeat_week: "meal_plan:schedule",
   apply_template: "meal_plan:schedule",
+  fill_week: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
@@ -633,6 +649,76 @@ export function registerTools(
       },
     },
     (args) => handlers.apply_template(args),
+  );
+
+  server.registerTool(
+    "fill_week",
+    {
+      title: "Fill a week from categories/collections",
+      description:
+        "Fill the OPEN days of a target week (a Monday) with meals chosen at " +
+        "random from the eligible catalog, filtered by categories, tags, " +
+        "collections, difficulty, and favorite status. Each chosen meal becomes " +
+        "a new UNAPPROVED suggestion on an open day, preserving the parent " +
+        "approval workflow. Recently-cooked meals are avoided when " +
+        "`avoidRecentDays` is set. `existingMode` controls what happens when the " +
+        "target week already has suggestions: 'error' (default) refuses and " +
+        "changes nothing, 'skip' only fills days that have no suggestions, " +
+        "'replace' clears the target week's suggestions first. `allowPartial` " +
+        "(default true) fills as many open days as the eligible pool allows; set " +
+        "it false to require enough eligible meals for every open day. Requires " +
+        "the meal_plan:schedule scope.",
+      inputSchema: {
+        weekStart: dateString.describe(
+          "The Monday (YYYY-MM-DD) of the week to fill.",
+        ),
+        categories: z
+          .array(z.string())
+          .optional()
+          .describe("Only choose meals in ANY of these categories."),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe("Only choose meals in ANY of these tags."),
+        collections: z
+          .array(z.string())
+          .optional()
+          .describe("Only choose meals in ANY of these collections."),
+        difficulty: z
+          .array(difficultyEnum)
+          .optional()
+          .describe("Only choose meals with one of these difficulties."),
+        favorite: z
+          .boolean()
+          .optional()
+          .describe("If true, only choose favorite meals."),
+        avoidRecentDays: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe(
+            "Avoid meals cooked within this many days of the target week " +
+              "when the eligible pool allows.",
+          ),
+        existingMode: z
+          .enum(["error", "skip", "replace"])
+          .optional()
+          .describe(
+            "How to handle a target week that already has suggestions. " +
+              "Defaults to 'error'.",
+          ),
+        allowPartial: z
+          .boolean()
+          .optional()
+          .describe(
+            "Fill as many open days as the eligible pool allows (default " +
+              "true); set false to require enough eligible meals for every " +
+              "open day.",
+          ),
+      },
+    },
+    (args) => handlers.fill_week(args),
   );
 
 

@@ -31,6 +31,12 @@ export interface RandomSelectFilters {
   categories?: string[];
   /** Tag names (case-insensitive). OR-within, matched on `nameNormalized`. */
   tags?: string[];
+  /**
+   * Recipe-collection names (case-insensitive). OR-within, matched on
+   * `nameNormalized`. Additive facet consumed by the week-fill surface (#115);
+   * `scheduleRandomMeal` (#113) simply never supplies it.
+   */
+  collections?: string[];
   /** Difficulty levels; OR-within. */
   difficulty?: Difficulty[];
   /** Restrict to (or exclude) favorites. */
@@ -47,9 +53,10 @@ export interface RandomSelectFilters {
  * Builds the family-scoped candidate `WhereInput`. Placeholder meals (Leftovers,
  * Free Day, …) are ALWAYS excluded — a random pick should never surface one.
  * Filter construction mirrors `listMeals` (OR-within facet, AND-across facet)
- * so the two surfaces stay behaviorally identical.
+ * so the two surfaces stay behaviorally identical. Exported so the week-fill
+ * surface (#115) reuses the exact same eligibility semantics.
  */
-function buildCandidateWhere(
+export function buildCandidateWhere(
   familyId: string,
   filters: RandomSelectFilters,
 ): Prisma.MealWhereInput {
@@ -59,6 +66,9 @@ function buildCandidateWhere(
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
   const categoryNames = (filters.categories ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
+  const collectionNames = (filters.collections ?? [])
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
 
@@ -76,6 +86,11 @@ function buildCandidateWhere(
       some: { category: { nameNormalized: { in: categoryNames } } },
     };
   }
+  if (collectionNames.length) {
+    where.collections = {
+      some: { recipeCollection: { nameNormalized: { in: collectionNames } } },
+    };
+  }
 
   return where;
 }
@@ -86,8 +101,9 @@ function buildCandidateWhere(
  * (i.e. within the window); a meal cooked exactly `avoidRecentDays` days before,
  * or never cooked, is kept. Recency is derived from the same double
  * family-scoped `getLastCookedMap` used by the meals list — no new query shape.
+ * Exported so the week-fill surface (#115) reuses the identical recency rule.
  */
-async function filterAvoidRecent(
+export async function filterAvoidRecent(
   familyId: string,
   candidateIds: string[],
   avoidRecentDays: number | undefined,
