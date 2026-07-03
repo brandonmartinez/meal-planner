@@ -194,6 +194,10 @@ export default function MealFormPage() {
             value={name}
             onChange={e => setName(e.target.value)}
             required
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
           />
         </div>
@@ -368,6 +372,10 @@ export default function MealFormPage() {
                   onChange={e => handleIngredientChange(index, 'name', e.target.value)}
                   placeholder="Name"
                   aria-label={`Ingredient ${index + 1} name`}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className="flex-1 min-w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
                 <input

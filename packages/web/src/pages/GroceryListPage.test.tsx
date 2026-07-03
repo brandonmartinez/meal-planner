@@ -247,6 +247,21 @@ describe('GroceryListPage accessibility', () => {
     expect(screen.getByRole('combobox', { name: 'New item category' })).toBeInTheDocument();
   });
 
+  it('opts the new-item name field out of password-manager autofill', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    const name = await screen.findByRole('textbox', { name: 'New item name' });
+    expect(name).toHaveAttribute('data-1p-ignore');
+    expect(name).toHaveAttribute('autocomplete', 'off');
+  });
+
   it('announces a load failure through an alert region', async () => {
     server.use(
       authMeWithFamily(),

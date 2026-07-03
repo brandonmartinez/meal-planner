@@ -54,6 +54,10 @@ export default function CreateFamilyPage() {
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g. The Smiths"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded mb-4"
             required
           />
