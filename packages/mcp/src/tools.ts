@@ -151,6 +151,20 @@ export function createToolHandlers(
         client.scheduleMeal(familyId, { mealId: args.mealId, date: args.date }),
       ),
 
+    repeat_week: (args: {
+      targetWeekStart: string;
+      sourceWeekStart: string;
+      existingMode?: "error" | "skip" | "replace";
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.repeatWeek(
+          familyId,
+          args.targetWeekStart,
+          args.sourceWeekStart,
+          args.existingMode,
+        ),
+      ),
+
     approve_suggestion: (args: {
       suggestionId: string;
     }): Promise<ToolResult> =>
@@ -229,6 +243,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   get_week_plan: "meal_plan:read",
   get_previous_week_plans: "meal_plan:read",
   schedule_meal: "meal_plan:schedule",
+  repeat_week: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
@@ -392,6 +407,36 @@ export function registerTools(
       },
     },
     (args) => handlers.schedule_meal(args),
+  );
+
+  server.registerTool(
+    "repeat_week",
+    {
+      title: "Repeat a previous week",
+      description:
+        "Copy the approved meals from a source week into a target week as new " +
+        "unapproved suggestions, preserving the parent approval workflow. " +
+        "`existingMode` controls what happens when the target week already has " +
+        "suggestions: 'error' (default) refuses and changes nothing, 'skip' " +
+        "only fills days that have no suggestions, 'replace' clears the target " +
+        "week's suggestions first. Requires the meal_plan:schedule scope.",
+      inputSchema: {
+        targetWeekStart: dateString.describe(
+          "The Monday (YYYY-MM-DD) of the week to copy meals INTO.",
+        ),
+        sourceWeekStart: dateString.describe(
+          "The Monday (YYYY-MM-DD) of the week to copy approved meals FROM.",
+        ),
+        existingMode: z
+          .enum(["error", "skip", "replace"])
+          .optional()
+          .describe(
+            "How to handle a target week that already has suggestions. " +
+              "Defaults to 'error'.",
+          ),
+      },
+    },
+    (args) => handlers.repeat_week(args),
   );
 
   server.registerTool(

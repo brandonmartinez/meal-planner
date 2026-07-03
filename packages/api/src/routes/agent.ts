@@ -54,6 +54,16 @@ const previousWeeksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(52).optional(),
 });
 
+// MCP: copy approved meals from a source week into the target week as new
+// unapproved suggestions. `existingMode` (default "error") is the deliberate
+// policy for a target week that already has suggestions.
+const repeatWeekSchema = z.object({
+  sourceWeekStart: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "sourceWeekStart must be YYYY-MM-DD"),
+  existingMode: z.enum(["error", "skip", "replace"]).optional(),
+});
+
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
 }
@@ -475,7 +485,66 @@ agentRouter.post(
   },
 );
 
-// POST /api/agent/:familyId/days/:dayPlanId/suggestions — scope: meal_plan:schedule
+// POST /api/agent/:familyId/weeks/:weekStart/repeat — scope: meal_plan:schedule
+// Copy the APPROVED meals from `sourceWeekStart` into the `:weekStart` target
+// week as new UNAPPROVED suggestions (preserving the parent approval workflow).
+// Reuses meal_plan:schedule — copying unapproved suggestions IS scheduling.
+// `suggestedBy` is attributed to the provisioning parent; the audit trail
+// records the agent credential as the true actor.
+agentRouter.post(
+  "/:familyId/weeks/:weekStart/repeat",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.SCHEDULE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    const targetWeekStart = paramStr(req.params.weekStart);
+    let sourceWeekStart: string | undefined;
+    try {
+      const parsed = repeatWeekSchema.parse(req.body);
+      sourceWeekStart = parsed.sourceWeekStart;
+      const plan = await weekPlanService.repeatWeek({
+        familyId,
+        sourceWeekStart: new Date(`${sourceWeekStart}T00:00:00Z`),
+        targetWeekStart: new Date(`${targetWeekStart}T00:00:00Z`),
+        userId: agent.createdBy,
+        existingMode: parsed.existingMode,
+      });
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.SCHEDULE,
+        outcome: "allowed",
+        targetType: "weekPlan",
+        targetIds: [targetWeekStart, sourceWeekStart],
+      });
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId,
+          action: AGENT_SCOPES.SCHEDULE,
+          outcome: "denied",
+          targetType: "weekPlan",
+          targetIds: sourceWeekStart
+            ? [targetWeekStart, sourceWeekStart]
+            : [targetWeekStart],
+          reason: `error_${error.status}`,
+        });
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to repeat week" });
+    }
+  },
+);
 agentRouter.post(
   "/:familyId/days/:dayPlanId/suggestions",
   authenticateAgent,

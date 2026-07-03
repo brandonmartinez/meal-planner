@@ -1,4 +1,8 @@
-import type { WeekPlan, MealSuggestion } from "@meal-planner/shared";
+import type {
+  WeekPlan,
+  MealSuggestion,
+  RepeatWeekExistingMode,
+} from "@meal-planner/shared";
 import { request } from "./client";
 
 const BASE = "/api/families";
@@ -64,6 +68,21 @@ export async function moveSuggestion(
     {
       method: "PATCH",
       body: JSON.stringify({ dayPlanId }),
+    },
+  );
+}
+
+export async function repeatWeek(
+  familyId: string,
+  targetWeekStart: string,
+  sourceWeekStart: string,
+  existingMode?: RepeatWeekExistingMode,
+): Promise<WeekPlan> {
+  return request<WeekPlan>(
+    `${BASE}/${familyId}/weeks/${targetWeekStart}/repeat`,
+    {
+      method: "POST",
+      body: JSON.stringify({ sourceWeekStart, existingMode }),
     },
   );
 }

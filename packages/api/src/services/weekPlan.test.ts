@@ -15,6 +15,7 @@ const {
   SuggestionError,
   MoveSuggestionError,
   getApprovedMealsForRange,
+  repeatWeek,
   getStartOfDayInTz,
   formatDateInTz,
   dayOfWeekInTz,
@@ -600,5 +601,332 @@ describe("getDisplayDays", () => {
     expect(r.days[0].status).toBe("skipped");
     expect(r.days[0].meals).toEqual([]);
     expect(r.maxUpdatedAt).not.toBeNull();
+  });
+});
+
+describe("repeatWeek", () => {
+  const SOURCE = "2026-05-04"; // Monday
+  const TARGET = "2026-05-11"; // Monday
+
+  interface Sug {
+    mealId: string;
+    approved: boolean;
+  }
+
+  // Build a week fixture with 7 days (offset 0 = Mon .. 6 = Sun). suggestions
+  // keyed by day offset. Shapes match weekPlanInclude (days -> suggestions).
+  function buildWeek(
+    id: string,
+    mondayLabel: string,
+    suggestionsByOffset: Record<number, Sug[]> = {},
+  ) {
+    const monday = new Date(`${mondayLabel}T00:00:00Z`);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(monday);
+      date.setUTCDate(date.getUTCDate() + i);
+      const suggestions = (suggestionsByOffset[i] ?? []).map((s, j) => ({
+        id: `${id}-s-${i}-${j}`,
+        mealId: s.mealId,
+        approved: s.approved,
+      }));
+      return { id: `${id}-day-${i}`, date, suggestions };
+    });
+    return { id, weekStart: monday, days };
+  }
+
+  // Route weekPlan.findFirst to the right fixture by weekStart. Covers
+  // getWeekPlan(source), getOrCreateWeekPlan(target) and the final re-fetch.
+  function routeWeeks(
+    source: ReturnType<typeof buildWeek> | null,
+    target: ReturnType<typeof buildWeek>,
+  ) {
+    prismaMock.weekPlan.findFirst.mockImplementation((args) => {
+      const ws = (args as { where: { weekStart: Date } }).where.weekStart
+        .toISOString()
+        .slice(0, 10);
+      if (ws === SOURCE) return Promise.resolve(source as never);
+      if (ws === TARGET) return Promise.resolve(target as never);
+      return Promise.resolve(null as never);
+    });
+  }
+
+  // Emulate prisma.$transaction(fn) by invoking fn with prismaMock as tx.
+  function stubTransaction() {
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+  }
+
+  it("rejects a non-Monday source week", async () => {
+    await expect(
+      repeatWeek({
+        familyId: "fam-1",
+        sourceWeekStart: new Date("2026-05-05T00:00:00Z"),
+        targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-Monday target week", async () => {
+    await expect(
+      repeatWeek({
+        familyId: "fam-1",
+        sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+        targetWeekStart: new Date("2026-05-12T00:00:00Z"),
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects when source and target are the same week", async () => {
+    await expect(
+      repeatWeek({
+        familyId: "fam-1",
+        sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+        targetWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("is a no-op when the source week does not exist", async () => {
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(null, target);
+
+    const result = await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    expect(result).toBe(target);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes the source read to the family (cross-family source is empty)", async () => {
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(null, target);
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    // First findFirst is the source read — must be family-scoped.
+    const firstCall = prismaMock.weekPlan.findFirst.mock.calls[0][0] as {
+      where: { familyId: string };
+    };
+    expect(firstCall.where.familyId).toBe("fam-1");
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("copies nothing when the source has only unapproved suggestions", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [{ mealId: "meal-A", approved: false }],
+    });
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(source, target);
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("copies only approved suggestions as new unapproved rows", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [
+        { mealId: "meal-A", approved: true },
+        { mealId: "meal-B", approved: false },
+      ],
+      2: [{ mealId: "meal-C", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    const arg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: {
+        dayPlanId: string;
+        mealId: string;
+        userId: string;
+        approved: boolean;
+      }[];
+    };
+    // meal-B (unapproved) is excluded; A + C copied.
+    expect(arg.data).toHaveLength(2);
+    expect(arg.data.every((r) => r.approved === false)).toBe(true);
+    expect(arg.data.every((r) => r.userId === "user-1")).toBe(true);
+    expect(arg.data.map((r) => r.mealId).sort()).toEqual(["meal-A", "meal-C"]);
+    // Day-offset mapping: meal-A -> target day 0, meal-C -> target day 2.
+    const byMeal = Object.fromEntries(arg.data.map((r) => [r.mealId, r.dayPlanId]));
+    expect(byMeal["meal-A"]).toBe("tgt-day-0");
+    expect(byMeal["meal-C"]).toBe("tgt-day-2");
+  });
+
+  it("copies placeholder meals like any other approved meal", async () => {
+    const source = buildWeek("src", SOURCE, {
+      1: [{ mealId: "placeholder-leftovers", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    const arg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: { mealId: string; dayPlanId: string }[];
+    };
+    expect(arg.data).toEqual([
+      expect.objectContaining({
+        mealId: "placeholder-leftovers",
+        dayPlanId: "tgt-day-1",
+      }),
+    ]);
+  });
+
+  it("maps Sunday (offset 6) source to Sunday target", async () => {
+    const source = buildWeek("src", SOURCE, {
+      6: [{ mealId: "meal-sun", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    const arg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: { dayPlanId: string }[];
+    };
+    expect(arg.data[0].dayPlanId).toBe("tgt-day-6");
+  });
+
+  it("default 'error' mode throws 409 and writes nothing when the target is populated", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [{ mealId: "meal-A", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET, {
+      0: [{ mealId: "meal-existing", approved: false }],
+    });
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await expect(
+      repeatWeek({
+        familyId: "fam-1",
+        sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+        targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.mealSuggestion.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("default 'error' mode with a populated target but empty source is a no-op (no throw)", async () => {
+    const source = buildWeek("src", SOURCE); // no approved suggestions
+    const target = buildWeek("tgt", TARGET, {
+      0: [{ mealId: "meal-existing", approved: false }],
+    });
+    routeWeeks(source, target);
+
+    const result = await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    expect(result).toBe(target);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
+
+  it("'skip' mode leaves populated target days untouched", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [{ mealId: "meal-A", approved: true }],
+      2: [{ mealId: "meal-C", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET, {
+      0: [{ mealId: "meal-existing", approved: false }],
+    });
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+      existingMode: "skip",
+    });
+
+    const arg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: { mealId: string; dayPlanId: string }[];
+    };
+    // day 0 is populated -> skipped; only day 2's meal-C is copied.
+    expect(arg.data).toEqual([
+      expect.objectContaining({ mealId: "meal-C", dayPlanId: "tgt-day-2" }),
+    ]);
+    expect(prismaMock.mealSuggestion.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("'replace' mode clears the whole target week before copying", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [{ mealId: "meal-A", approved: true }],
+    });
+    const target = buildWeek("tgt", TARGET, {
+      0: [{ mealId: "meal-existing", approved: false }],
+    });
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+      existingMode: "replace",
+    });
+
+    const delArg = prismaMock.mealSuggestion.deleteMany.mock.calls[0][0] as {
+      where: { dayPlanId: { in: string[] } };
+    };
+    // deleteMany targets every day in the target week.
+    expect(delArg.where.dayPlanId.in).toHaveLength(7);
+    expect(delArg.where.dayPlanId.in).toContain("tgt-day-0");
+    const createArg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: { mealId: string }[];
+    };
+    expect(createArg.data).toEqual([
+      expect.objectContaining({ mealId: "meal-A" }),
+    ]);
   });
 });

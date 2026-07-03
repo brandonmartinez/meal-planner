@@ -558,4 +558,96 @@ describe("agent routes (end-to-end middleware chain)", () => {
     // Guard fires before any instruction write.
     expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
   });
+
+  it("repeat: copies approved source meals into the target week as unapproved (schedule scope)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    // getWeekPlan(source): one approved + one unapproved on the Monday.
+    prismaMock.weekPlan.findFirst
+      .mockResolvedValueOnce({
+        id: "src",
+        days: [
+          {
+            id: "s-mon",
+            date: new Date("2026-05-04T00:00:00Z"),
+            suggestions: [
+              { mealId: "meal-A", approved: true },
+              { mealId: "meal-B", approved: false },
+            ],
+          },
+        ],
+      } as never)
+      // getOrCreateWeekPlan(target): empty target week (7 days seeded).
+      .mockResolvedValueOnce({
+        id: "tgt",
+        days: [
+          { id: "t-mon", date: new Date("2026-05-11T00:00:00Z"), suggestions: [] },
+        ],
+      } as never)
+      // Re-fetch after copy.
+      .mockResolvedValueOnce({ id: "tgt", days: [] } as never);
+    prismaMock.mealSuggestion.createMany.mockResolvedValue({ count: 1 } as never);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/repeat");
+    const req = agentReq(
+      { familyId: "fam-1", weekStart: "2026-05-11" },
+      { sourceWeekStart: "2026-05-04" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    // Only the approved meal is copied, as a new unapproved suggestion.
+    const createArg = prismaMock.mealSuggestion.createMany.mock
+      .calls[0][0] as { data: { mealId: string; approved: boolean; userId: string }[] };
+    expect(createArg.data).toEqual([
+      { dayPlanId: "t-mon", mealId: "meal-A", userId: "parent-1", approved: false },
+    ]);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "allowed",
+        targetType: "weekPlan",
+      }),
+    });
+  });
+
+  it("repeat: a read-only credential cannot repeat (403, no write, audited denied)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/repeat");
+    const req = agentReq(
+      { familyId: "fam-1", weekStart: "2026-05-11" },
+      { sourceWeekStart: "2026-05-04" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
+  });
+
+  it("repeat: a credential for another family is denied (403, no service call)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/repeat");
+    const req = agentReq(
+      { familyId: "fam-OTHER", weekStart: "2026-05-11" },
+      { sourceWeekStart: "2026-05-04" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.weekPlan.findFirst).not.toHaveBeenCalled();
+  });
 });

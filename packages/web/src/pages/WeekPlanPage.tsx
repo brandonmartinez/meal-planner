@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import {
     DndContext,
@@ -18,12 +18,13 @@ import {
     approveSuggestion,
     removeSuggestion,
     moveSuggestion,
+    repeatWeek,
 } from '../api/weekPlan';
-import { formatWeekRange } from '../utils/date';
+import { formatWeekRange, shiftWeek } from '../utils/date';
 import DayCard from '../components/DayCard';
 import MealPicker from '../components/MealPicker';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { WeekPlan, DayPlan, MealSuggestion } from '@meal-planner/shared';
+import type { WeekPlan, DayPlan, MealSuggestion, RepeatWeekExistingMode } from '@meal-planner/shared';
 
 export default function WeekPlanPage() {
     const { familyId, hasFamilies } = useFamily();
@@ -34,9 +35,19 @@ export default function WeekPlanPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [pickerDayPlanId, setPickerDayPlanId] = useState<string | null>(null);
+    const [showRepeat, setShowRepeat] = useState(false);
+    const [repeatSource, setRepeatSource] = useState(() => shiftWeek(weekStart, -1));
+    const [repeatMode, setRepeatMode] = useState<RepeatWeekExistingMode>('error');
+    const [repeatBusy, setRepeatBusy] = useState(false);
 
     const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
     const isParent = currentMembership?.role === 'PARENT';
+
+    // Keep the default source week (previous week) in sync as the user navigates.
+    useEffect(() => {
+        setRepeatSource(shiftWeek(weekStart, -1));
+        setShowRepeat(false);
+    }, [weekStart]);
 
     const loadWeekPlan = useCallback(async () => {
         if (!familyId) return;
@@ -82,6 +93,26 @@ export default function WeekPlanPage() {
             await loadWeekPlan();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to remove suggestion');
+        }
+    };
+
+    const handleRepeatWeek = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!familyId) return;
+        setRepeatBusy(true);
+        setError('');
+        try {
+            const plan = await repeatWeek(familyId, weekStart, repeatSource, repeatMode);
+            setWeekPlan(plan);
+            setShowRepeat(false);
+        } catch (err) {
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Failed to repeat week. If the target week already has meals, choose skip or replace.',
+            );
+        } finally {
+            setRepeatBusy(false);
         }
     };
 
@@ -142,14 +173,61 @@ export default function WeekPlanPage() {
                 <p className="text-gray-600 dark:text-gray-300 text-lg">{formatWeekRange(weekStart)}</p>
             </div>
 
-            <div className="flex justify-center mb-6">
+            <div className="flex justify-center gap-3 mb-6">
                 <Link
                     to="/grocery"
                     className="px-4 py-2 bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60 text-sm font-medium"
                 >
                     🛒 Grocery List
                 </Link>
+                {isParent && (
+                    <button
+                        type="button"
+                        onClick={() => setShowRepeat(v => !v)}
+                        aria-expanded={showRepeat}
+                        className="px-4 py-2 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60 text-sm font-medium"
+                    >
+                        🔁 Repeat a previous week
+                    </button>
+                )}
             </div>
+
+            {isParent && showRepeat && (
+                <form
+                    onSubmit={handleRepeatWeek}
+                    aria-label="Repeat a previous week"
+                    className="max-w-xl mx-auto mb-6 flex flex-col sm:flex-row items-stretch sm:items-end gap-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded"
+                >
+                    <label className="flex flex-col text-sm text-gray-700 dark:text-gray-300">
+                        <span className="mb-1">Copy meals from week of</span>
+                        <input
+                            type="date"
+                            value={repeatSource}
+                            onChange={e => setRepeatSource(e.target.value)}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                        />
+                    </label>
+                    <label className="flex flex-col text-sm text-gray-700 dark:text-gray-300">
+                        <span className="mb-1">If this week has meals</span>
+                        <select
+                            value={repeatMode}
+                            onChange={e => setRepeatMode(e.target.value as RepeatWeekExistingMode)}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                        >
+                            <option value="error">Stop (don't overwrite)</option>
+                            <option value="skip">Skip days that already have meals</option>
+                            <option value="replace">Replace this week's meals</option>
+                        </select>
+                    </label>
+                    <button
+                        type="submit"
+                        disabled={repeatBusy}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+                    >
+                        {repeatBusy ? 'Copying…' : 'Copy meals'}
+                    </button>
+                </form>
+            )}
 
             {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 

@@ -662,3 +662,141 @@ export async function scheduleMealByDate(
 
   return addSuggestion(familyId, day.id, mealId, userId);
 }
+
+/**
+ * How {@link repeatWeek} treats a target week that already has suggestions:
+ * - "error"   (default): refuse the whole operation with a 409 before writing
+ *   anything, so an already-populated week is never silently duplicated.
+ * - "skip":   copy only into target days that currently have zero suggestions;
+ *   populated days are left untouched.
+ * - "replace": delete every existing suggestion in the target week first, then
+ *   copy the approved source meals in.
+ */
+export type RepeatWeekExistingMode = "error" | "skip" | "replace";
+
+export interface RepeatWeekParams {
+  familyId: string;
+  sourceWeekStart: Date;
+  targetWeekStart: Date;
+  userId: string;
+  existingMode?: RepeatWeekExistingMode;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Copies the APPROVED meal suggestions from one week into another week as brand
+ * new UNAPPROVED suggestions, preserving the parent approval workflow (every
+ * copied row starts `approved: false` with `suggestedBy = userId`). Reuses the
+ * existing WeekPlan / DayPlan / MealSuggestion models — no schema change.
+ *
+ * Both week starts must be Mondays (UTC-midnight) and must differ. The source
+ * week is loaded family-scoped; a missing source week, or a source with no
+ * approved suggestions, is a no-op that still returns the (get-or-created)
+ * target week so callers always receive a coherent, fully-formed week. Days are
+ * mapped between weeks by their offset from each Monday, so Mon→Mon … Sun→Sun
+ * regardless of the calendar gap between the two weeks. Placeholder meals copy
+ * exactly like normal meals.
+ *
+ * `existingMode` (default "error") is the deliberate, tested policy for a target
+ * week that already contains suggestions — see {@link RepeatWeekExistingMode}.
+ */
+export async function repeatWeek(params: RepeatWeekParams) {
+  const { familyId, userId } = params;
+  const existingMode: RepeatWeekExistingMode = params.existingMode ?? "error";
+
+  const source = new Date(params.sourceWeekStart);
+  source.setUTCHours(0, 0, 0, 0);
+  const target = new Date(params.targetWeekStart);
+  target.setUTCHours(0, 0, 0, 0);
+
+  if (source.getUTCDay() !== 1) {
+    throw new SuggestionError(400, "sourceWeekStart must be a Monday");
+  }
+  if (target.getUTCDay() !== 1) {
+    throw new SuggestionError(400, "targetWeekStart must be a Monday");
+  }
+  if (source.getTime() === target.getTime()) {
+    throw new SuggestionError(
+      400,
+      "sourceWeekStart and targetWeekStart must differ",
+    );
+  }
+
+  // Source is loaded family-scoped: a week owned by another family resolves to
+  // null here and is therefore treated as an empty source (no-op below).
+  const sourceWeek = await getWeekPlan(familyId, source);
+
+  // Ensure the target week exists with its 7 days. `create` is keyed on
+  // familyId, so a cross-family target is impossible.
+  const targetWeek = await getOrCreateWeekPlan(familyId, target);
+
+  // Collect approved source meal ids grouped by day offset from the source
+  // Monday (0 = Mon .. 6 = Sun).
+  const approvedByOffset = new Map<number, string[]>();
+  if (sourceWeek) {
+    for (const day of sourceWeek.days) {
+      const dayDate = new Date(day.date);
+      dayDate.setUTCHours(0, 0, 0, 0);
+      const offset = Math.round((dayDate.getTime() - source.getTime()) / MS_PER_DAY);
+      const mealIds = day.suggestions
+        .filter((s) => s.approved)
+        .map((s) => s.mealId);
+      if (mealIds.length > 0) {
+        approvedByOffset.set(offset, mealIds);
+      }
+    }
+  }
+
+  // Nothing approved to copy -> no-op. Return the target week untouched.
+  if (approvedByOffset.size === 0) {
+    return targetWeek;
+  }
+
+  // Index target days by their offset from the target Monday.
+  const targetDayByOffset = new Map<number, (typeof targetWeek.days)[number]>();
+  for (const day of targetWeek.days) {
+    const dayDate = new Date(day.date);
+    dayDate.setUTCHours(0, 0, 0, 0);
+    const offset = Math.round((dayDate.getTime() - target.getTime()) / MS_PER_DAY);
+    targetDayByOffset.set(offset, day);
+  }
+
+  const targetHasSuggestions = targetWeek.days.some(
+    (d) => d.suggestions.length > 0,
+  );
+  if (existingMode === "error" && targetHasSuggestions) {
+    throw new SuggestionError(
+      409,
+      "Target week already has suggestions; retry with existingMode 'skip' or 'replace'",
+    );
+  }
+
+  const rows: Prisma.MealSuggestionCreateManyInput[] = [];
+  for (const [offset, mealIds] of approvedByOffset) {
+    const targetDay = targetDayByOffset.get(offset);
+    if (!targetDay) continue; // defensive: offsets 0..6 always exist
+    if (existingMode === "skip" && targetDay.suggestions.length > 0) {
+      continue;
+    }
+    for (const mealId of mealIds) {
+      rows.push({ dayPlanId: targetDay.id, mealId, userId, approved: false });
+    }
+  }
+
+  const targetDayIds = targetWeek.days.map((d) => d.id);
+
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    if (existingMode === "replace") {
+      await tx.mealSuggestion.deleteMany({
+        where: { dayPlanId: { in: targetDayIds } },
+      });
+    }
+    if (rows.length > 0) {
+      await tx.mealSuggestion.createMany({ data: rows });
+    }
+  });
+
+  // Re-fetch so the returned week reflects the newly copied suggestions.
+  return getOrCreateWeekPlan(familyId, target);
+}

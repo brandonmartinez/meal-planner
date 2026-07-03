@@ -277,6 +277,23 @@ export interface ScheduleMealRequestDTO {
   date: string;
 }
 
+/** How a repeat-week copy treats a target week that already has suggestions:
+ *  - `"error"` (default): refuse the whole operation with a 409 before writing,
+ *    so an already-populated week is never silently duplicated.
+ *  - `"skip"`: copy only into target days that currently have zero suggestions.
+ *  - `"replace"`: delete every existing target-week suggestion first, then copy. */
+export type RepeatWeekExistingMode = "error" | "skip" | "replace";
+
+/** The request body for `POST /families/:id/weeks/:weekStart/repeat` — copy the
+ *  APPROVED meals from `sourceWeekStart` into the `:weekStart` target week as new
+ *  UNAPPROVED suggestions. Both week starts are `YYYY-MM-DD` Mondays and must
+ *  differ. `existingMode` (default `"error"`) is the deliberate policy for a
+ *  target week that already contains suggestions. Response reuses `WeekPlanDTO`. */
+export interface RepeatWeekRequestDTO {
+  sourceWeekStart: string;
+  existingMode?: RepeatWeekExistingMode;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Agent-credential identity contract                                         */
 /* -------------------------------------------------------------------------- */

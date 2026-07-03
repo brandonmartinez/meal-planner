@@ -3,6 +3,7 @@ import type {
   WeekPlanDTO,
   PreviousWeeksResponseDTO,
   MealSuggestionDTO,
+  RepeatWeekExistingMode,
   AgentIdentityDTO,
   Meal,
   GroceryList,
@@ -202,6 +203,24 @@ export class MealPlannerApiClient {
       "POST",
       `/api/agent/${encodeURIComponent(familyId)}/schedule`,
       { body: input },
+    );
+  }
+
+  /** Repeat a previous week: copy its approved meals into the target week as
+   *  new unapproved suggestions. `existingMode` (default "error") decides how a
+   *  target week that already has suggestions is treated. */
+  repeatWeek(
+    familyId: string,
+    targetWeekStart: string,
+    sourceWeekStart: string,
+    existingMode?: RepeatWeekExistingMode,
+  ): Promise<WeekPlanDTO> {
+    return this.request<WeekPlanDTO>(
+      "POST",
+      `/api/agent/${encodeURIComponent(familyId)}/weeks/${encodeURIComponent(
+        targetWeekStart,
+      )}/repeat`,
+      { body: { sourceWeekStart, existingMode } },
     );
   }
 
