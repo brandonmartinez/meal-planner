@@ -650,4 +650,104 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.statusCode).toBe(403);
     expect(prismaMock.weekPlan.findFirst).not.toHaveBeenCalled();
   });
+
+  it("random: picks an eligible meal and schedules it unapproved (schedule scope)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    // selectRandomMeal candidate query — one eligible meal.
+    prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+    // scheduleMealByDate → getOrCreateWeekPlan returns an existing week whose
+    // day matches the target date label so the write path proceeds.
+    prismaMock.weekPlan.findFirst.mockResolvedValue({
+      id: "wp-1",
+      days: [{ id: "day-1", date: new Date("2026-05-20T00:00:00Z") }],
+    } as never);
+    // addSuggestion family-scope checks + create.
+    prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);
+    prismaMock.meal.findFirst.mockResolvedValue({ id: "meal-1" } as never);
+    prismaMock.mealSuggestion.create.mockResolvedValue({
+      id: "s-1",
+      mealId: "meal-1",
+      approved: false,
+    } as never);
+
+    const handlers = findStack("/:familyId/schedule/random");
+    const req = agentReq(
+      { familyId: "fam-1" },
+      { date: "2026-05-20", difficulty: ["EASY"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const createArg = prismaMock.mealSuggestion.create.mock.calls[0][0] as {
+      data: { userId: string; approved: boolean };
+    };
+    expect(createArg.data.userId).toBe("parent-1");
+    expect(createArg.data.approved).toBe(false);
+    // Candidate query is family-scoped and excludes placeholders.
+    const findManyArg = prismaMock.meal.findMany.mock.calls[0][0] as {
+      where: { familyId: string; placeholderKind: null };
+    };
+    expect(findManyArg.where.familyId).toBe("fam-1");
+    expect(findManyArg.where.placeholderKind).toBeNull();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "allowed",
+        targetType: "mealSuggestion",
+        targetIds: ["s-1", "meal-1"],
+      }),
+    });
+  });
+
+  it("random: no eligible meal yields 422 and an audited denial (targetIds empty)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.meal.findMany.mockResolvedValue([] as never);
+
+    const handlers = findStack("/:familyId/schedule/random");
+    const req = agentReq({ familyId: "fam-1" }, { date: "2026-05-20" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(prismaMock.mealSuggestion.create).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "denied",
+        reason: "error_422",
+        targetIds: [],
+      }),
+    });
+  });
+
+  it("random: a read-only credential cannot schedule (403, no candidate query)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/schedule/random");
+    const req = agentReq({ familyId: "fam-1" }, { date: "2026-05-20" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.meal.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
+  });
+
+  it("random: a credential for another family is denied (403, no candidate query)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/schedule/random");
+    const req = agentReq({ familyId: "fam-OTHER" }, { date: "2026-05-20" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.meal.findMany).not.toHaveBeenCalled();
+  });
 });

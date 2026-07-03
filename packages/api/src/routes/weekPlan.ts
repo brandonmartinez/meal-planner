@@ -1,8 +1,10 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import { Difficulty } from "@prisma/client";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
+import * as randomPlanService from "../services/randomPlan.js";
 
 export const weekPlanRouter = Router();
 
@@ -39,6 +41,18 @@ const repeatWeekSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "sourceWeekStart must be YYYY-MM-DD"),
   existingMode: z.enum(["error", "skip", "replace"]).optional(),
+});
+
+// Pick an ELIGIBLE meal at random by filters and schedule it by calendar date.
+// Body is a JSON object, so arrays/booleans arrive natively (no query-string
+// coercion). Filters mirror the meals-list vocabulary; all are optional.
+const scheduleRandomSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  categories: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
+  favorite: z.boolean().optional(),
+  avoidRecentDays: z.number().int().min(0).optional(),
 });
 
 function paramStr(val: string | string[] | undefined): string {
@@ -226,6 +240,43 @@ weekPlanRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to schedule meal" });
+    }
+  },
+);
+
+// POST /api/families/:familyId/schedule/random
+// Pick an eligible meal at random (by optional filters) and schedule it onto
+// `date` as a new UNAPPROVED suggestion. Any family member may schedule;
+// approval remains parent-gated separately. 422 when no meal matches.
+weekPlanRouter.post(
+  "/:familyId/schedule/random",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const { date, ...filters } = scheduleRandomSchema.parse(req.body);
+      const user = req.user as { id: string };
+
+      const suggestion = await randomPlanService.scheduleRandomMeal({
+        familyId,
+        date: new Date(`${date}T00:00:00Z`),
+        userId: user.id,
+        filters,
+      });
+      res.status(201).json(suggestion);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to schedule random meal" });
     }
   },
 );

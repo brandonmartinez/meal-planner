@@ -151,6 +151,25 @@ export function createToolHandlers(
         client.scheduleMeal(familyId, { mealId: args.mealId, date: args.date }),
       ),
 
+    schedule_random_meal: (args: {
+      date: string;
+      categories?: string[];
+      tags?: string[];
+      difficulty?: ("EASY" | "MEDIUM" | "HARD")[];
+      favorite?: boolean;
+      avoidRecentDays?: number;
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.scheduleRandomMeal(familyId, {
+          date: args.date,
+          categories: args.categories,
+          tags: args.tags,
+          difficulty: args.difficulty,
+          favorite: args.favorite,
+          avoidRecentDays: args.avoidRecentDays,
+        }),
+      ),
+
     repeat_week: (args: {
       targetWeekStart: string;
       sourceWeekStart: string;
@@ -243,6 +262,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   get_week_plan: "meal_plan:read",
   get_previous_week_plans: "meal_plan:read",
   schedule_meal: "meal_plan:schedule",
+  schedule_random_meal: "meal_plan:schedule",
   repeat_week: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
@@ -407,6 +427,60 @@ export function registerTools(
       },
     },
     (args) => handlers.schedule_meal(args),
+  );
+
+  server.registerTool(
+    "schedule_random_meal",
+    {
+      title: "Schedule a random meal",
+      description:
+        "Pick an ELIGIBLE meal at random and schedule it onto a calendar " +
+        "date. Creates an unapproved meal suggestion; a parent (or an agent " +
+        "with the approve scope) must approve it separately. Optional filters " +
+        "narrow the candidate pool before the random pick: categories, tags, " +
+        "difficulty, favorite-only, and avoid-recent (exclude meals cooked " +
+        "within the last N days). Multiple values within the categories (or " +
+        "tags, or difficulty) filter are OR'd; the filters are AND'd together. " +
+        "Fails with a 422 when no meal matches. Requires the meal_plan:schedule " +
+        "scope.",
+      inputSchema: {
+        date: dateString.describe(
+          "The calendar date to schedule the meal on (YYYY-MM-DD).",
+        ),
+        categories: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Restrict candidates to these category names (case-insensitive). " +
+              "Multiple categories are OR'd.",
+          ),
+        tags: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Restrict candidates to these tag names (case-insensitive). " +
+              "Multiple tags are OR'd.",
+          ),
+        difficulty: z
+          .array(difficultyEnum)
+          .optional()
+          .describe("Restrict candidates to one or more difficulty levels."),
+        favorite: z
+          .boolean()
+          .optional()
+          .describe("Restrict candidates to favorite meals when true."),
+        avoidRecentDays: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe(
+            "Exclude meals cooked within this many days before the target " +
+              "date. Omit or 0 to disable avoid-recent.",
+          ),
+      },
+    },
+    (args) => handlers.schedule_random_meal(args),
   );
 
   server.registerTool(
