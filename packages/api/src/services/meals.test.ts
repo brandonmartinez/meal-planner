@@ -1773,6 +1773,7 @@ describe("meals service", () => {
           ],
           tags: [],
           categories: [],
+          collections: [],
         },
       ]);
     });
