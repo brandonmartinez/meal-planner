@@ -823,6 +823,8 @@ describe("registerTools", () => {
     expect(names).toEqual([
       "list_meals",
       "list_collections",
+      "create_collection",
+      "update_collection",
       "list_templates",
       "list_grocery_categories",
       "get_current_week_plan",
@@ -836,8 +838,6 @@ describe("registerTools", () => {
       "approve_suggestion",
       "create_meal",
       "update_meal",
-      "create_collection",
-      "update_collection",
       "get_current_grocery_list",
     ]);
     // Each registration provides a config with an inputSchema and a handler.
