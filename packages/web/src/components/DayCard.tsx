@@ -1,8 +1,10 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DayPlan, MealSuggestion } from '@meal-planner/shared';
 import { DAYS_OF_WEEK, MEAL_PLACEHOLDERS } from '@meal-planner/shared';
 import { MealThumbnail } from './MealThumbnail';
+import MealDetailModal from './MealDetailModal';
+import { useFamily } from '../hooks/useFamily';
 
 interface DayCardProps {
   day: DayPlan;
@@ -85,11 +87,17 @@ interface SuggestionChipProps {
 }
 
 export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove, onRemove }: SuggestionChipProps) {
+  const { familyId } = useFamily();
+  const [showDetail, setShowDetail] = useState(false);
   const placeholderKind = suggestion.meal?.placeholderKind ?? null;
   const isPlaceholder = placeholderKind !== null;
   const placeholderEmoji = isPlaceholder ? MEAL_PLACEHOLDERS[placeholderKind].emoji : null;
   const canRemove = isParent || suggestion.userId === currentUserId;
   const canDrag = !suggestion.approved && (isParent || suggestion.userId === currentUserId);
+  // Real (non-placeholder) meals can open the detail modal; placeholders have no recipe.
+  const mealId = suggestion.meal?.id ?? suggestion.mealId;
+  const canOpenDetail = !isPlaceholder && !!suggestion.meal && !!familyId;
+  const mealName = suggestion.meal?.name || 'Unknown';
 
   const baseClass = suggestion.approved
     ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-gray-900 dark:text-gray-100'
@@ -110,59 +118,87 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
     }
     : { opacity: isDragging ? 0.4 : undefined };
 
+  const mealBody = (
+    <>
+      {suggestion.approved && <span className="text-green-600 dark:text-green-400">✓</span>}
+      {placeholderEmoji && <span>{placeholderEmoji}</span>}
+      <MealThumbnail
+        src={suggestion.meal?.imageUrl}
+        alt=""
+        className="h-5 w-5 rounded object-cover shrink-0"
+      />
+      <span className="truncate">{mealName}</span>
+    </>
+  );
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`border rounded px-3 py-2 text-sm ${baseClass} ${canDrag ? 'cursor-grab active:cursor-grabbing touch-none' : ''}`}
-      {...(canDrag ? attributes : {})}
-      {...(canDrag ? listeners : {})}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium truncate flex items-center gap-1 flex-1 min-w-0">
-          {suggestion.approved && <span className="text-green-600 dark:text-green-400">✓</span>}
-          {placeholderEmoji && <span>{placeholderEmoji}</span>}
-          <MealThumbnail
-            src={suggestion.meal?.imageUrl}
-            alt=""
-            className="h-5 w-5 rounded object-cover shrink-0"
-          />
-          <span className="truncate">{suggestion.meal?.name || 'Unknown'}</span>
-        </span>
-        <div
-          className="flex items-center gap-1 shrink-0"
-          onPointerDown={e => e.stopPropagation()}
-          onKeyDown={e => e.stopPropagation()}
-        >
-          {isParent && !suggestion.approved && (
+    <>
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`border rounded px-3 py-2 text-sm ${baseClass} ${canDrag ? 'cursor-grab active:cursor-grabbing touch-none' : ''}`}
+        {...(canDrag ? attributes : {})}
+        {...(canDrag ? listeners : {})}
+      >
+        <div className="flex items-center justify-between gap-2">
+          {canOpenDetail ? (
             <button
               type="button"
-              onClick={() => onApprove(suggestion.id)}
-              className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-800 dark:hover:text-green-200"
-              title="Approve"
-              aria-label="Approve suggestion"
+              onClick={() => setShowDetail(true)}
+              aria-label={`View details for ${mealName}`}
+              className="font-medium truncate flex items-center gap-1 flex-1 min-w-0 text-left cursor-pointer rounded hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
-              ✓
+              {mealBody}
             </button>
+          ) : (
+            <span className="font-medium truncate flex items-center gap-1 flex-1 min-w-0">
+              {mealBody}
+            </span>
           )}
-          {canRemove && (
-            <button
-              type="button"
-              onClick={() => onRemove(suggestion.id)}
-              className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-red-400 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-300"
-              title="Remove"
-              aria-label="Remove suggestion"
-            >
-              ✕
-            </button>
-          )}
+          <div
+            className="flex items-center gap-1 shrink-0"
+            onPointerDown={e => e.stopPropagation()}
+            onKeyDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+          >
+            {isParent && !suggestion.approved && (
+              <button
+                type="button"
+                onClick={() => onApprove(suggestion.id)}
+                className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-800 dark:hover:text-green-200"
+                title="Approve"
+                aria-label="Approve suggestion"
+              >
+                ✓
+              </button>
+            )}
+            {canRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(suggestion.id)}
+                className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-red-400 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-300"
+                title="Remove"
+                aria-label="Remove suggestion"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
+        {suggestion.suggestedBy && (
+          <div className="text-gray-400 dark:text-gray-500 text-xs truncate mt-0.5">
+            by {suggestion.suggestedBy.name}
+          </div>
+        )}
       </div>
-      {suggestion.suggestedBy && (
-        <div className="text-gray-400 dark:text-gray-500 text-xs truncate mt-0.5">
-          by {suggestion.suggestedBy.name}
-        </div>
+      {showDetail && familyId && (
+        <MealDetailModal
+          familyId={familyId}
+          mealId={mealId}
+          mealName={suggestion.meal?.name}
+          onClose={() => setShowDetail(false)}
+        />
       )}
-    </div>
+    </>
   );
 }
