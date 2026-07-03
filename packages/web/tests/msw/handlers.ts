@@ -23,6 +23,14 @@ export const handlers = [
   http.get("/api/families/:id/categories", () =>
     HttpResponse.json({ categories: [] }),
   ),
+  // Recipe collections (issue #110) — MealsPage, MealPicker, and MealFormPage load
+  // these on mount to populate the collection filter/assignment controls. Default
+  // to empty so existing meal tests that don't exercise collections don't trip the
+  // `onUnhandledRequest: "error"` guard. Tests that assert on the collections UI
+  // override this with a populated list.
+  http.get("/api/families/:id/collections", () =>
+    HttpResponse.json({ collections: [] }),
+  ),
   // Meal image assets (issue #105). Default handlers so image upload/preview UX
   // doesn't trip `onUnhandledRequest: "error"`. Tests that assert on validation
   // failures (413/400) override POST per-case via server.use(...).

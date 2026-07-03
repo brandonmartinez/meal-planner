@@ -27,6 +27,7 @@ export async function listMeals(
     difficulty?: string[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
     favorite?: boolean;
     minRating?: number;
     sort?: string;
@@ -48,6 +49,11 @@ export async function listMeals(
   }
   if (opts?.categories?.length) {
     for (const c of opts.categories) params.append("categories", c);
+  }
+  // Collections filter by name, repeated once per value (#109). Same OR-within,
+  // AND-across-facet semantics as tags/categories.
+  if (opts?.collections?.length) {
+    for (const c of opts.collections) params.append("collections", c);
   }
   if (opts?.favorite !== undefined) {
     params.set("favorite", String(opts.favorite));
@@ -91,6 +97,7 @@ export async function createMeal(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
   },
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals`, {
@@ -117,6 +124,7 @@ export async function updateMeal(
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
   },
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals/${mealId}`, {

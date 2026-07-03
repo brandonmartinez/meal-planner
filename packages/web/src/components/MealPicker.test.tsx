@@ -407,3 +407,37 @@ describe('MealPicker tags and categories', () => {
         expect(onSelect).toHaveBeenCalledWith('m-1');
     });
 });
+
+describe('MealPicker collection filter', () => {
+    it('sends the selected collection as a `collections` query param', async () => {
+        let lastUrl = '';
+        server.use(
+            http.get('/api/families/f-1/collections', () =>
+                HttpResponse.json({
+                    collections: [
+                        { id: 'col-1', name: 'Weeknight', familyId: 'f-1', description: null },
+                    ],
+                }),
+            ),
+            http.get('/api/families/f-1/meals', ({ request }) => {
+                lastUrl = request.url;
+                return HttpResponse.json(mealsEnvelope(meals));
+            }),
+        );
+
+        renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        // Distinct dropdown affordance (not a chip row), rendered once a
+        // collection exists for the family.
+        await userEvent.selectOptions(await screen.findByLabelText('Collection'), 'Weeknight');
+
+        await waitFor(() =>
+            expect(new URL(lastUrl).searchParams.getAll('collections')).toEqual([
+                'Weeknight',
+            ]),
+        );
+    });
+});

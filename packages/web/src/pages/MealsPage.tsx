@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { listMeals, deleteMeal, exportMeals } from '../api/meals';
+import { listCollections } from '../api/collections';
+import type { RecipeCollection } from '../api/collections';
 import { mealsToCSV } from '../utils/csv';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
@@ -41,6 +43,8 @@ export default function MealsPage() {
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [collectionFilter, setCollectionFilter] = useState('');
+  const [collectionOptions, setCollectionOptions] = useState<RecipeCollection[]>([]);
   const [sort, setSort] = useState<'name' | 'created' | 'lastCooked'>('name');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [total, setTotal] = useState(0);
@@ -64,7 +68,8 @@ export default function MealsPage() {
     debouncedSearch.trim() !== '' ||
     difficulty.length > 0 ||
     tagFilter.length > 0 ||
-    categoryFilter.length > 0;
+    categoryFilter.length > 0 ||
+    collectionFilter !== '';
 
   // Load the first page (replaces the grid). Runs whenever any filter/sort input
   // changes; a new search/filter always resets pagination to offset 0.
@@ -76,6 +81,7 @@ export default function MealsPage() {
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         categories: categoryFilter.length ? categoryFilter : undefined,
+        collections: collectionFilter ? [collectionFilter] : undefined,
         sort,
         order,
         limit: PAGE_SIZE,
@@ -90,9 +96,18 @@ export default function MealsPage() {
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, sort, order]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, collectionFilter, sort, order]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
+
+  // Collections power the dedicated collection filter (#110). Loaded separately
+  // from taxonomy; fails soft — a load error just leaves the dropdown empty.
+  useEffect(() => {
+    if (!familyId) return;
+    listCollections(familyId)
+      .then(setCollectionOptions)
+      .catch(() => setCollectionOptions([]));
+  }, [familyId]);
 
   // Append the next page onto the existing grid without clearing it.
   const loadMore = async () => {
@@ -104,6 +119,7 @@ export default function MealsPage() {
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         categories: categoryFilter.length ? categoryFilter : undefined,
+        collections: collectionFilter ? [collectionFilter] : undefined,
         sort,
         order,
         limit: PAGE_SIZE,
@@ -142,6 +158,7 @@ export default function MealsPage() {
     setDifficulty([]);
     setTagFilter([]);
     setCategoryFilter([]);
+    setCollectionFilter('');
   };
 
   const handleDelete = async (mealId: string) => {
@@ -285,6 +302,30 @@ export default function MealsPage() {
               {order === 'asc' ? '↑ Asc' : '↓ Desc'}
             </button>
           </div>
+
+          {collectionOptions.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="collection-filter"
+                className="text-sm text-gray-600 dark:text-gray-300"
+              >
+                Collection
+              </label>
+              <select
+                id="collection-filter"
+                value={collectionFilter}
+                onChange={e => setCollectionFilter(e.target.value)}
+                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
+              >
+                <option value="">All collections</option>
+                {collectionOptions.map(c => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {hasActiveFilters && (
             <button

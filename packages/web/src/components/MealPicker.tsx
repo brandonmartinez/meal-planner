@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useId } from 'react';
 import { listMeals } from '../api/meals';
+import { listCollections } from '../api/collections';
+import type { RecipeCollection } from '../api/collections';
 import type { MealListItemDTO, MealPlaceholderKind, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDER_KINDS, MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -32,6 +34,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [collectionFilter, setCollectionFilter] = useState('');
+  const [collectionOptions, setCollectionOptions] = useState<RecipeCollection[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,6 +53,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         categories: categoryFilter.length ? categoryFilter : undefined,
+        collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: 0,
       });
@@ -59,9 +64,17 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, collectionFilter]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
+
+  // Collections power the dedicated collection filter (#110). Loaded separately;
+  // fails soft — a load error just leaves the dropdown empty.
+  useEffect(() => {
+    listCollections(familyId)
+      .then(setCollectionOptions)
+      .catch(() => setCollectionOptions([]));
+  }, [familyId]);
 
   // Append the next page onto the existing list without clearing it.
   const loadMore = async () => {
@@ -73,6 +86,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         categories: categoryFilter.length ? categoryFilter : undefined,
+        collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: meals.length,
       });
@@ -214,6 +228,30 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {collectionOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="picker-collection-filter"
+              className="text-xs font-medium text-gray-600 dark:text-gray-300"
+            >
+              Collection
+            </label>
+            <select
+              id="picker-collection-filter"
+              value={collectionFilter}
+              onChange={e => setCollectionFilter(e.target.value)}
+              className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs"
+            >
+              <option value="">All collections</option>
+              {collectionOptions.map(c => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { getMeal, createMeal, updateMeal } from '../api/meals';
+import { listCollections } from '../api/collections';
 import { useFamily } from '../hooks/useFamily';
 import { useTaxonomy } from '../hooks/useTaxonomy';
 import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
@@ -49,6 +50,8 @@ export default function MealFormPage() {
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
   const [tags, setTags] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [collections, setCollections] = useState<string[]>([]);
+  const [collectionSuggestions, setCollectionSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -76,6 +79,7 @@ export default function MealFormPage() {
         setRating(meal.rating != null ? String(meal.rating) : '');
         setTags(meal.tags?.map(t => t.name) ?? []);
         setCategories(meal.categories?.map(c => c.name) ?? []);
+        setCollections(meal.collections?.map(c => c.name) ?? []);
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -90,6 +94,14 @@ export default function MealFormPage() {
       .catch(() => setError('Failed to load meal'))
       .finally(() => setLoading(false));
   }, [isEdit, familyId, mealId, navigate]);
+
+  // Collection name suggestions for the assignment field (#110). Fails soft.
+  useEffect(() => {
+    if (!familyId) return;
+    listCollections(familyId)
+      .then(cols => setCollectionSuggestions(cols.map(c => c.name)))
+      .catch(() => setCollectionSuggestions([]));
+  }, [familyId]);
 
   const handleIngredientChange = (index: number, field: keyof IngredientRow, value: string) => {
     setIngredients(prev => prev.map((ing, i) => (i === index ? { ...ing, [field]: value } : ing)));
@@ -140,6 +152,7 @@ export default function MealFormPage() {
       // treats the arrays as the full desired set; resolve-or-create by name).
       tags,
       categories,
+      collections,
     };
 
     try {
@@ -225,6 +238,19 @@ export default function MealFormPage() {
             suggestions={categoryOptions.map(c => c.name)}
             placeholder="Add a category…"
           />
+        </div>
+
+        <div>
+          <TokenField
+            label="📚 Collections"
+            values={collections}
+            onChange={setCollections}
+            suggestions={collectionSuggestions}
+            placeholder="Add to a collection…"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Group this recipe into browsable collections. New names create a collection.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

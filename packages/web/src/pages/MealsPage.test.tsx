@@ -678,3 +678,44 @@ describe('MealsPage tags and categories', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('MealsPage collection filter', () => {
+  it('sends the selected collection as a `collections` query param', async () => {
+    const urls: string[] = [];
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/collections`, () =>
+        HttpResponse.json({
+          collections: [
+            { id: 'col-1', name: 'Weeknight', familyId: FAMILY_ID, description: null },
+          ],
+        }),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals`, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })]));
+      }),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    // The collection filter is a dropdown (distinct from the tag/category chip
+    // rows), and only appears once at least one collection exists.
+    const select = await screen.findByLabelText('Collection');
+    fireEvent.change(select, { target: { value: 'Weeknight' } });
+
+    await waitFor(() =>
+      expect(
+        new URL(urls[urls.length - 1]).searchParams.getAll('collections'),
+      ).toEqual(['Weeknight']),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await waitFor(() =>
+      expect(
+        new URL(urls[urls.length - 1]).searchParams.getAll('collections'),
+      ).toEqual([]),
+    );
+  });
+});

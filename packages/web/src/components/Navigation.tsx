@@ -27,6 +27,7 @@ export default function Navigation() {
         ? [
             { to: '/week', label: 'This Week' },
             { to: '/meals', label: 'Meals' },
+            { to: '/collections', label: 'Collections' },
             { to: '/grocery', label: 'Grocery' },
         ]
         : [];
