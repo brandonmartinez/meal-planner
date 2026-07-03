@@ -225,6 +225,14 @@ describe('MealFormPage core metadata', () => {
       notes: null,
     });
   });
+
+  it('opts the meal name field out of password-manager autofill', async () => {
+    renderForm('/meals/new');
+
+    const name = screen.getByRole('textbox', { name: 'Name *' });
+    expect(name).toHaveAttribute('data-1p-ignore');
+    expect(name).toHaveAttribute('autocomplete', 'off');
+  });
 });
 
 describe('MealFormPage favorite and rating', () => {

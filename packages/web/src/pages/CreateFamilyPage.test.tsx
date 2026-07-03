@@ -127,4 +127,16 @@ describe('CreateFamilyPage', () => {
     expect(screen.queryByText('HOME')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /create a family/i })).toBeInTheDocument();
   });
+
+  it('opts the family name field out of password-manager autofill', async () => {
+    server.use(
+      http.get('/api/auth/me', () => HttpResponse.json({ ...baseUser, memberships: [] })),
+    );
+
+    renderCreate();
+
+    const name = screen.getByRole('textbox');
+    expect(name).toHaveAttribute('data-1p-ignore');
+    expect(name).toHaveAttribute('autocomplete', 'off');
+  });
 });

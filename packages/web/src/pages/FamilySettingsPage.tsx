@@ -345,6 +345,10 @@ export default function FamilySettingsPage() {
               onChange={e => setNewKeyName(e.target.value)}
               placeholder="Key name"
               aria-label="API key name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
             />
             <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -432,6 +436,10 @@ export default function FamilySettingsPage() {
               onChange={e => setNewAgentName(e.target.value)}
               placeholder="Credential name (e.g. Planner Bot)"
               aria-label="Agent credential name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
             />
 
