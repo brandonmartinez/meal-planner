@@ -479,6 +479,7 @@ describe("POST /:familyId/schedule/random", () => {
   });
 });
 
+describe("PATCH /:familyId/suggestions/:suggestionId/move", () => {
   const handler = getRouteHandler(
     weekPlanRouter,
     "patch",
