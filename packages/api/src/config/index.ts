@@ -115,6 +115,15 @@ export const config = {
   devLogin: {
     enabled: isDevLoginEnabled(),
   },
+  // Filesystem root for uploaded image assets (see services/imageStorage.ts).
+  // Bytes are stored under family-scoped, opaque paths — never served by raw
+  // path. Dev/test fall back to a repo-local `.data/images` dir so the app
+  // boots with zero setup; production points IMAGE_STORAGE_ROOT at the mounted
+  // RWX volume. Not in PRODUCTION_REQUIRED_VARS: the default is a safe path,
+  // not a secret, and the deployment always sets the real mount.
+  imageStorage: {
+    root: process.env.IMAGE_STORAGE_ROOT || `${process.cwd()}/.data/images`,
+  },
 } as const;
 
 /**
