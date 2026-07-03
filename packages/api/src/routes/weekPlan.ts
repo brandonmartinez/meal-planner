@@ -405,6 +405,31 @@ weekPlanRouter.patch(
   },
 );
 
+// PATCH /api/families/:familyId/suggestions/:suggestionId/unapprove
+weekPlanRouter.patch(
+  "/:familyId/suggestions/:suggestionId/unapprove",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const suggestionId = paramStr(req.params.suggestionId);
+      const suggestion = await weekPlanService.unapproveSuggestion(
+        familyId,
+        suggestionId,
+      );
+      res.json(suggestion);
+    } catch (error) {
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to unapprove suggestion" });
+    }
+  },
+);
+
 // DELETE /api/families/:familyId/suggestions/:suggestionId
 weekPlanRouter.delete(
   "/:familyId/suggestions/:suggestionId",

@@ -10,6 +10,7 @@ const {
   getWeekPlan,
   addSuggestion,
   approveSuggestion,
+  unapproveSuggestion,
   removeSuggestion,
   moveSuggestion,
   SuggestionError,
@@ -228,6 +229,36 @@ describe("suggestions", () => {
         actorType: "user",
         actorId: "user-1",
       }),
+    ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
+    expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
+  });
+
+  it("unapproveSuggestion clears approved fields when suggestion is in family", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue({ id: "s-1" } as never);
+    prismaMock.mealSuggestion.update.mockResolvedValue({} as never);
+    await unapproveSuggestion("fam-1", "s-1");
+    expect(prismaMock.mealSuggestion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1", dayPlan: { weekPlan: { familyId: "fam-1" } } },
+      }),
+    );
+    expect(prismaMock.mealSuggestion.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "s-1" },
+        data: {
+          approved: false,
+          approvedByActorType: null,
+          approvedById: null,
+          approvedAt: null,
+        },
+      }),
+    );
+  });
+
+  it("unapproveSuggestion rejects a suggestion from another family (404, no write)", async () => {
+    prismaMock.mealSuggestion.findFirst.mockResolvedValue(null);
+    await expect(
+      unapproveSuggestion("fam-1", "s-OTHER"),
     ).rejects.toMatchObject({ name: "SuggestionError", status: 404 });
     expect(prismaMock.mealSuggestion.update).not.toHaveBeenCalled();
   });

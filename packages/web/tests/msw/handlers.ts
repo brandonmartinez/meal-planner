@@ -54,6 +54,17 @@ export const handlers = [
   http.get("/api/families/:id/templates", () =>
     HttpResponse.json({ templates: [] }),
   ),
+  // Suggestion approve / unapprove (week plan). Default 200 so tests that render
+  // WeekPlanPage but don't exercise these actions don't trip onUnhandledRequest.
+  // Tests that assert on the approve/unapprove outcome override per-case.
+  http.patch(
+    "/api/families/:id/suggestions/:suggestionId/approve",
+    () => new HttpResponse(null, { status: 200 }),
+  ),
+  http.patch(
+    "/api/families/:id/suggestions/:suggestionId/unapprove",
+    () => new HttpResponse(null, { status: 200 }),
+  ),
   // Meal image assets (issue #105). Default handlers so image upload/preview UX
   // doesn't trip `onUnhandledRequest: "error"`. Tests that assert on validation
   // failures (413/400) override POST per-case via server.use(...).

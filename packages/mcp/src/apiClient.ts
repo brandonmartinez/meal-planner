@@ -322,6 +322,19 @@ export class MealPlannerApiClient {
     );
   }
 
+  /** Revert approval of a suggestion (privileged, parent-equivalent — approve scope). */
+  unapproveSuggestion(
+    familyId: string,
+    suggestionId: string,
+  ): Promise<MealSuggestionDTO> {
+    return this.request<MealSuggestionDTO>(
+      "PATCH",
+      `/api/agent/${encodeURIComponent(familyId)}/suggestions/${encodeURIComponent(
+        suggestionId,
+      )}/unapprove`,
+    );
+  }
+
   // --- Meal catalog write (family-from-key; meal:write scope) ---------------
 
   /** Create a meal in the family the key resolves to (no family in the path). */

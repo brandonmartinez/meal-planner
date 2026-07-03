@@ -1074,3 +1074,45 @@ agentRouter.patch(
     }
   },
 );
+
+// PATCH /api/agent/:familyId/suggestions/:suggestionId/unapprove — scope: meal_plan:approve
+agentRouter.patch(
+  "/:familyId/suggestions/:suggestionId/unapprove",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.APPROVE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    const suggestionId = paramStr(req.params.suggestionId);
+    try {
+      const suggestion = await weekPlanService.unapproveSuggestion(
+        familyId,
+        suggestionId,
+      );
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.APPROVE,
+        outcome: "allowed",
+        targetType: "mealSuggestion",
+        targetIds: [suggestionId],
+      });
+      res.json(suggestion);
+    } catch (error) {
+      if (error instanceof weekPlanService.SuggestionError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId,
+          action: AGENT_SCOPES.APPROVE,
+          outcome: "denied",
+          targetType: "mealSuggestion",
+          targetIds: [suggestionId],
+          reason: `error_${error.status}`,
+        });
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to unapprove suggestion" });
+    }
+  },
+);

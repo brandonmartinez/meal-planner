@@ -27,6 +27,7 @@ vi.mock("../services/weekPlan.js", () => {
     getOrCreateWeekPlan: vi.fn(),
     addSuggestion: vi.fn(),
     approveSuggestion: vi.fn(),
+    unapproveSuggestion: vi.fn(),
     removeSuggestion: vi.fn(),
     moveSuggestion: vi.fn(),
     repeatWeek: vi.fn(),
@@ -246,6 +247,48 @@ describe("PATCH /:familyId/suggestions/:suggestionId/approve", () => {
 
   it("500s on an unexpected error", async () => {
     vi.mocked(weekPlanService.approveSuggestion).mockRejectedValue(
+      new Error("db"),
+    );
+    const res = buildFullRes();
+    await handler(req("PARENT", { params }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("PATCH /:familyId/suggestions/:suggestionId/unapprove", () => {
+  const handler = getRouteHandler(
+    weekPlanRouter,
+    "patch",
+    "/:familyId/suggestions/:suggestionId/unapprove",
+  );
+
+  const params = { familyId: FAMILY_ID, suggestionId: "sug-1" };
+
+  it("200s with the unapproved suggestion", async () => {
+    vi.mocked(weekPlanService.unapproveSuggestion).mockResolvedValue({
+      id: "sug-1",
+      approved: false,
+    } as never);
+    const res = buildFullRes();
+    await handler(req("PARENT", { params }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    expect(weekPlanService.unapproveSuggestion).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "sug-1",
+    );
+  });
+
+  it("maps a SuggestionError to its own status code", async () => {
+    vi.mocked(weekPlanService.unapproveSuggestion).mockRejectedValue(
+      new SuggestionError(404, "Suggestion not found"),
+    );
+    const res = buildFullRes();
+    await handler(req("PARENT", { params }), res, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(weekPlanService.unapproveSuggestion).mockRejectedValue(
       new Error("db"),
     );
     const res = buildFullRes();

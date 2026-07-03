@@ -200,6 +200,11 @@ export function createToolHandlers(
     }): Promise<ToolResult> =>
       run(() => client.approveSuggestion(familyId, args.suggestionId)),
 
+    unapprove_suggestion: (args: {
+      suggestionId: string;
+    }): Promise<ToolResult> =>
+      run(() => client.unapproveSuggestion(familyId, args.suggestionId)),
+
     apply_template: (args: {
       templateId: string;
       targetWeekStart: string;
@@ -327,6 +332,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   apply_template: "meal_plan:schedule",
   fill_week: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
+  unapprove_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
   get_current_grocery_list: "meal_plan:read",
@@ -802,6 +808,23 @@ export function registerTools(
       },
     },
     (args) => handlers.approve_suggestion(args),
+  );
+
+  server.registerTool(
+    "unapprove_suggestion",
+    {
+      title: "Unapprove suggestion",
+      description:
+        "Revert approval of a meal suggestion. This is a privileged, parent-equivalent " +
+        "action and requires the meal_plan:approve scope.",
+      inputSchema: {
+        suggestionId: z
+          .string()
+          .min(1)
+          .describe("The id of the meal suggestion to unapprove."),
+      },
+    },
+    (args) => handlers.unapprove_suggestion(args),
   );
 
   server.registerTool(

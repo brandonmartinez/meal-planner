@@ -319,6 +319,35 @@ export async function approveSuggestion(
 }
 
 /**
+ * Clears approval on a suggestion, enforcing that it belongs to `familyId`
+ * via dayPlan.weekPlan.familyId before mutating. A suggestion owned by another
+ * family yields 404 without modifying `approved`.
+ */
+export async function unapproveSuggestion(
+  familyId: string,
+  suggestionId: string,
+) {
+  const owned = await prisma.mealSuggestion.findFirst({
+    where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
+    select: { id: true },
+  });
+  if (!owned) {
+    throw new SuggestionError(404, "Suggestion not found");
+  }
+
+  return prisma.mealSuggestion.update({
+    where: { id: suggestionId },
+    data: {
+      approved: false,
+      approvedByActorType: null,
+      approvedById: null,
+      approvedAt: null,
+    },
+    include: suggestionInclude,
+  });
+}
+
+/**
  * Removes a suggestion, enforcing that it belongs to `familyId`. Mirrors the
  * move authorization model: only the original suggester or a PARENT may remove
  * it. Cross-family targets yield 404; an unauthorized member yields 403.

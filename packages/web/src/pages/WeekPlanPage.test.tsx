@@ -111,6 +111,27 @@ describe('WeekPlanPage', () => {
     await waitFor(() => expect(approved).toBe(true));
   });
 
+  it('unapproves a suggestion as a parent', async () => {
+    let unapproved = false;
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([suggestion({ approved: true })])),
+      ),
+      http.patch('/api/families/:familyId/suggestions/:suggestionId/unapprove', () => {
+        unapproved = true;
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+
+    await screen.findByText('Tacos');
+    await userEvent.click(screen.getByRole('button', { name: /un-approve suggestion/i }));
+
+    await waitFor(() => expect(unapproved).toBe(true));
+  });
+
   it('removes a suggestion as a parent', async () => {
     let removed = false;
     server.use(

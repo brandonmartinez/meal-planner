@@ -97,6 +97,7 @@ describe('DayCard', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         expect(screen.getByText('Monday')).toBeInTheDocument();
@@ -113,6 +114,7 @@ describe('DayCard', () => {
                 onAddMeal={onAddMeal}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         expect(screen.getByText('Tacos')).toBeInTheDocument();
@@ -130,6 +132,7 @@ describe('DayCard', () => {
                 onAddMeal={() => { }}
                 onApprove={onApprove}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         await userEvent.click(screen.getByTitle('Approve'));
@@ -145,6 +148,7 @@ describe('DayCard', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         expect(screen.queryByTitle('Approve')).toBeNull();
@@ -159,6 +163,7 @@ describe('DayCard', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         expect(screen.queryByTitle('Remove')).toBeNull();
@@ -193,9 +198,101 @@ describe('DayCard', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
         expect(screen.getByText('🍕')).toBeInTheDocument();
+    });
+
+    it('approved suggestion shows the ↺ un-approve button and calls onUnapprove', async () => {
+        const onUnapprove = vi.fn();
+        const approvedSuggestion = { ...baseSuggestion, approved: true };
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [approvedSuggestion] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={onUnapprove}
+            />,
+        );
+        const btn = screen.getByTitle('Un-approve');
+        expect(btn).toBeInTheDocument();
+        await userEvent.click(btn);
+        expect(onUnapprove).toHaveBeenCalledWith('s-1');
+    });
+
+    it('approved suggestion shows no ✓ approve button (replaced by ↺)', () => {
+        const approvedSuggestion = { ...baseSuggestion, approved: true };
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [approvedSuggestion] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={() => { }}
+            />,
+        );
+        expect(screen.queryByTitle('Approve')).toBeNull();
+        expect(screen.getByTitle('Un-approve')).toBeInTheDocument();
+    });
+
+    it('approved suggestion does not show a leading ✓ badge in the meal name', () => {
+        const approvedSuggestion = { ...baseSuggestion, approved: true };
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [approvedSuggestion] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={() => { }}
+            />,
+        );
+        // The name is present but no standalone ✓ span before it
+        expect(screen.getByText('Tacos')).toBeInTheDocument();
+        expect(screen.queryByText('✓')).toBeNull();
+    });
+
+    it('remove button is still present when suggestion is approved', () => {
+        const approvedSuggestion = { ...baseSuggestion, approved: true };
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [approvedSuggestion] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={() => { }}
+            />,
+        );
+        expect(screen.getByTitle('Remove')).toBeInTheDocument();
+    });
+
+    it('renders a photo stamp when meal has imageUrl (non-placeholder)', () => {
+        const suggestionWithImage = {
+            ...baseSuggestion,
+            meal: { ...baseSuggestion.meal, imageUrl: 'https://example.com/tacos.jpg' },
+        };
+        renderWithProviders(
+            <DayCard
+                day={makeDay({ suggestions: [suggestionWithImage] as DayPlan['suggestions'] })}
+                isParent
+                currentUserId="user-1"
+                onAddMeal={() => { }}
+                onApprove={() => { }}
+                onRemove={() => { }}
+                onUnapprove={() => { }}
+            />,
+        );
+        const stamp = screen.getByRole('img', { name: /tacos/i });
+        expect(stamp).toBeInTheDocument();
     });
 });
 
@@ -216,6 +313,7 @@ describe('DayCard — meal detail modal', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
 
@@ -281,6 +379,7 @@ describe('DayCard — meal detail modal', () => {
                 onAddMeal={() => { }}
                 onApprove={() => { }}
                 onRemove={() => { }}
+                onUnapprove={() => { }}
             />,
         );
 
