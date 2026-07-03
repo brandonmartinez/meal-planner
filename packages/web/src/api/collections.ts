@@ -31,10 +31,12 @@ export async function getCollection(
   );
 }
 
-/** Create a collection. `description` is an optional curated blurb. */
+/** Create a collection. `description` is an optional curated blurb. When
+ *  `mealIds` is supplied the backend sets the collection's membership to
+ *  exactly those meals (replace-set; `[]` clears; omit to leave empty). #152 */
 export async function createCollection(
   familyId: string,
-  data: { name: string; description?: string | null },
+  data: { name: string; description?: string | null; mealIds?: string[] },
 ): Promise<RecipeCollection> {
   return request<RecipeCollection>(`${BASE}/${familyId}/collections`, {
     method: "POST",
@@ -43,11 +45,13 @@ export async function createCollection(
 }
 
 /** Update a collection's name and/or description. The backend requires at
- *  least one field; callers should send only what changed. */
+ *  least one field; callers should send only what changed. When `mealIds` is
+ *  supplied the backend REPLACES membership with exactly those meals (`[]`
+ *  clears; omit to leave the current membership untouched). #152 */
 export async function updateCollection(
   familyId: string,
   collectionId: string,
-  data: { name?: string; description?: string | null },
+  data: { name?: string; description?: string | null; mealIds?: string[] },
 ): Promise<RecipeCollection> {
   return request<RecipeCollection>(
     `${BASE}/${familyId}/collections/${collectionId}`,

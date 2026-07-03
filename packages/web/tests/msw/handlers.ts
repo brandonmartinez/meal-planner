@@ -40,6 +40,15 @@ export const handlers = [
   http.get("/api/families/:id/collections", () =>
     HttpResponse.json({ collections: [] }),
   ),
+  // Family meals (issue #110 collections modal + #152 membership editing) — the
+  // CollectionFormModal pages this endpoint to populate the meal picker and, in
+  // edit mode, to load the collection's current membership. Default to an empty
+  // page so tests that open the modal without exercising the picker don't trip
+  // the `onUnhandledRequest: "error"` guard. Tests that assert on meal
+  // membership override this with a populated page.
+  http.get("/api/families/:id/meals", () =>
+    HttpResponse.json({ items: [], total: 0, limit: 100, offset: 0, hasMore: false }),
+  ),
   // Planning templates (issue #117) — TemplatesPage and the WeekPlanPage
   // "apply a template" flow load these on mount. Default to empty so tests that
   // don't exercise templates (e.g. WeekPlanPage suggestion tests) don't trip the
