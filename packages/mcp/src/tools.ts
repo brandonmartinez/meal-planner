@@ -295,6 +295,22 @@ export function createToolHandlers(
 
     get_current_grocery_list: (): Promise<ToolResult> =>
       run(() => client.getCurrentGroceryList()),
+
+    create_collection: (args: {
+      name: string;
+      description?: string | null;
+      mealIds?: string[];
+    }): Promise<ToolResult> => run(() => client.createCollection(args)),
+
+    update_collection: (args: {
+      collectionId: string;
+      name?: string;
+      description?: string | null;
+      mealIds?: string[];
+    }): Promise<ToolResult> => {
+      const { collectionId, ...rest } = args;
+      return run(() => client.updateCollection(collectionId, rest));
+    },
   };
 }
 
@@ -305,6 +321,8 @@ export type ToolHandlers = ReturnType<typeof createToolHandlers>;
 export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   list_meals: "meal_plan:read",
   list_collections: "meal_plan:read",
+  create_collection: "meal:write",
+  update_collection: "meal:write",
   list_templates: "meal_plan:read",
   list_grocery_categories: "meal_plan:read",
   get_current_week_plan: "meal_plan:read",
@@ -427,6 +445,77 @@ export function registerTools(
       inputSchema: {},
     },
     () => handlers.list_collections(),
+  );
+
+  server.registerTool(
+    "create_collection",
+    {
+      title: "Create recipe collection",
+      description:
+        "Create a new recipe collection in the family the key resolves to. " +
+        "Idempotent by name: if a collection with the same name already exists " +
+        "it is returned unchanged. Optionally supply mealIds to REPLACE-SET the " +
+        "collection's meal membership immediately. Requires the meal:write scope.",
+      inputSchema: {
+        name: z.string().min(1).max(100).describe("Collection name (1–100 chars)"),
+        description: z
+          .string()
+          .max(500)
+          .nullable()
+          .optional()
+          .describe("Optional description (≤500 chars)"),
+        mealIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Optional list of meal ids to assign to this collection " +
+              "(REPLACE-SET: clears existing membership first). All ids must " +
+              "belong to the same family. Pass [] to clear membership.",
+          ),
+      },
+    },
+    (args: { name: string; description?: string | null; mealIds?: string[] }) =>
+      handlers.create_collection(args),
+  );
+
+  server.registerTool(
+    "update_collection",
+    {
+      title: "Update recipe collection",
+      description:
+        "Update an existing recipe collection by id. Supply any combination of " +
+        "name, description, or mealIds. When mealIds is provided it REPLACE-SETS " +
+        "the collection's meal membership (pass [] to clear). Omit mealIds to " +
+        "leave membership unchanged. Requires the meal:write scope.",
+      inputSchema: {
+        collectionId: z.string().describe("Id of the collection to update"),
+        name: z
+          .string()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("New collection name (1–100 chars)"),
+        description: z
+          .string()
+          .max(500)
+          .nullable()
+          .optional()
+          .describe("New description (≤500 chars); null to clear"),
+        mealIds: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "REPLACE-SET meal membership: all supplied ids must belong to " +
+              "the family. Omit to leave membership unchanged. Pass [] to clear.",
+          ),
+      },
+    },
+    (args: {
+      collectionId: string;
+      name?: string;
+      description?: string | null;
+      mealIds?: string[];
+    }) => handlers.update_collection(args),
   );
 
   server.registerTool(
