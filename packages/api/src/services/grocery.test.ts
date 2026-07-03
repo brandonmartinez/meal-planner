@@ -271,6 +271,212 @@ describe("generateGroceryList", () => {
   });
 });
 
+describe("mergeQuantities — numeric + fraction handling (#120)", () => {
+  it("sums decimals and rounds cleanly", () => {
+    expect(mergeQuantities("0.1", "0.2")).toBe("0.3");
+    expect(mergeQuantities("1.5", "2.25")).toBe("3.75");
+  });
+
+  it("sums simple fractions", () => {
+    expect(mergeQuantities("1/2", "1/2")).toBe("1");
+  });
+
+  it("sums mixed numbers", () => {
+    expect(mergeQuantities("1 1/2", "1/2")).toBe("2");
+  });
+
+  it("treats a zero denominator as non-numeric (pass-through)", () => {
+    expect(mergeQuantities("1/0", "2")).toBe("1/0, 2");
+  });
+
+  it("passes non-numeric quantities through without crashing or dropping", () => {
+    expect(mergeQuantities("to taste", "1")).toBe("to taste, 1");
+  });
+
+  it("collapses identical non-numeric quantities to a single value", () => {
+    expect(mergeQuantities("to taste", "to taste")).toBe("to taste");
+  });
+
+  it("returns the other operand when one is empty", () => {
+    expect(mergeQuantities("", "2")).toBe("2");
+    expect(mergeQuantities("3", "")).toBe("3");
+  });
+});
+
+describe("groceryKey — normalized equivalences (#120)", () => {
+  it("folds case and whitespace in names", () => {
+    expect(groceryKey("Tomato sauce")).toBe(groceryKey("tomato Sauce"));
+    expect(groceryKey("  Olive   Oil ")).toBe(groceryKey("Olive Oil"));
+  });
+
+  it("folds unit aliases to a canonical token", () => {
+    expect(groceryKey("Flour", "tbsp")).toBe(groceryKey("Flour", "tablespoon"));
+    expect(groceryKey("Sugar", "g")).toBe(groceryKey("Sugar", "grams"));
+  });
+
+  it("keeps genuinely distinct names apart", () => {
+    expect(groceryKey("Tomato")).not.toBe(groceryKey("Tomatoes"));
+    expect(groceryKey("Onion")).not.toBe(groceryKey("Garlic"));
+  });
+});
+
+describe("generateGroceryList — normalization grouping (#120)", () => {
+  it("merges case/whitespace name variants into one line, preserving sources", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: {
+          id: "meal-a",
+          name: "Meal A",
+          ingredients: [
+            { name: "Tomato sauce", quantity: "1", unit: "can", category: "pantry" },
+          ],
+        },
+      },
+      {
+        meal: {
+          id: "meal-b",
+          name: "Meal B",
+          ingredients: [
+            { name: "tomato Sauce", quantity: "2", unit: "cans", category: "pantry" },
+          ],
+        },
+      },
+    ] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl", items: [] } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
+      data: {
+        items: {
+          create: {
+            name: string;
+            quantity: string | null;
+            unit: string | null;
+            sources: string[];
+            sourceMealIds: string[];
+          }[];
+        };
+      };
+    };
+    const items = arg.data.items.create;
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("Tomato sauce");
+    expect(items[0].unit).toBe("can");
+    expect(items[0].quantity).toBe("3");
+    expect(items[0].sources).toEqual(expect.arrayContaining(["Meal A", "Meal B"]));
+    expect(items[0].sourceMealIds).toEqual(
+      expect.arrayContaining(["meal-a", "meal-b"]),
+    );
+  });
+
+  it("merges unit aliases (tbsp/tablespoon) and sums quantities", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: {
+          id: "meal-a",
+          name: "Meal A",
+          ingredients: [
+            { name: "Flour", quantity: "1", unit: "tbsp", category: "pantry" },
+          ],
+        },
+      },
+      {
+        meal: {
+          id: "meal-b",
+          name: "Meal B",
+          ingredients: [
+            { name: "Flour", quantity: "2", unit: "tablespoon", category: "pantry" },
+          ],
+        },
+      },
+    ] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl", items: [] } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
+      data: { items: { create: { name: string; quantity: string | null; unit: string | null }[] } };
+    };
+    const items = arg.data.items.create;
+    expect(items).toHaveLength(1);
+    expect(items[0].unit).toBe("tbsp");
+    expect(items[0].quantity).toBe("3");
+  });
+
+  it("merges non-numeric quantities without crashing and keeps sources intact", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: {
+          id: "meal-a",
+          name: "Meal A",
+          ingredients: [
+            { name: "Salt", quantity: "to taste", unit: "", category: "pantry" },
+          ],
+        },
+      },
+      {
+        meal: {
+          id: "meal-b",
+          name: "Meal B",
+          ingredients: [
+            { name: "salt", quantity: "to taste", unit: "", category: "pantry" },
+          ],
+        },
+      },
+    ] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl", items: [] } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
+      data: { items: { create: { name: string; quantity: string | null; sources: string[] }[] } };
+    };
+    const items = arg.data.items.create;
+    expect(items).toHaveLength(1);
+    expect(items[0].quantity).toBe("to taste");
+    expect(items[0].sources).toEqual(expect.arrayContaining(["Meal A", "Meal B"]));
+  });
+
+  it("merges whitespace name variants", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: {
+          id: "meal-a",
+          name: "Meal A",
+          ingredients: [
+            { name: "  Olive  Oil ", quantity: "1", unit: "tbsp", category: "pantry" },
+          ],
+        },
+      },
+      {
+        meal: {
+          id: "meal-b",
+          name: "Meal B",
+          ingredients: [
+            { name: "Olive Oil", quantity: "1", unit: "tbsp", category: "pantry" },
+          ],
+        },
+      },
+    ] as never);
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    prismaMock.groceryList.create.mockResolvedValue({ id: "gl", items: [] } as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
+      data: { items: { create: { name: string; quantity: string | null }[] } };
+    };
+    const items = arg.data.items.create;
+    expect(items).toHaveLength(1);
+    expect(items[0].name).toBe("Olive Oil");
+    expect(items[0].quantity).toBe("2");
+  });
+});
+
 describe("getGroceryList / getGroceryListByWeek", () => {
   it("getGroceryList scopes by id + familyId", async () => {
     prismaMock.groceryList.findFirst.mockResolvedValue(null);

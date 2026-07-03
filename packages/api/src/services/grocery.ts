@@ -1,18 +1,73 @@
 import { GrocerySource, Prisma } from "@prisma/client";
 import prisma from "../config/database.js";
+import {
+  canonicalUnit,
+  displayIngredientName,
+  normalizeIngredientName,
+  normalizeUnit,
+} from "./ingredientNormalize.js";
 
-/** Canonical merge key: name+unit, case-folded. Exported for #120 seam. */
+/**
+ * Canonical merge key: normalized name + normalized unit (issue #120).
+ *
+ * Case-folds, collapses whitespace, strips trailing punctuation on the name, and
+ * folds common unit aliases (`tablespoon` → `tbsp`) on the unit. This only ever
+ * makes MORE variants merge, never fewer, so source tracking still gathers every
+ * contributing meal. Both the computed-item map and the existing-DB reconciliation
+ * map key off this function, so matching stays consistent across generations.
+ */
 export function groceryKey(name: string, unit?: string): string {
-  return `${name.toLowerCase()}|${(unit ?? "").toLowerCase()}`;
+  return `${normalizeIngredientName(name)}|${normalizeUnit(unit)}`;
 }
 
-/** Merge two quantity strings. _unit param reserved for #120 normalization. */
+/**
+ * Parse a quantity string to a number, or `null` when it is not a clean numeric
+ * value. Supports plain ints/decimals, simple fractions (`1/2`), and mixed
+ * numbers (`1 1/2`). Returns `null` for anything else (e.g. `"to taste"`), and
+ * guards against a zero denominator. This is intentionally stricter than
+ * `parseFloat`, which wrongly reads `"1/2"` as `1`.
+ */
+function parseQuantity(value: string): number | null {
+  const s = value.trim();
+  if (!s) return null;
+  // Plain integer or decimal, e.g. "2" or "1.5".
+  if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+  // Simple fraction, e.g. "1/2".
+  const frac = s.match(/^(\d+)\/(\d+)$/);
+  if (frac) {
+    const denom = Number(frac[2]);
+    return denom === 0 ? null : Number(frac[1]) / denom;
+  }
+  // Mixed number, e.g. "1 1/2".
+  const mixed = s.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+  if (mixed) {
+    const denom = Number(mixed[3]);
+    return denom === 0 ? null : Number(mixed[1]) + Number(mixed[2]) / denom;
+  }
+  return null;
+}
+
+/**
+ * Merge two quantity strings for grouped grocery lines (issue #120).
+ *
+ * Conservative — NO unit conversion (the merge key already guarantees a common
+ * canonical unit). When both operands are numeric (incl. fractions/mixed) they
+ * are summed and rounded to 3 decimals to shed float noise. An empty operand
+ * yields the other. Otherwise the values pass through joined as `"a, b"` so
+ * non-numeric quantities are never dropped or crashed on; two identical
+ * non-numeric strings collapse to a single value. `_unit` stays reserved for a
+ * future (out-of-scope) unit-conversion pass.
+ */
 export function mergeQuantities(a: string, b: string, _unit?: string): string {
   if (!a) return b;
   if (!b) return a;
-  const numA = parseFloat(a);
-  const numB = parseFloat(b);
-  if (!isNaN(numA) && !isNaN(numB)) return String(numA + numB);
+  const numA = parseQuantity(a);
+  const numB = parseQuantity(b);
+  if (numA !== null && numB !== null) {
+    return String(Math.round((numA + numB) * 1000) / 1000);
+  }
+  // Collapse identical non-numeric quantities (e.g. "to taste" + "to taste").
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return a;
   return `${a}, ${b}`;
 }
 
@@ -67,9 +122,9 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
         }
       } else {
         computedMap.set(key, {
-          name: ing.name,
+          name: displayIngredientName(ing.name),
           quantity: ing.quantity || "",
-          unit: ing.unit || "",
+          unit: canonicalUnit(ing.unit ?? undefined),
           category: ing.category || "other",
           sources: [suggestion.meal.name],
           sourceMealIds: [suggestion.meal.id],
