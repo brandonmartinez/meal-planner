@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { useImperativeHandle, useRef, useState, forwardRef } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
 import {
@@ -11,6 +11,11 @@ import {
 
 function pngFile(name = 'photo.png', bytes = 8): File {
   return new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+}
+
+function bigFile(name = 'big.png'): File {
+  // 5 MB + 1 byte — just over the client-side limit
+  return new File([new Uint8Array(5 * 1024 * 1024 + 1)], name, { type: 'image/png' });
 }
 
 /** Controlled harness that mirrors how MealFormPage drives the field, and
@@ -243,5 +248,87 @@ describe('MealImageField', () => {
     expect(onChangeSpy).toHaveBeenLastCalledWith('');
     // No asset delete fired for an external URL.
     expect(deleted).toHaveLength(0);
+  });
+
+  // ── Dropzone tests ──────────────────────────────────────────────────────────
+
+  it('shows the dropzone CTA with helper text in upload mode when no image', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByLabelText('Upload'));
+    expect(screen.getByText('PNG, JPEG, WebP, or GIF, up to 5 MB.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose file' })).toBeInTheDocument();
+  });
+
+  it('applies drag-over highlight class and removes it on drag-leave', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByLabelText('Upload'));
+
+    const zone = screen.getByRole('button', { name: 'Upload image drop zone' });
+    fireEvent.dragOver(zone);
+    expect(zone.className).toContain('border-blue-500');
+
+    fireEvent.dragLeave(zone);
+    expect(zone.className).not.toContain('border-blue-500');
+  });
+
+  it('dropping a file triggers the upload and shows a preview', async () => {
+    const onChangeSpy = vi.fn();
+    stubUpload('asset-drop');
+    const user = userEvent.setup();
+    render(<Harness onChangeSpy={onChangeSpy} />);
+    await user.click(screen.getByLabelText('Upload'));
+
+    const zone = screen.getByRole('button', { name: 'Upload image drop zone' });
+    const file = pngFile('dropped.png');
+    const dropEvent = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, 'dataTransfer', {
+      value: { files: [file] },
+    });
+    fireEvent(zone, dropEvent);
+
+    await waitFor(() =>
+      expect(onChangeSpy).toHaveBeenCalledWith('/api/families/f-1/images/asset-drop'),
+    );
+    expect(screen.getByRole('img', { name: 'Meal image preview' })).toBeInTheDocument();
+  });
+
+  it('rejects a file over 5 MB with a client-side error and never calls the API', async () => {
+    const user = userEvent.setup();
+    const onChangeSpy = vi.fn();
+    const uploadCalled = vi.fn();
+    server.use(
+      http.post('/api/families/f-1/images', () => {
+        uploadCalled();
+        return HttpResponse.json({ id: 'nope' }, { status: 201 });
+      }),
+    );
+    render(<Harness onChangeSpy={onChangeSpy} />);
+    await user.click(screen.getByLabelText('Upload'));
+    await user.upload(screen.getByLabelText('Upload meal image'), bigFile());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('5 MB');
+    expect(onChangeSpy).not.toHaveBeenCalled();
+    expect(uploadCalled).not.toHaveBeenCalled();
+  });
+
+  it('shows image preview (not the dropzone CTA) when upload mode has an existing image', () => {
+    render(<Harness initial="/api/families/f-1/images/asset-saved" />);
+    expect(screen.getByRole('img', { name: 'Meal image preview' })).toBeInTheDocument();
+    // The dropzone CTA should NOT be shown since we already have an image
+    expect(screen.queryByText('PNG, JPEG, WebP, or GIF, up to 5 MB.')).not.toBeInTheDocument();
+  });
+
+  it('clicking the dropzone zone opens the file picker', async () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByLabelText('Upload'));
+
+    const zone = screen.getByRole('button', { name: 'Upload image drop zone' });
+    fireEvent.click(zone);
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
   });
 });
