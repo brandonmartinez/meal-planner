@@ -9,6 +9,7 @@ import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TokenField from '../components/TokenField';
+import Combobox from '../components/Combobox';
 import { MealImageField, type MealImageFieldHandle } from '../components/MealImageField';
 
 interface IngredientRow {
@@ -243,7 +244,7 @@ export default function MealFormPage() {
         </div>
 
         <div>
-          <TokenField
+          <Combobox
             label="📚 Collections"
             values={collections}
             onChange={setCollections}
