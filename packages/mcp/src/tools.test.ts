@@ -25,6 +25,7 @@ function stubClient() {
     getCurrentGroceryList: vi.fn(),
     listCollections: vi.fn(),
     listTemplates: vi.fn(),
+    listGroceryCategories: vi.fn(),
     applyTemplate: vi.fn(),
     fillWeek: vi.fn(),
   };
@@ -302,6 +303,26 @@ describe("createToolHandlers", () => {
     expect(client.createMeal).toHaveBeenCalledWith(input);
   });
 
+  it("create_meal forwards a custom (non-default) ingredient category string (#119, backward-compat contract)", async () => {
+    const client = stubClient();
+    client.createMeal.mockResolvedValue({ id: "meal-new" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    // #119 relaxed the ingredient category from a closed enum to an open
+    // string: a family-defined category outside INGREDIENT_CATEGORIES must
+    // pass through untouched (no enum rejection, no coercion).
+    const input = {
+      name: "Tacos",
+      ingredients: [{ name: "hot sauce", category: "brandon's condiments" }],
+    };
+    await handlers.create_meal(input);
+
+    expect(client.createMeal).toHaveBeenCalledWith(input);
+  });
+
   it("create_meal forwards ordered instructions (#100, parity row 7)", async () => {
     const client = stubClient();
     client.createMeal.mockResolvedValue({ id: "meal-new" });
@@ -571,6 +592,25 @@ describe("createToolHandlers", () => {
     expect(JSON.parse(textOf(result))).toEqual(templates);
   });
 
+  it("list_grocery_categories forwards the family and returns the effective category names (#119, parity row 8)", async () => {
+    const client = stubClient();
+    const categories = ["produce", "dairy", "meat", "brandon's snacks"];
+    client.listGroceryCategories.mockResolvedValue(categories);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.list_grocery_categories();
+
+    expect(client.listGroceryCategories).toHaveBeenCalledWith(FAMILY);
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual(categories);
+    // #119: the custom family category rides alongside the shared defaults.
+    expect(parsed).toContain("brandon's snacks");
+  });
+
   it("apply_template threads templateId, targetWeekStart, existingMode to the client", async () => {
     const client = stubClient();
     const weekPlan = { id: "wp-1", weekStart: "2026-07-06", days: [] };
@@ -679,6 +719,7 @@ describe("registerTools", () => {
       "list_meals",
       "list_collections",
       "list_templates",
+      "list_grocery_categories",
       "get_current_week_plan",
       "get_week_plan",
       "get_previous_week_plans",
@@ -868,6 +909,29 @@ describe("registerTools", () => {
     expect(applySchema).toHaveProperty("targetWeekStart");
     expect(applySchema).toHaveProperty("existingMode");
   });
+
+  it("documents the grocery-categories read tool + least-privilege scope (#119, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const listCall = registerTool.mock.calls.find(
+      (c) => c[0] === "list_grocery_categories",
+    );
+    expect(listCall).toBeDefined();
+    const description = (listCall?.[1] as { description: string }).description;
+    // Advertises the effective (defaults ∪ custom) surface + read scope, and
+    // notes that management is browser-only.
+    expect(description).toContain("custom");
+    expect(description).toContain("meal_plan:read");
+    expect(description).toContain("browser-only");
+    // A read-only tool takes no inputs.
+    expect(
+      (listCall?.[1] as { inputSchema: Record<string, unknown> }).inputSchema,
+    ).toEqual({});
+  });
 });
 
 describe("TOOL_SCOPES", () => {
@@ -876,6 +940,7 @@ describe("TOOL_SCOPES", () => {
       list_meals: "meal_plan:read",
       list_collections: "meal_plan:read",
       list_templates: "meal_plan:read",
+      list_grocery_categories: "meal_plan:read",
       get_current_week_plan: "meal_plan:read",
       get_week_plan: "meal_plan:read",
       get_previous_week_plans: "meal_plan:read",

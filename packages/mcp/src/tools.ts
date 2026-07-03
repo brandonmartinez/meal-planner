@@ -71,10 +71,14 @@ const ingredientSchema = z.object({
     .optional()
     .describe("Unit for the quantity, e.g. 'cups', 'g', 'tbsp'."),
   category: z
-    .enum(INGREDIENT_CATEGORIES)
+    .string()
+    .min(1)
     .optional()
     .describe(
-      "Grocery aisle/category. One of: " + INGREDIENT_CATEGORIES.join(", ") + ".",
+      "Grocery aisle/category as free text. Family-configurable (#119): the " +
+        "shared defaults are " +
+        INGREDIENT_CATEGORIES.join(", ") +
+        ", but any custom family category name is also accepted.",
     ),
 });
 
@@ -133,6 +137,9 @@ export function createToolHandlers(
 
     list_templates: (): Promise<ToolResult> =>
       run(() => client.listTemplates(familyId)),
+
+    list_grocery_categories: (): Promise<ToolResult> =>
+      run(() => client.listGroceryCategories(familyId)),
 
     get_current_week_plan: (): Promise<ToolResult> =>
       run(() => client.getCurrentWeekPlan(familyId)),
@@ -299,6 +306,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   list_meals: "meal_plan:read",
   list_collections: "meal_plan:read",
   list_templates: "meal_plan:read",
+  list_grocery_categories: "meal_plan:read",
   get_current_week_plan: "meal_plan:read",
   get_week_plan: "meal_plan:read",
   get_previous_week_plans: "meal_plan:read",
@@ -437,6 +445,21 @@ export function registerTools(
     () => handlers.list_templates(),
   );
 
+  server.registerTool(
+    "list_grocery_categories",
+    {
+      title: "List grocery categories",
+      description:
+        "List the family's effective grocery aisle categories (#119) — the " +
+        "shared defaults (produce, dairy, meat, etc.) unioned with any custom " +
+        "categories the family has added. Returns a flat list of category " +
+        "name strings. Use these names for the category field on ingredients " +
+        "when calling create_meal/update_meal. Management (add/rename/delete) " +
+        "is browser-only. Requires the meal_plan:read scope.",
+      inputSchema: {},
+    },
+    () => handlers.list_grocery_categories(),
+  );
 
   server.registerTool(
     "get_current_week_plan",

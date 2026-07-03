@@ -23,6 +23,7 @@ import {
 import { formatWeekRange, shiftWeek } from '../utils/date';
 import DayCard from '../components/DayCard';
 import MealPicker from '../components/MealPicker';
+import ApplyTemplateModal from '../components/ApplyTemplateModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { WeekPlan, DayPlan, MealSuggestion, RepeatWeekExistingMode } from '@meal-planner/shared';
 
@@ -36,6 +37,7 @@ export default function WeekPlanPage() {
     const [error, setError] = useState('');
     const [pickerDayPlanId, setPickerDayPlanId] = useState<string | null>(null);
     const [showRepeat, setShowRepeat] = useState(false);
+    const [showApply, setShowApply] = useState(false);
     const [repeatSource, setRepeatSource] = useState(() => shiftWeek(weekStart, -1));
     const [repeatMode, setRepeatMode] = useState<RepeatWeekExistingMode>('error');
     const [repeatBusy, setRepeatBusy] = useState(false);
@@ -47,6 +49,7 @@ export default function WeekPlanPage() {
     useEffect(() => {
         setRepeatSource(shiftWeek(weekStart, -1));
         setShowRepeat(false);
+        setShowApply(false);
     }, [weekStart]);
 
     const loadWeekPlan = useCallback(async () => {
@@ -190,6 +193,15 @@ export default function WeekPlanPage() {
                         🔁 Repeat a previous week
                     </button>
                 )}
+                {isParent && (
+                    <button
+                        type="button"
+                        onClick={() => setShowApply(true)}
+                        className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/60 text-sm font-medium"
+                    >
+                        🗓️ Apply a template
+                    </button>
+                )}
             </div>
 
             {isParent && showRepeat && (
@@ -252,6 +264,18 @@ export default function WeekPlanPage() {
                     familyId={familyId}
                     onSelect={handleAddSuggestion}
                     onClose={() => setPickerDayPlanId(null)}
+                />
+            )}
+
+            {showApply && familyId && (
+                <ApplyTemplateModal
+                    familyId={familyId}
+                    weekStart={weekStart}
+                    onClose={() => setShowApply(false)}
+                    onApplied={plan => {
+                        setWeekPlan(plan);
+                        setShowApply(false);
+                    }}
                 />
             )}
         </div>

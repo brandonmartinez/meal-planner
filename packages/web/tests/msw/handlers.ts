@@ -23,6 +23,15 @@ export const handlers = [
   http.get("/api/families/:id/categories", () =>
     HttpResponse.json({ categories: [] }),
   ),
+  // Family grocery categories (issue #119) — MealFormPage and GroceryListPage
+  // load these via useGroceryCategories on mount to populate ingredient/item
+  // category selects. Default to empty so the hook falls back to the shared
+  // INGREDIENT_CATEGORIES defaults (its fail-soft behavior) and existing tests
+  // that don't exercise custom categories don't trip `onUnhandledRequest:
+  // "error"`. Tests that assert on custom categories override this.
+  http.get("/api/families/:id/grocery-categories", () =>
+    HttpResponse.json({ categories: [], custom: [] }),
+  ),
   // Recipe collections (issue #110) — MealsPage, MealPicker, and MealFormPage load
   // these on mount to populate the collection filter/assignment controls. Default
   // to empty so existing meal tests that don't exercise collections don't trip the
@@ -30,6 +39,14 @@ export const handlers = [
   // override this with a populated list.
   http.get("/api/families/:id/collections", () =>
     HttpResponse.json({ collections: [] }),
+  ),
+  // Planning templates (issue #117) — TemplatesPage and the WeekPlanPage
+  // "apply a template" flow load these on mount. Default to empty so tests that
+  // don't exercise templates (e.g. WeekPlanPage suggestion tests) don't trip the
+  // `onUnhandledRequest: "error"` guard. Tests that assert on the templates UI
+  // override this with a populated list.
+  http.get("/api/families/:id/templates", () =>
+    HttpResponse.json({ templates: [] }),
   ),
   // Meal image assets (issue #105). Default handlers so image upload/preview UX
   // doesn't trip `onUnhandledRequest: "error"`. Tests that assert on validation

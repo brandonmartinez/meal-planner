@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useFamily } from '../hooks/useFamily';
+import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import { useWeek } from '../context/WeekContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem } from '../api/grocery';
-import { INGREDIENT_CATEGORIES } from '@meal-planner/shared';
 import { formatWeekRange } from '../utils/date';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { GroceryList, GroceryItem } from '@meal-planner/shared';
@@ -24,6 +24,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 
 export default function GroceryListPage() {
     const { familyId, hasFamilies } = useFamily();
+    const { categories: groceryCategoryOptions } = useGroceryCategories(familyId);
     const { weekStart } = useWeek();
     const [groceryList, setGroceryList] = useState<GroceryList | null>(null);
     const [loading, setLoading] = useState(true);
@@ -122,10 +123,11 @@ export default function GroceryListPage() {
         grouped.get(cat)!.push(item);
     }
 
-    // Sort categories by INGREDIENT_CATEGORIES order
+    // Sort categories by the effective grocery-category order (defaults first,
+    // then custom); unknown/legacy values sink to the end. #119.
     const sortedCategories = [...grouped.keys()].sort((a, b) => {
-        const idxA = INGREDIENT_CATEGORIES.indexOf(a as typeof INGREDIENT_CATEGORIES[number]);
-        const idxB = INGREDIENT_CATEGORIES.indexOf(b as typeof INGREDIENT_CATEGORIES[number]);
+        const idxA = groceryCategoryOptions.indexOf(a);
+        const idxB = groceryCategoryOptions.indexOf(b);
         return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
     });
 
@@ -272,8 +274,8 @@ export default function GroceryListPage() {
                                     aria-label="New item category"
                                     className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 >
-                                    {INGREDIENT_CATEGORIES.map(cat => (
-                                        <option key={cat} value={cat}>{CATEGORY_EMOJIS[cat]} {cat}</option>
+                                    {groceryCategoryOptions.map(cat => (
+                                        <option key={cat} value={cat}>{CATEGORY_EMOJIS[cat] || '📦'} {cat}</option>
                                     ))}
                                 </select>
                                 <button

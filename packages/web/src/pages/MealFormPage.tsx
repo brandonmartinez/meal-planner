@@ -4,7 +4,8 @@ import { getMeal, createMeal, updateMeal } from '../api/meals';
 import { listCollections } from '../api/collections';
 import { useFamily } from '../hooks/useFamily';
 import { useTaxonomy } from '../hooks/useTaxonomy';
-import { INGREDIENT_CATEGORIES, MEAL_DIFFICULTIES } from '@meal-planner/shared';
+import { MEAL_DIFFICULTIES } from '@meal-planner/shared';
+import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TokenField from '../components/TokenField';
@@ -23,6 +24,7 @@ export default function MealFormPage() {
   const { mealId } = useParams<{ mealId?: string }>();
   const { familyId, hasFamilies } = useFamily();
   const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
+  const { categories: groceryCategoryOptions } = useGroceryCategories(familyId);
   const navigate = useNavigate();
   const isEdit = Boolean(mealId);
 
@@ -395,7 +397,11 @@ export default function MealFormPage() {
                   className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
                 >
                   <option value="">Category</option>
-                  {INGREDIENT_CATEGORIES.map(cat => (
+                  {(ing.category &&
+                  !groceryCategoryOptions.includes(ing.category)
+                    ? [ing.category, ...groceryCategoryOptions]
+                    : groceryCategoryOptions
+                  ).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>

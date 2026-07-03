@@ -3,8 +3,15 @@ import { z } from 'zod';
 import { authenticateJWT } from '../middleware/auth.js';
 import { requireMembership } from '../middleware/membership.js';
 import * as groceryService from '../services/grocery.js';
+import * as groceryCategoryService from '../services/groceryCategories.js';
 
 export const groceryRouter = Router();
+
+// Family-configurable grocery aisle categories (issue #119). Shape mirrors the
+// meal taxonomy create schema so the two stay consistent.
+const categoryNameSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+});
 
 const patchItemSchema = z
   .object({
@@ -175,6 +182,119 @@ groceryRouter.delete(
         return;
       }
       res.status(500).json({ error: 'Failed to remove item' });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Family-configurable grocery categories (issue #119)
+//
+// Custom aisle categories layer over the shared INGREDIENT_CATEGORIES defaults.
+// The effective list (defaults ∪ custom) drives grocery & meal category selects.
+// Management (create/rename/delete) is browser-only (JWT + membership); the
+// read-only effective list is additionally exposed on the agent/MCP surface.
+// ---------------------------------------------------------------------------
+
+// GET /api/families/:familyId/grocery-categories — effective category list
+groceryRouter.get(
+  '/:familyId/grocery-categories',
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const [categories, custom] = await Promise.all([
+        groceryCategoryService.listEffectiveGroceryCategories(familyId),
+        groceryCategoryService.listGroceryCategories(familyId),
+      ]);
+      res.json({ categories, custom });
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch grocery categories' });
+    }
+  }
+);
+
+// POST /api/families/:familyId/grocery-categories — create a custom category
+groceryRouter.post(
+  '/:familyId/grocery-categories',
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const { name } = categoryNameSchema.parse(req.body);
+      const category = await groceryCategoryService.createGroceryCategory(
+        familyId,
+        name
+      );
+      res.status(201).json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: 'Validation failed', details: error.errors });
+        return;
+      }
+      res.status(500).json({ error: 'Failed to create grocery category' });
+    }
+  }
+);
+
+// PATCH /api/families/:familyId/grocery-categories/:categoryId — rename
+groceryRouter.patch(
+  '/:familyId/grocery-categories/:categoryId',
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const categoryId = paramStr(req.params.categoryId);
+      const { name } = categoryNameSchema.parse(req.body);
+      const category = await groceryCategoryService.renameGroceryCategory(
+        familyId,
+        categoryId,
+        name
+      );
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: 'Validation failed', details: error.errors });
+        return;
+      }
+      if (error instanceof Error && error.message === 'Grocery category not found') {
+        res.status(404).json({ error: 'Grocery category not found' });
+        return;
+      }
+      // Unique-constraint collision: the new name already exists in the family.
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code?: string }).code === 'P2002'
+      ) {
+        res.status(409).json({ error: 'A category with that name already exists' });
+        return;
+      }
+      res.status(500).json({ error: 'Failed to rename grocery category' });
+    }
+  }
+);
+
+// DELETE /api/families/:familyId/grocery-categories/:categoryId — delete
+groceryRouter.delete(
+  '/:familyId/grocery-categories/:categoryId',
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const categoryId = paramStr(req.params.categoryId);
+      await groceryCategoryService.deleteGroceryCategory(familyId, categoryId);
+      res.status(204).send();
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Grocery category not found') {
+        res.status(404).json({ error: 'Grocery category not found' });
+        return;
+      }
+      res.status(500).json({ error: 'Failed to delete grocery category' });
     }
   }
 );
