@@ -1243,6 +1243,53 @@ describe("POST /:familyId/collections (create)", () => {
     expect(collectionService.createCollection).not.toHaveBeenCalled();
   });
 
+  it("201s when mealIds is provided (creates + sets membership)", async () => {
+    vi.mocked(collectionService.createCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    vi.mocked(collectionService.setCollectionMeals).mockResolvedValue(
+      undefined,
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Weeknight Dinners", mealIds: ["meal-1", "meal-2"] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(collectionService.setCollectionMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+      ["meal-1", "meal-2"],
+    );
+  });
+
+  it("422s when a mealId belongs to another family", async () => {
+    vi.mocked(collectionService.createCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    vi.mocked(collectionService.setCollectionMeals).mockRejectedValue(
+      new Error("One or more meals do not belong to this family"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Weeknight Dinners", mealIds: ["foreign-meal"] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(422);
+  });
+
   it("500s when the service throws", async () => {
     vi.mocked(collectionService.createCollection).mockRejectedValue(
       new Error("db"),
@@ -1342,6 +1389,84 @@ describe("PATCH /:familyId/collections/:collectionId (update)", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(collectionService.updateCollection).not.toHaveBeenCalled();
+  });
+
+  it("200s when only mealIds is provided (mealIds-only update)", async () => {
+    vi.mocked(collectionService.updateCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    vi.mocked(collectionService.setCollectionMeals).mockResolvedValue(
+      undefined,
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-1" },
+        body: { mealIds: ["meal-1"] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(collectionService.setCollectionMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+      ["meal-1"],
+    );
+  });
+
+  it("200s when mealIds is provided alongside name", async () => {
+    vi.mocked(collectionService.updateCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Renamed",
+      familyId: FAMILY_ID,
+    } as never);
+    vi.mocked(collectionService.setCollectionMeals).mockResolvedValue(
+      undefined,
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-1" },
+        body: { name: "Renamed", mealIds: ["meal-1", "meal-2"] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(collectionService.updateCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+      { name: "Renamed" },
+    );
+    expect(collectionService.setCollectionMeals).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+      ["meal-1", "meal-2"],
+    );
+  });
+
+  it("422s when a mealId belongs to another family", async () => {
+    vi.mocked(collectionService.updateCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight",
+      familyId: FAMILY_ID,
+    } as never);
+    vi.mocked(collectionService.setCollectionMeals).mockRejectedValue(
+      new Error("One or more meals do not belong to this family"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-1" },
+        body: { mealIds: ["foreign-meal"] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(422);
   });
 
   it("404s when the collection belongs to another family (IDOR guard)", async () => {

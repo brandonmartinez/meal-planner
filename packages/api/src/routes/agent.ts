@@ -376,8 +376,7 @@ agentRouter.get(
 
 // GET /api/agent/:familyId/collections — scope: meal_plan:read
 // Lists the family's recipe collections (issue #109) so an agent can reference
-// them by id/name when curating meals. Read-only; there is intentionally no
-// agent create/update/delete surface for collections.
+// them by id/name when curating meals.
 agentRouter.get(
   "/:familyId/collections",
   authenticateAgent,
@@ -398,6 +397,141 @@ agentRouter.get(
       res.json({ collections });
     } catch {
       res.status(500).json({ error: "Failed to fetch collections" });
+    }
+  },
+);
+
+// POST /api/agent/collections — scope: meal:write
+// Create a collection in the family resolved from the key (family-from-key,
+// mirrors POST /meals). Optionally set initial meal membership via mealIds
+// (replace-set). Cross-family mealIds are rejected 422 (issue #112).
+const agentCollectionCreateSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullable().optional(),
+  mealIds: z.array(z.string().min(1)).optional(),
+});
+
+agentRouter.post(
+  "/collections",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.WRITE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    try {
+      const data = agentCollectionCreateSchema.parse(req.body);
+      const collection = await collectionService.createCollection(
+        agent.familyId,
+        data.name,
+        data.description,
+      );
+      if (data.mealIds !== undefined) {
+        await collectionService.setCollectionMeals(
+          agent.familyId,
+          collection.id,
+          data.mealIds,
+        );
+      }
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.WRITE,
+        outcome: "allowed",
+        targetType: "collection",
+        targetIds: [collection.id],
+      });
+      res.status(201).json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (
+        error instanceof Error &&
+        error.message === "One or more meals do not belong to this family"
+      ) {
+        res.status(422).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to create collection" });
+    }
+  },
+);
+
+// PATCH /api/agent/collections/:collectionId — scope: meal:write
+// Update a collection in the family resolved from the key (family-from-key,
+// mirrors PATCH /meals/:mealId). mealIds triggers a replace-set. Cross-family
+// mealIds are rejected 422; a foreign collection yields 404 (issue #112).
+const agentCollectionUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+    mealIds: z.array(z.string().min(1)).optional(),
+  })
+  .refine(
+    (d) =>
+      d.name !== undefined || d.description !== undefined || d.mealIds !== undefined,
+    { message: "At least one of name, description, or mealIds is required" },
+  );
+
+agentRouter.patch(
+  "/collections/:collectionId",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.WRITE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const collectionId = paramStr(req.params.collectionId);
+    try {
+      const data = agentCollectionUpdateSchema.parse(req.body);
+      const { mealIds, ...rest } = data;
+      const collection = await collectionService.updateCollection(
+        agent.familyId,
+        collectionId,
+        rest,
+      );
+      if (mealIds !== undefined) {
+        await collectionService.setCollectionMeals(
+          agent.familyId,
+          collectionId,
+          mealIds,
+        );
+      }
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.WRITE,
+        outcome: "allowed",
+        targetType: "collection",
+        targetIds: [collectionId],
+      });
+      res.json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      const message = error instanceof Error ? error.message : "";
+      if (message === "Collection not found") {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.WRITE,
+          outcome: "denied",
+          targetType: "collection",
+          targetIds: [collectionId],
+          reason: "not_found",
+        });
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      if (message === "One or more meals do not belong to this family") {
+        res.status(422).json({ error: message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to update collection" });
     }
   },
 );

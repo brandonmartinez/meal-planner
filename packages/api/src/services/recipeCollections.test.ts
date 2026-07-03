@@ -11,6 +11,7 @@ const {
   createCollection,
   updateCollection,
   deleteCollection,
+  setCollectionMeals,
 } = await import("./recipeCollections.js");
 
 describe("recipeCollections service", () => {
@@ -269,6 +270,114 @@ describe("recipeCollections service", () => {
       await expect(
         deleteCollection("fam-B", "col-owned-by-A"),
       ).rejects.toThrow(/Collection not found/);
+    });
+  });
+
+  describe("setCollectionMeals", () => {
+    it("replace-sets meal membership within the family", async () => {
+      prismaMock.recipeCollection.findFirst.mockResolvedValue({
+        id: "col-1",
+      } as never);
+      prismaMock.meal.findMany.mockResolvedValue([
+        { id: "meal-1" },
+        { id: "meal-2" },
+      ] as never);
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: typeof prismaMock) => Promise<void>) =>
+          fn(prismaMock),
+      );
+      prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+        count: 2,
+      } as never);
+      prismaMock.mealRecipeCollection.createMany.mockResolvedValue({
+        count: 2,
+      } as never);
+
+      await setCollectionMeals("fam-1", "col-1", ["meal-1", "meal-2"]);
+
+      expect(prismaMock.mealRecipeCollection.deleteMany).toHaveBeenCalledWith({
+        where: { recipeCollectionId: "col-1" },
+      });
+      expect(prismaMock.mealRecipeCollection.createMany).toHaveBeenCalledWith({
+        data: [
+          { mealId: "meal-1", recipeCollectionId: "col-1" },
+          { mealId: "meal-2", recipeCollectionId: "col-1" },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it("clears all meal membership when passed an empty array", async () => {
+      prismaMock.recipeCollection.findFirst.mockResolvedValue({
+        id: "col-1",
+      } as never);
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: typeof prismaMock) => Promise<void>) =>
+          fn(prismaMock),
+      );
+      prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+        count: 3,
+      } as never);
+
+      await setCollectionMeals("fam-1", "col-1", []);
+
+      expect(prismaMock.mealRecipeCollection.deleteMany).toHaveBeenCalledWith({
+        where: { recipeCollectionId: "col-1" },
+      });
+      expect(prismaMock.mealRecipeCollection.createMany).not.toHaveBeenCalled();
+    });
+
+    it("throws when the collection does not belong to the family", async () => {
+      prismaMock.recipeCollection.findFirst.mockResolvedValue(null as never);
+
+      await expect(
+        setCollectionMeals("fam-B", "col-owned-by-A", ["meal-1"]),
+      ).rejects.toThrow(/Collection not found/);
+
+      expect(prismaMock.mealRecipeCollection.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("throws when any mealId does not belong to the family", async () => {
+      prismaMock.recipeCollection.findFirst.mockResolvedValue({
+        id: "col-1",
+      } as never);
+      // Only 1 meal returned — the second id is cross-family
+      prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+
+      await expect(
+        setCollectionMeals("fam-1", "col-1", ["meal-1", "meal-foreign"]),
+      ).rejects.toThrow(/do not belong to this family/);
+
+      expect(prismaMock.mealRecipeCollection.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("deduplicates mealIds before inserting", async () => {
+      prismaMock.recipeCollection.findFirst.mockResolvedValue({
+        id: "col-1",
+      } as never);
+      prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+      prismaMock.$transaction.mockImplementation(
+        async (fn: (tx: typeof prismaMock) => Promise<void>) =>
+          fn(prismaMock),
+      );
+      prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.mealRecipeCollection.createMany.mockResolvedValue({
+        count: 1,
+      } as never);
+
+      // Pass the same id twice — should be deduped to one
+      await setCollectionMeals("fam-1", "col-1", ["meal-1", "meal-1"]);
+
+      expect(prismaMock.meal.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ["meal-1"] }, familyId: "fam-1" },
+        select: { id: true },
+      });
+      expect(prismaMock.mealRecipeCollection.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "meal-1", recipeCollectionId: "col-1" }],
+        skipDuplicates: true,
+      });
     });
   });
 });

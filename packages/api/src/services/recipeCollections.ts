@@ -155,6 +155,51 @@ export async function updateCollection(
   });
 }
 
+/** Replace-set the meal membership for a collection (collection-side mirror of
+ *  {@link syncMealCollections}). Validates that the collection and every mealId
+ *  belong to `familyId` before writing. `[]` clears all members. Cross-family
+ *  mealIds are rejected with "One or more meals do not belong to this family".
+ *  Throws "Collection not found" when the collection does not belong to the
+ *  family. */
+export async function setCollectionMeals(
+  familyId: string,
+  collectionId: string,
+  mealIds: string[],
+): Promise<void> {
+  const collection = await prisma.recipeCollection.findFirst({
+    where: { id: collectionId, familyId },
+    select: { id: true },
+  });
+  if (!collection) throw new Error("Collection not found");
+
+  const uniqueMealIds = [...new Set(mealIds)];
+
+  if (uniqueMealIds.length > 0) {
+    const validMeals = await prisma.meal.findMany({
+      where: { id: { in: uniqueMealIds }, familyId },
+      select: { id: true },
+    });
+    if (validMeals.length !== uniqueMealIds.length) {
+      throw new Error("One or more meals do not belong to this family");
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.mealRecipeCollection.deleteMany({
+      where: { recipeCollectionId: collectionId },
+    });
+    if (uniqueMealIds.length > 0) {
+      await tx.mealRecipeCollection.createMany({
+        data: uniqueMealIds.map((mealId) => ({
+          mealId,
+          recipeCollectionId: collectionId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  });
+}
+
 /** Delete a collection by id, scoped to the family. Throws "Collection not
  *  found" if the collection does not belong to the family (cross-family delete
  *  is impossible). Cascade removes the meal join rows. */
