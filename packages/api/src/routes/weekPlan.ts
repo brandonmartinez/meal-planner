@@ -31,6 +31,16 @@ const previousWeeksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(52).optional(),
 });
 
+// Copy approved meals from a source week into the target week as new unapproved
+// suggestions. `existingMode` (default "error") is the deliberate policy for a
+// target week that already has suggestions.
+const repeatWeekSchema = z.object({
+  sourceWeekStart: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "sourceWeekStart must be YYYY-MM-DD"),
+  existingMode: z.enum(["error", "skip", "replace"]).optional(),
+});
+
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
 }
@@ -134,6 +144,50 @@ weekPlanRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to create week plan" });
+    }
+  },
+);
+
+// POST /api/families/:familyId/weeks/:weekStart/repeat
+// Copy the APPROVED meals from `sourceWeekStart` into the `:weekStart` target
+// week as new UNAPPROVED suggestions (preserving the parent approval workflow).
+// Body: { sourceWeekStart, existingMode? }. `:weekStart` is the target Monday.
+// The distinct `/repeat` suffix keeps this off the `/:weekStart` param routes.
+// Always 201: the target week is the created/updated resource, even on a no-op
+// empty-source copy (the caller still gets the canonical target week back).
+weekPlanRouter.post(
+  "/:familyId/weeks/:weekStart/repeat",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const targetWeekStart = new Date(
+        paramStr(req.params.weekStart) + "T00:00:00Z",
+      );
+      const { sourceWeekStart, existingMode } = repeatWeekSchema.parse(req.body);
+      const user = req.user as { id: string };
+
+      const plan = await weekPlanService.repeatWeek({
+        familyId,
+        sourceWeekStart: new Date(`${sourceWeekStart}T00:00:00Z`),
+        targetWeekStart,
+        userId: user.id,
+        existingMode,
+      });
+      res.status(201).json(plan);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to repeat week" });
     }
   },
 );

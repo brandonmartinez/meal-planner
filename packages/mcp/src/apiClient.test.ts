@@ -173,6 +173,43 @@ describe("MealPlannerApiClient", () => {
     });
   });
 
+  it("repeatWeek POSTs to the target week's repeat endpoint with source + mode", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "2026-07-06", days: [] }, 201),
+    );
+    await client.repeatWeek("fam-1", "2026-07-06", "2026-06-29", "skip");
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("POST");
+    expect(url.pathname).toBe("/api/agent/fam-1/weeks/2026-07-06/repeat");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({
+      sourceWeekStart: "2026-06-29",
+      existingMode: "skip",
+    });
+  });
+
+  it("repeatWeek omits existingMode from the body when not provided", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "2026-07-06", days: [] }, 201),
+    );
+    await client.repeatWeek("fam-1", "2026-07-06", "2026-06-29");
+    const { init } = lastCall(fetchFn);
+    // undefined existingMode is dropped by JSON serialisation → server default.
+    expect(JSON.parse(init.body as string)).toEqual({
+      sourceWeekStart: "2026-06-29",
+    });
+  });
+
+  it("repeatWeek encodes the target week path segment", async () => {
+    const { client, fetchFn } = makeClient(
+      jsonResponse({ weekStart: "x", days: [] }, 201),
+    );
+    await client.repeatWeek("fam-1", "a/b", "2026-06-29");
+    const { url } = lastCall(fetchFn);
+    expect(url.pathname).toBe("/api/agent/fam-1/weeks/a%2Fb/repeat");
+  });
+
   it("approveSuggestion PATCHes the approve endpoint", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "s-1" }));
     await client.approveSuggestion("fam-1", "s-1");

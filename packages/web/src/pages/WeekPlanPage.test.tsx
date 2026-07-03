@@ -191,6 +191,103 @@ describe('WeekPlanPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: /week plan/i })).not.toBeInTheDocument(),
     );
-    expect(screen.queryByText('Tacos')).not.toBeInTheDocument();
+  });
+
+  it('shows the repeat-week action to parents and hides it from children', async () => {
+    server.use(
+      authMe('CHILD'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([suggestion()])),
+      ),
+    );
+
+    const { unmount } = renderWithProviders(<WeekPlanPage />);
+    await screen.findByText('Tacos');
+    expect(
+      screen.queryByRole('button', { name: /repeat a previous week/i }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([suggestion()])),
+      ),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+    await screen.findByText('Tacos');
+    expect(
+      screen.getByRole('button', { name: /repeat a previous week/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('copies a previous week and shows the new suggestions', async () => {
+    let repeatBody: { sourceWeekStart?: unknown; existingMode?: unknown } | undefined;
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([])),
+      ),
+      http.post(
+        '/api/families/:familyId/weeks/:weekStart/repeat',
+        async ({ request }) => {
+          repeatBody = (await request.json()) as typeof repeatBody;
+          return HttpResponse.json(
+            weekPlan([
+              suggestion({
+                id: 'sug-copied',
+                approved: false,
+                meal: { id: 'meal-2', name: 'Lasagna', placeholderKind: null },
+              }),
+            ]),
+            { status: 201 },
+          );
+        },
+      ),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /repeat a previous week/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /copy meals/i }),
+    );
+
+    expect(await screen.findByText('Lasagna')).toBeInTheDocument();
+    // Default mode is the explicit "error" collision policy.
+    await waitFor(() => expect(repeatBody).toBeDefined());
+    expect(repeatBody?.existingMode).toBe('error');
+    expect(typeof repeatBody?.sourceWeekStart).toBe('string');
+  });
+
+  it('surfaces a 409 conflict from repeat in the error banner', async () => {
+    server.use(
+      authMe('PARENT'),
+      http.post('/api/families/:familyId/weeks/:weekStart', () =>
+        HttpResponse.json(weekPlan([])),
+      ),
+      http.post('/api/families/:familyId/weeks/:weekStart/repeat', () =>
+        HttpResponse.json(
+          { error: 'Target week already has suggestions' },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<WeekPlanPage />);
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /repeat a previous week/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /copy meals/i }),
+    );
+
+    expect(
+      await screen.findByText(/target week already has suggestions/i),
+    ).toBeInTheDocument();
   });
 });

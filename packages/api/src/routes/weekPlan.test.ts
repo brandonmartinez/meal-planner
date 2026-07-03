@@ -29,6 +29,7 @@ vi.mock("../services/weekPlan.js", () => {
     approveSuggestion: vi.fn(),
     removeSuggestion: vi.fn(),
     moveSuggestion: vi.fn(),
+    repeatWeek: vi.fn(),
   };
 });
 
@@ -300,6 +301,73 @@ describe("DELETE /:familyId/suggestions/:suggestionId (remove)", () => {
     );
     const res = buildFullRes();
     await handler(req("PARENT", { params }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("POST /:familyId/weeks/:weekStart/repeat", () => {
+  const handler = getRouteHandler(
+    weekPlanRouter,
+    "post",
+    "/:familyId/weeks/:weekStart/repeat",
+  );
+
+  const params = { familyId: FAMILY_ID, weekStart: "2026-05-11" };
+
+  it("201s with the target week and forwards normalized params to the service", async () => {
+    vi.mocked(weekPlanService.repeatWeek).mockResolvedValue({
+      id: "wp-target",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", {
+        params,
+        body: { sourceWeekStart: "2026-05-04", existingMode: "skip" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(weekPlanService.repeatWeek).toHaveBeenCalledWith({
+      familyId: FAMILY_ID,
+      sourceWeekStart: new Date("2026-05-04T00:00:00Z"),
+      targetWeekStart: new Date("2026-05-11T00:00:00Z"),
+      userId: USER_ID,
+      existingMode: "skip",
+    });
+  });
+
+  it("400s on Zod failure (missing sourceWeekStart)", async () => {
+    const res = buildFullRes();
+    await handler(req("PARENT", { params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(weekPlanService.repeatWeek).not.toHaveBeenCalled();
+  });
+
+  it("maps a SuggestionError (409 populated target) to its own status code", async () => {
+    vi.mocked(weekPlanService.repeatWeek).mockRejectedValue(
+      new SuggestionError(
+        409,
+        "Target week already has suggestions; retry with existingMode 'skip' or 'replace'",
+      ),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { sourceWeekStart: "2026-05-04" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(weekPlanService.repeatWeek).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { sourceWeekStart: "2026-05-04" } }),
+      res,
+      buildNext(),
+    );
     expect(res.statusCode).toBe(500);
   });
 });

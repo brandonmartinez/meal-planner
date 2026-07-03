@@ -18,6 +18,7 @@ function stubClient() {
     getWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMeal: vi.fn(),
+    repeatWeek: vi.fn(),
     approveSuggestion: vi.fn(),
     createMeal: vi.fn(),
     updateMeal: vi.fn(),
@@ -195,6 +196,48 @@ describe("createToolHandlers", () => {
       mealId: "meal-1",
       date: "2026-06-30",
     });
+  });
+
+  it("repeat_week forwards target/source week starts + existingMode (row 7/8)", async () => {
+    const client = stubClient();
+    client.repeatWeek.mockResolvedValue({ weekStart: "2026-07-06", days: [] });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.repeat_week({
+      targetWeekStart: "2026-07-06",
+      sourceWeekStart: "2026-06-29",
+      existingMode: "skip",
+    });
+    // Positional client signature: (familyId, target, source, existingMode?).
+    expect(client.repeatWeek).toHaveBeenCalledWith(
+      FAMILY,
+      "2026-07-06",
+      "2026-06-29",
+      "skip",
+    );
+  });
+
+  it("repeat_week omits existingMode when not provided (defaults server-side)", async () => {
+    const client = stubClient();
+    client.repeatWeek.mockResolvedValue({ weekStart: "2026-07-06", days: [] });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.repeat_week({
+      targetWeekStart: "2026-07-06",
+      sourceWeekStart: "2026-06-29",
+    });
+    expect(client.repeatWeek).toHaveBeenCalledWith(
+      FAMILY,
+      "2026-07-06",
+      "2026-06-29",
+      undefined,
+    );
   });
 
   it("approve_suggestion forwards the suggestionId", async () => {
@@ -460,6 +503,7 @@ describe("registerTools", () => {
       "get_week_plan",
       "get_previous_week_plans",
       "schedule_meal",
+      "repeat_week",
       "approve_suggestion",
       "create_meal",
       "update_meal",
@@ -529,6 +573,33 @@ describe("registerTools", () => {
     ).inputSchema;
     expect(createSchema).toHaveProperty("instructions");
   });
+
+  it("documents repeat_week policy + exposes its schema (#114, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const repeatCall = registerTool.mock.calls.find(
+      (c) => c[0] === "repeat_week",
+    );
+    expect(repeatCall).toBeDefined();
+    const description = (repeatCall?.[1] as { description: string }).description;
+    // Row 8: agents must be told the copy is approved→unapproved and that
+    // existingMode is the deliberate collision policy.
+    expect(description).toContain("approved meals");
+    expect(description).toContain("unapproved suggestions");
+    expect(description).toContain("existingMode");
+    expect(description).toContain("meal_plan:schedule scope");
+
+    const schema = (
+      repeatCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(schema).toHaveProperty("targetWeekStart");
+    expect(schema).toHaveProperty("sourceWeekStart");
+    expect(schema).toHaveProperty("existingMode");
+  });
 });
 
 describe("TOOL_SCOPES", () => {
@@ -539,6 +610,7 @@ describe("TOOL_SCOPES", () => {
       get_week_plan: "meal_plan:read",
       get_previous_week_plans: "meal_plan:read",
       schedule_meal: "meal_plan:schedule",
+      repeat_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",
