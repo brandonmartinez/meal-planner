@@ -24,6 +24,8 @@ function stubClient() {
     updateMeal: vi.fn(),
     getCurrentGroceryList: vi.fn(),
     listCollections: vi.fn(),
+    listTemplates: vi.fn(),
+    applyTemplate: vi.fn(),
   };
 }
 
@@ -543,10 +545,80 @@ describe("createToolHandlers", () => {
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("Unexpected error: boom");
   });
+
+  it("list_templates forwards the family and returns the template JSON", async () => {
+    const client = stubClient();
+    const templates = [
+      {
+        id: "tmpl-1",
+        familyId: FAMILY,
+        name: "Taco Tuesday",
+        description: null,
+        entries: [{ id: "e-1", dayOfWeek: 1, mealId: "meal-1" }],
+      },
+    ];
+    client.listTemplates.mockResolvedValue(templates);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.list_templates();
+
+    expect(client.listTemplates).toHaveBeenCalledWith(FAMILY);
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual(templates);
+  });
+
+  it("apply_template threads templateId, targetWeekStart, existingMode to the client", async () => {
+    const client = stubClient();
+    const weekPlan = { id: "wp-1", weekStart: "2026-07-06", days: [] };
+    client.applyTemplate.mockResolvedValue(weekPlan);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.apply_template({
+      templateId: "tmpl-1",
+      targetWeekStart: "2026-07-06",
+      existingMode: "replace",
+    });
+
+    expect(client.applyTemplate).toHaveBeenCalledWith(
+      FAMILY,
+      "tmpl-1",
+      "2026-07-06",
+      "replace",
+    );
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual(weekPlan);
+  });
+
+  it("apply_template omits existingMode when not provided", async () => {
+    const client = stubClient();
+    client.applyTemplate.mockResolvedValue({ id: "wp-1", days: [] });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.apply_template({
+      templateId: "tmpl-1",
+      targetWeekStart: "2026-07-06",
+    });
+
+    expect(client.applyTemplate).toHaveBeenCalledWith(
+      FAMILY,
+      "tmpl-1",
+      "2026-07-06",
+      undefined,
+    );
+  });
 });
 
 describe("registerTools", () => {
-  it("registers all eleven meal-planning tools", () => {
+  it("registers all fourteen meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -557,12 +629,14 @@ describe("registerTools", () => {
     expect(names).toEqual([
       "list_meals",
       "list_collections",
+      "list_templates",
       "get_current_week_plan",
       "get_week_plan",
       "get_previous_week_plans",
       "schedule_meal",
       "schedule_random_meal",
       "repeat_week",
+      "apply_template",
       "approve_suggestion",
       "create_meal",
       "update_meal",
@@ -708,6 +782,42 @@ describe("registerTools", () => {
     expect(schema).toHaveProperty("sourceWeekStart");
     expect(schema).toHaveProperty("existingMode");
   });
+
+  it("documents the planning-template tools + exposes their schemas (#116, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    // list_templates advertises the read surface + least-privilege scope.
+    const listCall = registerTool.mock.calls.find(
+      (c) => c[0] === "list_templates",
+    );
+    expect(listCall).toBeDefined();
+    const listDescription = (listCall?.[1] as { description: string })
+      .description;
+    expect(listDescription).toContain("apply_template");
+    expect(listDescription).toContain("meal_plan:read");
+
+    // apply_template documents the unapproved-suggestion + existingMode policy.
+    const applyCall = registerTool.mock.calls.find(
+      (c) => c[0] === "apply_template",
+    );
+    expect(applyCall).toBeDefined();
+    const applyDescription = (applyCall?.[1] as { description: string })
+      .description;
+    expect(applyDescription).toContain("unapproved");
+    expect(applyDescription).toContain("existingMode");
+    expect(applyDescription).toContain("meal_plan:schedule scope");
+
+    const applySchema = (
+      applyCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(applySchema).toHaveProperty("templateId");
+    expect(applySchema).toHaveProperty("targetWeekStart");
+    expect(applySchema).toHaveProperty("existingMode");
+  });
 });
 
 describe("TOOL_SCOPES", () => {
@@ -715,12 +825,14 @@ describe("TOOL_SCOPES", () => {
     expect(TOOL_SCOPES).toEqual({
       list_meals: "meal_plan:read",
       list_collections: "meal_plan:read",
+      list_templates: "meal_plan:read",
       get_current_week_plan: "meal_plan:read",
       get_week_plan: "meal_plan:read",
       get_previous_week_plans: "meal_plan:read",
       schedule_meal: "meal_plan:schedule",
       schedule_random_meal: "meal_plan:schedule",
       repeat_week: "meal_plan:schedule",
+      apply_template: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",

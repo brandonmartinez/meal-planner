@@ -100,6 +100,35 @@ export interface RecipeCollection {
   description?: string | null;
 }
 
+/** A family-scoped, reusable week planning template (issue #116) — a named set
+ *  of relative day→meal entries. Applying a template materializes UNAPPROVED
+ *  {@link MealSuggestion} rows into a target week, respecting the same parent
+ *  approval workflow as scheduling. Like {@link RecipeCollection} the
+ *  `nameNormalized` uniqueness key is a service-internal detail and NOT part of
+ *  the wire contract. Planning templates are a distinct resource and do NOT
+ *  round-trip through CSV. */
+export interface PlanningTemplate {
+  id: string;
+  name: string;
+  familyId: string;
+  description?: string | null;
+  entries?: PlanningTemplateEntry[];
+  createdAt?: string; // ISO datetime string
+  updatedAt?: string; // ISO datetime string
+}
+
+/** A single entry within a {@link PlanningTemplate}: a meal placed on a relative
+ *  day of the week. `dayOfWeek` is 0=Monday .. 6=Sunday — an offset from the
+ *  target week's Monday, NOT a calendar date, so the template is reusable across
+ *  any week. */
+export interface PlanningTemplateEntry {
+  id: string;
+  templateId: string;
+  dayOfWeek: number; // 0=Monday .. 6=Sunday
+  mealId: string;
+  meal?: Meal;
+}
+
 export interface WeekPlan {
   id: string;
   weekStart: string; // ISO date string (always a Monday)
