@@ -293,12 +293,14 @@ describe('DayCard', () => {
         );
         const stamp = screen.getByRole('img', { name: /tacos/i });
         expect(stamp).toBeInTheDocument();
-        // Image fills its container with object-cover (no distortion)
+        // object-cover prevents distortion
         expect(stamp).toHaveClass('object-cover');
-        // Container is a square flush to the chip's left/top/bottom edges
-        const container = stamp.parentElement!;
-        expect(container).toHaveClass('aspect-square');
-        expect(container).toHaveClass('self-stretch');
+        // Definite non-zero width utility (w-16) — NOT the collapsed aspect-square-from-stretch pattern.
+        // This catches any regression back to absolute/inset-0 which caused the zero-width production bug.
+        expect(stamp).toHaveClass('w-16');
+        expect(stamp).not.toHaveClass('absolute');
+        // self-stretch keeps the stamp flush to the chip's top and bottom edges
+        expect(stamp).toHaveClass('self-stretch');
     });
 
     it('shows no stamp img when meal has no imageUrl', () => {

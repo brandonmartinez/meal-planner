@@ -148,13 +148,11 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
       >
         <div className="flex items-stretch">
           {showStamp && (
-            <div className="self-stretch aspect-square shrink-0 relative overflow-hidden">
-              <img
-                src={imageUrl!}
-                alt={mealName}
-                className="absolute inset-0 h-full w-full object-cover block"
-              />
-            </div>
+            <img
+              src={imageUrl!}
+              alt={mealName}
+              className="shrink-0 self-stretch w-16 sm:w-20 object-cover block"
+            />
           )}
           <div className="flex-1 min-w-0 px-3 py-2">
             <div className="flex items-center justify-between gap-2">
