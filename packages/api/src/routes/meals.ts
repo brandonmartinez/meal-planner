@@ -5,6 +5,7 @@ import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as mealService from "../services/meals.js";
 import * as taxonomyService from "../services/taxonomy.js";
+import * as collectionService from "../services/recipeCollections.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
 export const mealsRouter = Router();
@@ -49,6 +50,7 @@ export const createMealSchema = z.object({
     .optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
 
@@ -76,6 +78,7 @@ export const updateMealSchema = z.object({
     .optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
 
@@ -107,6 +110,7 @@ const importMealsSchema = z.object({
           .optional(),
         tags: z.array(z.string()).optional(),
         categories: z.array(z.string()).optional(),
+        collections: z.array(z.string()).optional(),
         instructions: z.array(instructionInputSchema).optional(),
       }),
     )
@@ -119,6 +123,22 @@ const importMealsSchema = z.object({
 const taxonomyCreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
 });
+
+// Recipe collection create/update bodies (issue #109). A collection is a curated,
+// family-scoped list a meal can belong to; `description` is an optional blurb.
+const collectionCreateSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullable().optional(),
+});
+
+const collectionUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+    description: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((d) => d.name !== undefined || d.description !== undefined, {
+    message: "At least one of name or description is required",
+  });
 
 // List meals for a family
 mealsRouter.get(
@@ -408,6 +428,136 @@ mealsRouter.delete(
         return;
       }
       res.status(500).json({ error: "Failed to delete category" });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Recipe collection routes (issue #109). Family-scoped curated lists. List /
+// get / create / update are member-level (parents & children both curate the
+// family catalog, matching the tags/categories convention). DELETE is gated by
+// requireRole(PARENT): removing a curated collection is more consequential than
+// dropping a single tag, so it matches the meal-delete gate rather than the
+// tag-delete one.
+// ---------------------------------------------------------------------------
+
+// List collections
+mealsRouter.get(
+  "/:familyId/collections",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const collections = await collectionService.listCollections(familyId);
+      res.json({ collections });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch collections" });
+    }
+  },
+);
+
+// Create collection
+mealsRouter.post(
+  "/:familyId/collections",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const data = collectionCreateSchema.parse(req.body);
+      const familyId = paramStr(req.params.familyId);
+      const collection = await collectionService.createCollection(
+        familyId,
+        data.name,
+        data.description,
+      );
+      res.status(201).json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      res.status(500).json({ error: "Failed to create collection" });
+    }
+  },
+);
+
+// Get collection detail
+mealsRouter.get(
+  "/:familyId/collections/:collectionId",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const collectionId = paramStr(req.params.collectionId);
+      const collection = await collectionService.getCollection(
+        familyId,
+        collectionId,
+      );
+      if (!collection) {
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      res.json(collection);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch collection" });
+    }
+  },
+);
+
+// Update collection
+mealsRouter.patch(
+  "/:familyId/collections/:collectionId",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const data = collectionUpdateSchema.parse(req.body);
+      const familyId = paramStr(req.params.familyId);
+      const collectionId = paramStr(req.params.collectionId);
+      const collection = await collectionService.updateCollection(
+        familyId,
+        collectionId,
+        data,
+      );
+      res.json(collection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof Error && error.message === "Collection not found") {
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      res.status(500).json({ error: "Failed to update collection" });
+    }
+  },
+);
+
+// Delete collection (parents only)
+mealsRouter.delete(
+  "/:familyId/collections/:collectionId",
+  authenticateJWT,
+  requireMembership,
+  requireRole("PARENT"),
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const collectionId = paramStr(req.params.collectionId);
+      await collectionService.deleteCollection(familyId, collectionId);
+      res.status(204).send();
+    } catch (error) {
+      if (error instanceof Error && error.message === "Collection not found") {
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      res.status(500).json({ error: "Failed to delete collection" });
     }
   },
 );

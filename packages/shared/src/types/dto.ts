@@ -193,6 +193,7 @@ export interface ExportMealDTO {
   }[];
   tags: string[];
   categories: string[];
+  collections: string[];
   instructions: {
     text: string;
     timerMinutes: number | null;
