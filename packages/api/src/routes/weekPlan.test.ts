@@ -394,7 +394,6 @@ describe("POST /:familyId/weeks/:weekStart/fill", () => {
       req("PARENT", {
         params,
         body: {
-          categories: ["cat-1"],
           collections: ["col-1"],
           avoidRecentDays: 14,
           existingMode: "skip",
@@ -410,7 +409,6 @@ describe("POST /:familyId/weeks/:weekStart/fill", () => {
       weekStart: new Date("2026-05-11T00:00:00Z"),
       userId: USER_ID,
       filters: {
-        categories: ["cat-1"],
         collections: ["col-1"],
         avoidRecentDays: 14,
       },
@@ -470,7 +468,6 @@ describe("POST /:familyId/schedule/random", () => {
         params,
         body: {
           date: "2026-05-20",
-          categories: ["Dinner"],
           difficulty: ["EASY"],
           favorite: true,
           avoidRecentDays: 7,
@@ -486,7 +483,6 @@ describe("POST /:familyId/schedule/random", () => {
       date: new Date("2026-05-20T00:00:00Z"),
       userId: USER_ID,
       filters: {
-        categories: ["Dinner"],
         difficulty: ["EASY"],
         favorite: true,
         avoidRecentDays: 7,

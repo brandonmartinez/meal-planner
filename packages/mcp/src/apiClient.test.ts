@@ -72,16 +72,14 @@ describe("MealPlannerApiClient", () => {
     expect(url.searchParams.getAll("difficulty")).toEqual(["EASY", "HARD"]);
   });
 
-  it("listMeals serialises tags and categories as repeated query params (#107)", async () => {
+  it("listMeals serialises tags as repeated query params (#107)", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
     await client.listMeals("fam-1", {
       tags: ["Quick", "Weeknight"],
-      categories: ["Dinner"],
     });
 
     const { url } = lastCall(fetchFn);
     expect(url.searchParams.getAll("tags")).toEqual(["Quick", "Weeknight"]);
-    expect(url.searchParams.getAll("categories")).toEqual(["Dinner"]);
   });
 
   it("listMeals serialises collections as repeated query params (#109)", async () => {
@@ -338,12 +336,11 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(input);
   });
 
-  it("createMeal forwards tags and categories by name in the body (#107)", async () => {
+  it("createMeal forwards tags by name in the body (#107)", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-new" }, 201));
     const input = {
       name: "Tacos",
       tags: ["Quick", "Weeknight"],
-      categories: ["Dinner"],
     };
 
     await client.createMeal(input);
@@ -406,10 +403,10 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(patch);
   });
 
-  it("updateMeal forwards tags and clears categories with [] verbatim (#107)", async () => {
+  it("updateMeal forwards tags and clears them with [] verbatim (#107)", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
 
-    const patch = { tags: ["Quick"], categories: [] };
+    const patch = { tags: [] };
     await client.updateMeal("meal-1", patch);
 
     const { init } = lastCall(fetchFn);

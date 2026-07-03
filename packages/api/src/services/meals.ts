@@ -11,12 +11,11 @@ import { syncMealTaxonomy } from "./taxonomy.js";
 import { syncMealCollections } from "./recipeCollections.js";
 import type { ListMealsQuery } from "../schemas/meals.js";
 
-/** Prisma `include` that pulls a meal's tag/category join rows with their
- *  parent taxonomy records. Shared by every read path so the wire shape stays
+/** Prisma `include` that pulls a meal's tag join rows with their parent
+ *  taxonomy records. Shared by every read path so the wire shape stays
  *  consistent. */
 const MEAL_TAXONOMY_INCLUDE = {
   tags: { include: { tag: true } },
-  categories: { include: { category: true } },
   collections: { include: { recipeCollection: true } },
 } satisfies Prisma.MealInclude;
 
@@ -45,7 +44,6 @@ function mapInstructionCreates(
 /** The subset of a meal's included join rows this module reads. */
 type TaxonomyJoinRows = {
   tags: { tag: { id: string; name: string; familyId: string } }[];
-  categories: { category: { id: string; name: string; familyId: string } }[];
   collections: {
     recipeCollection: {
       id: string;
@@ -56,19 +54,14 @@ type TaxonomyJoinRows = {
   }[];
 };
 
-/** Project a meal's tag/category join rows into flat `Tag[]` / `Category[]`
- *  wire shapes, dropping `nameNormalized` and timestamps (internal only). */
+/** Project a meal's tag join rows into flat `Tag[]` wire shapes, dropping
+ *  `nameNormalized` and timestamps (internal only). */
 function mapTaxonomy(meal: TaxonomyJoinRows) {
   return {
     tags: (meal.tags ?? []).map((mt) => ({
       id: mt.tag.id,
       name: mt.tag.name,
       familyId: mt.tag.familyId,
-    })),
-    categories: (meal.categories ?? []).map((mc) => ({
-      id: mc.category.id,
-      name: mc.category.name,
-      familyId: mc.category.familyId,
     })),
     collections: (meal.collections ?? []).map((mrc) => ({
       id: mrc.recipeCollection.id,
@@ -102,7 +95,6 @@ export async function listMeals(
     favorite,
     minRating,
     tags,
-    categories,
     collections,
     sort,
     order,
@@ -114,9 +106,6 @@ export async function listMeals(
   const tagNames = (tags ?? [])
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
-  const categoryNames = (categories ?? [])
-    .map((c) => c.trim().toLowerCase())
-    .filter(Boolean);
   const collectionNames = (collections ?? [])
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
@@ -127,7 +116,6 @@ export async function listMeals(
       favorite !== undefined ||
       minRating !== undefined ||
       tagNames.length ||
-      categoryNames.length ||
       collectionNames.length,
   );
 
@@ -157,19 +145,14 @@ export async function listMeals(
     where.rating = { gte: minRating };
   }
 
-  // Taxonomy filters: OR-within a facet (any supplied tag matches), AND-across
-  // facets (tag filter AND category filter must both be satisfied). Join rows
-  // are family-scoped transitively via the parent tag/category records.
+  // Taxonomy filter: OR-within the tag facet (any supplied tag matches),
+  // AND-across facets. Join rows are family-scoped transitively via the parent
+  // tag records.
   if (tagNames.length) {
     where.tags = { some: { tag: { nameNormalized: { in: tagNames } } } };
   }
-  if (categoryNames.length) {
-    where.categories = {
-      some: { category: { nameNormalized: { in: categoryNames } } },
-    };
-  }
   // Collection filter (issue #109): same OR-within / AND-across semantics as
-  // tags/categories. Join rows are family-scoped transitively via the parent
+  // tags. Join rows are family-scoped transitively via the parent
   // RecipeCollection record, so a Family-B collection name can never match.
   if (collectionNames.length) {
     where.collections = {
@@ -413,7 +396,6 @@ export async function createMeal(
     }[];
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
   },
 ) {
@@ -440,7 +422,7 @@ export async function createMeal(
           : undefined,
       },
     });
-    await syncMealTaxonomy(tx, familyId, meal.id, data.tags, data.categories);
+    await syncMealTaxonomy(tx, familyId, meal.id, data.tags);
     await syncMealCollections(tx, familyId, meal.id, data.collections);
     const withTaxonomy = await tx.meal.findUniqueOrThrow({
       where: { id: meal.id },
@@ -473,7 +455,6 @@ export async function updateMeal(
     }[];
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
   },
 ) {
@@ -524,7 +505,7 @@ export async function updateMeal(
             : undefined,
       },
     });
-    await syncMealTaxonomy(tx, familyId, mealId, data.tags, data.categories);
+    await syncMealTaxonomy(tx, familyId, mealId, data.tags);
     await syncMealCollections(tx, familyId, mealId, data.collections);
     const meal = await tx.meal.findUniqueOrThrow({
       where: { id: mealId },
@@ -585,7 +566,6 @@ export async function importMeals(
     }[];
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
   }[],
   options?: { mode?: "skip" | "replace" },
@@ -649,13 +629,7 @@ export async function importMeals(
                 : undefined,
             },
           });
-          await syncMealTaxonomy(
-            tx,
-            familyId,
-            existing.id,
-            data.tags,
-            data.categories,
-          );
+          await syncMealTaxonomy(tx, familyId, existing.id, data.tags);
           await syncMealCollections(tx, familyId, existing.id, data.collections);
           result.updated++;
           return;
@@ -683,13 +657,7 @@ export async function importMeals(
               : undefined,
           },
         });
-        await syncMealTaxonomy(
-          tx,
-          familyId,
-          created.id,
-          data.tags,
-          data.categories,
-        );
+        await syncMealTaxonomy(tx, familyId, created.id, data.tags);
         await syncMealCollections(tx, familyId, created.id, data.collections);
         result.created++;
       });
@@ -722,7 +690,6 @@ export async function exportMeals(familyId: string) {
         select: { text: true, timerMinutes: true, position: true },
       },
       tags: { include: { tag: { select: { name: true } } } },
-      categories: { include: { category: { select: { name: true } } } },
       collections: {
         include: { recipeCollection: { select: { name: true } } },
       },
@@ -745,7 +712,6 @@ export async function exportMeals(familyId: string) {
     ingredients: meal.ingredients,
     instructions: meal.instructions,
     tags: (meal.tags ?? []).map((mt) => mt.tag.name),
-    categories: (meal.categories ?? []).map((mc) => mc.category.name),
     collections: (meal.collections ?? []).map(
       (mrc) => mrc.recipeCollection.name,
     ),

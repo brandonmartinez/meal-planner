@@ -85,7 +85,6 @@ const applyTemplateSchema = z.object({
 // string coercion). Filters mirror the meals-list vocabulary; all are optional.
 const scheduleRandomSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
-  categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
   favorite: z.boolean().optional(),
@@ -93,13 +92,12 @@ const scheduleRandomSchema = z.object({
 });
 
 // MCP: fill the OPEN days of a target week (a Monday) with meals chosen at
-// random by category/collection/etc. filters, as new UNAPPROVED suggestions
+// random by tag/collection/etc. filters, as new UNAPPROVED suggestions
 // (issue #115). `existingMode` (default "error") is the non-destructive policy
 // for an already-populated week; `allowPartial` (default true) fills as many
 // open days as the eligible pool allows. Filling IS scheduling — reuses
 // meal_plan:schedule.
 const fillWeekSchema = z.object({
-  categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
@@ -151,7 +149,6 @@ const createMealSchema = z.object({
   rating: z.number().int().min(1).max(5).optional(),
   ingredients: z.array(ingredientInputSchema).optional(),
   tags: z.array(z.string()).optional(),
-  categories: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
@@ -171,7 +168,6 @@ const updateMealSchema = z
     rating: z.number().int().min(1).max(5).nullable().optional(),
     ingredients: z.array(ingredientInputSchema).optional(),
     tags: z.array(z.string()).optional(),
-    categories: z.array(z.string()).optional(),
     collections: z.array(z.string()).optional(),
     instructions: z.array(instructionInputSchema).optional(),
   })
@@ -541,7 +537,7 @@ agentRouter.patch(
 // INGREDIENT_CATEGORIES defaults unioned with the family's custom categories, so
 // an agent can offer the same category pick-list a human sees. Read-only; there
 // is intentionally no agent create/rename/delete surface (management is
-// browser-only, mirroring the tag/category precedent from #108).
+// browser-only, mirroring the tag precedent from #108).
 agentRouter.get(
   "/:familyId/grocery-categories",
   authenticateAgent,
@@ -843,7 +839,7 @@ agentRouter.post(
 
 // POST /api/agent/:familyId/weeks/:weekStart/fill — scope: meal_plan:schedule
 // Fill the OPEN days of the target week (a Monday) with meals chosen at random
-// by category/collection/etc. filters, as new UNAPPROVED suggestions (#115).
+// by tag/collection/etc. filters, as new UNAPPROVED suggestions (#115).
 // Reuses meal_plan:schedule — filling unapproved suggestions IS scheduling.
 // `suggestedBy` is attributed to the provisioning parent; the audit trail
 // records the agent credential as the true actor.

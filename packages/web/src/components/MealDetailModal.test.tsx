@@ -25,7 +25,6 @@ function fullMeal(overrides: Record<string, unknown> = {}) {
         rating: 5,
         familyId: FAMILY_ID,
         tags: [],
-        categories: [],
         collections: [],
         ingredients: [
             { id: 'i-1', name: 'olive oil', quantity: '2', unit: 'tbsp' },

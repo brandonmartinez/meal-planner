@@ -122,33 +122,17 @@ describe("selectRandomMeal — auditable core", () => {
     });
   });
 
-  it("narrows by categories on nameNormalized", async () => {
+  it("ignores blank tag names after normalization", async () => {
     prismaMock.meal.findMany.mockResolvedValue(candidates("a"));
     await selectRandomMeal(
       FAMILY_ID,
-      { categories: ["Dinner"] },
-      REF_DATE,
-      () => 0,
-    );
-    const where = prismaMock.meal.findMany.mock.calls[0][0]!
-      .where as Record<string, unknown>;
-    expect(where.categories).toEqual({
-      some: { category: { nameNormalized: { in: ["dinner"] } } },
-    });
-  });
-
-  it("ignores blank tag/category names after normalization", async () => {
-    prismaMock.meal.findMany.mockResolvedValue(candidates("a"));
-    await selectRandomMeal(
-      FAMILY_ID,
-      { tags: ["   ", ""], categories: [" "] },
+      { tags: ["   ", ""] },
       REF_DATE,
       () => 0,
     );
     const where = prismaMock.meal.findMany.mock.calls[0][0]!
       .where as Record<string, unknown>;
     expect(where.tags).toBeUndefined();
-    expect(where.categories).toBeUndefined();
   });
 
   it("throws 422 when no meal matches the filters", async () => {

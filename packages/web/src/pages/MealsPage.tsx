@@ -42,7 +42,6 @@ export default function MealsPage() {
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [collectionFilter, setCollectionFilter] = useState('');
   const [collectionOptions, setCollectionOptions] = useState<RecipeCollection[]>([]);
   const [sort, setSort] = useState<'name' | 'created' | 'lastCooked'>('name');
@@ -58,8 +57,8 @@ export default function MealsPage() {
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Family taxonomy powers the tag/category filter groups below.
-  const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
+  // Family taxonomy powers the tag filter group below.
+  const { tags: tagOptions } = useTaxonomy(familyId);
 
   const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
   const isParent = currentMembership?.role === 'PARENT';
@@ -68,7 +67,6 @@ export default function MealsPage() {
     debouncedSearch.trim() !== '' ||
     difficulty.length > 0 ||
     tagFilter.length > 0 ||
-    categoryFilter.length > 0 ||
     collectionFilter !== '';
 
   // Load the first page (replaces the grid). Runs whenever any filter/sort input
@@ -80,7 +78,6 @@ export default function MealsPage() {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
-        categories: categoryFilter.length ? categoryFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         sort,
         order,
@@ -96,7 +93,7 @@ export default function MealsPage() {
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, collectionFilter, sort, order]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, collectionFilter, sort, order]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
@@ -118,7 +115,6 @@ export default function MealsPage() {
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
-        categories: categoryFilter.length ? categoryFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         sort,
         order,
@@ -147,17 +143,10 @@ export default function MealsPage() {
     );
   };
 
-  const toggleCategory = (value: string) => {
-    setCategoryFilter(prev =>
-      prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value],
-    );
-  };
-
   const clearFilters = () => {
     setSearch('');
     setDifficulty([]);
     setTagFilter([]);
-    setCategoryFilter([]);
     setCollectionFilter('');
   };
 
@@ -240,8 +229,8 @@ export default function MealsPage() {
       )}
 
       {/* Discovery filter bar (#112). Search, difficulty[], sort, order, offset
-          pagination (#111) plus tag & category facets (#107/#108). Tag/category
-          groups only render when the family has taxonomy so empty families stay
+          pagination (#111) plus tag facets (#108). The tag group only renders
+          when the family has taxonomy so empty families stay
           clutter-free. Multi-select is OR-within-facet; facets AND together. */}
       <div className="mb-6 space-y-3">
         <input
@@ -364,33 +353,6 @@ export default function MealsPage() {
             })}
           </div>
         )}
-
-        {categoryOptions.length > 0 && (
-          <div
-            role="group"
-            aria-label="Filter by category"
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {categoryOptions.map(category => {
-              const active = categoryFilter.includes(category.name);
-              return (
-                <button
-                  key={category.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => toggleCategory(category.name)}
-                  className={`rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
-                    active
-                      ? 'bg-purple-600 border-purple-600 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {category.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -455,11 +417,10 @@ export default function MealsPage() {
                   )}
                 </div>
 
-                {/* Zone 2.5 — tags & categories (compact, reserved height) */}
+                {/* Zone 2.5 — tags (compact, reserved height) */}
                 {!isPlaceholder && (
                   <MealTagList
                     tags={meal.tags}
-                    categories={meal.categories}
                     reserveHeight
                     className="mt-2"
                   />

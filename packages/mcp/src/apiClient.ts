@@ -58,8 +58,6 @@ export interface CreateMealInput {
   }[];
   /** Tag names to assign (family-scoped, resolved/created by name). #107. */
   tags?: string[];
-  /** Category names to assign (family-scoped, resolved/created by name). #107. */
-  categories?: string[];
   /** Collection names to assign (family-scoped, resolved/created by name). #109. */
   collections?: string[];
   /** Ordered preparation steps; order is preserved as `position`. #100. */
@@ -92,8 +90,6 @@ export interface UpdateMealInput {
   }[];
   /** Tag names to replace the meal's tags with (by name). #107. */
   tags?: string[];
-  /** Category names to replace the meal's categories with (by name). #107. */
-  categories?: string[];
   /** Collection names to replace the meal's collections with (by name). #109. */
   collections?: string[];
   /** Ordered steps to replace the meal's instructions with; order preserved. #100. */
@@ -144,7 +140,6 @@ export class MealPlannerApiClient {
       favorite?: boolean;
       minRating?: number;
       tags?: string[];
-      categories?: string[];
       collections?: string[];
       sort?: string;
       order?: string;
@@ -163,7 +158,6 @@ export class MealPlannerApiClient {
     };
     if (opts?.difficulty?.length) query["difficulty"] = opts.difficulty;
     if (opts?.tags?.length) query["tags"] = opts.tags;
-    if (opts?.categories?.length) query["categories"] = opts.categories;
     if (opts?.collections?.length) query["collections"] = opts.collections;
     return this.request<MealListResponseDTO>(
       "GET",
@@ -297,7 +291,7 @@ export class MealPlannerApiClient {
   }
 
   /** Fill the OPEN days of a target week with meals chosen at random by
-   *  category/collection/etc. filters, as new unapproved suggestions (#115).
+   *  tag/collection/etc. filters, as new unapproved suggestions (#115).
    *  `existingMode` (default "error") decides how a target week that already has
    *  suggestions is treated; `allowPartial` (default true) fills as many open
    *  days as the eligible pool allows. */

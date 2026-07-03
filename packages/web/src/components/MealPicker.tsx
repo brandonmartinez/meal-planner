@@ -33,7 +33,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [collectionFilter, setCollectionFilter] = useState('');
   const [collectionOptions, setCollectionOptions] = useState<RecipeCollection[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -41,7 +40,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const [loadingMore, setLoadingMore] = useState(false);
   const headingId = useId();
 
-  const { tags: tagOptions, categories: categoryOptions } = useTaxonomy(familyId);
+  const { tags: tagOptions } = useTaxonomy(familyId);
 
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -52,7 +51,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
-        categories: categoryFilter.length ? categoryFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: 0,
@@ -64,7 +62,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     } finally {
       setLoading(false);
     }
-  }, [familyId, debouncedSearch, difficulty, tagFilter, categoryFilter, collectionFilter]);
+  }, [familyId, debouncedSearch, difficulty, tagFilter, collectionFilter]);
 
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
@@ -85,7 +83,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         search: debouncedSearch || undefined,
         difficulty: difficulty.length ? difficulty : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
-        categories: categoryFilter.length ? categoryFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
         offset: meals.length,
@@ -108,12 +105,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
   const toggleTag = (value: string) => {
     setTagFilter(prev =>
       prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value],
-    );
-  };
-
-  const toggleCategory = (value: string) => {
-    setCategoryFilter(prev =>
-      prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value],
     );
   };
 
@@ -150,8 +141,8 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           data-autofocus
         />
         {/* Difficulty is the most relevant planning filter; kept compact so the
-            picker stays lean. Tag/category facets (#107/#108) render only when
-            the family has taxonomy so the picker stays uncluttered. */}
+            picker stays lean. Tag facets (#108) render only when the family has
+            taxonomy so the picker stays uncluttered. */}
         <div
           role="group"
           aria-label="Filter by difficulty"
@@ -198,33 +189,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                   }`}
                 >
                   {tag.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {categoryOptions.length > 0 && (
-          <div
-            role="group"
-            aria-label="Filter by category"
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {categoryOptions.map(category => {
-              const active = categoryFilter.includes(category.name);
-              return (
-                <button
-                  key={category.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => toggleCategory(category.name)}
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
-                    active
-                      ? 'bg-purple-600 border-purple-600 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {category.name}
                 </button>
               );
             })}
@@ -320,7 +284,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                     )}
                     <MealTagList
                       tags={meal.tags}
-                      categories={meal.categories}
                       max={2}
                       className="mt-1"
                     />

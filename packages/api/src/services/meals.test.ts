@@ -395,44 +395,6 @@ describe("meals service", () => {
       expect(arg.where.placeholderKind).toBeNull();
     });
 
-    it("filters by categories (OR-within-facet, normalized to lowercase)", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([] as never);
-      await listMeals("fam-1", { categories: ["Dinner"] } as never);
-      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
-        where: {
-          categories?: {
-            some?: { category?: { nameNormalized?: { in?: string[] } } };
-          };
-          placeholderKind?: unknown;
-        };
-      };
-      expect(arg.where.categories?.some?.category?.nameNormalized?.in).toEqual([
-        "dinner",
-      ]);
-      expect(arg.where.placeholderKind).toBeNull();
-    });
-
-    it("AND-across-facets: tag AND category filters both applied to where", async () => {
-      prismaMock.meal.findMany.mockResolvedValue([] as never);
-      await listMeals("fam-1", {
-        tags: ["quick"],
-        categories: ["dinner"],
-      } as never);
-      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
-        where: {
-          tags?: { some?: { tag?: { nameNormalized?: { in?: string[] } } } };
-          categories?: {
-            some?: { category?: { nameNormalized?: { in?: string[] } } };
-          };
-        };
-      };
-      // Both facets present on the same where object → AND semantics.
-      expect(arg.where.tags?.some?.tag?.nameNormalized?.in).toEqual(["quick"]);
-      expect(arg.where.categories?.some?.category?.nameNormalized?.in).toEqual([
-        "dinner",
-      ]);
-    });
-
     it("excludes placeholders when only a tag filter is active", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", { tags: ["quick"] } as never);
@@ -453,7 +415,7 @@ describe("meals service", () => {
       expect(arg.where).not.toHaveProperty("placeholderKind");
     });
 
-    // #109: collections are a third filter facet, independent of tags/categories.
+    // #109: collections are a third filter facet, independent of tags.
     it("filters by collections (OR-within-facet, normalized to lowercase)", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", {
@@ -612,7 +574,6 @@ describe("meals service", () => {
           { position: 1, text: "Cook", timerMinutes: 5 },
         ],
         tags: [],
-        categories: [],
       } as never);
 
       const result = await getMealById("m-1", "fam-1");
@@ -648,12 +609,11 @@ describe("meals service", () => {
     beforeEach(() => {
       // createMeal re-fetches the meal with taxonomy joins after mutating.
       // Default to an empty-taxonomy row so tests that don't care about
-      // tags/categories don't have to wire the re-fetch themselves.
+      // tags don't have to wire the re-fetch themselves.
       prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
         id: "m-1",
         ingredients: [],
         tags: [],
-        categories: [],
       } as never);
     });
 
@@ -667,7 +627,7 @@ describe("meals service", () => {
         ingredients: [{ name: "tortilla", quantity: "6" }],
       });
 
-      expect(result).toMatchObject({ id: "m-1", tags: [], categories: [] });
+      expect(result).toMatchObject({ id: "m-1", tags: [] });
       const arg = prismaMock.meal.create.mock.calls[0][0] as {
         data: {
           name: string;
@@ -794,24 +754,16 @@ describe("meals service", () => {
       expect(arg.data.rating).toBeNull();
     });
 
-    it("assigns tags and categories by name within the family transaction", async () => {
+    it("assigns tags by name within the family transaction", async () => {
       stubTransaction();
       prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
       prismaMock.tag.upsert.mockResolvedValue({ id: "t-1" } as never);
-      prismaMock.category.upsert.mockResolvedValue({ id: "c-1" } as never);
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
-      prismaMock.mealCategory.deleteMany.mockResolvedValue({
-        count: 0,
-      } as never);
-      prismaMock.mealCategory.createMany.mockResolvedValue({
-        count: 1,
-      } as never);
 
       await createMeal("fam-1", {
         name: "Tacos",
         tags: ["Quick"],
-        categories: ["Dinner"],
       } as never);
 
       // Tag resolved via family-scoped upsert, then joined to the new meal.
@@ -826,20 +778,14 @@ describe("meals service", () => {
         data: [{ mealId: "m-1", tagId: "t-1" }],
         skipDuplicates: true,
       });
-      expect(prismaMock.mealCategory.createMany).toHaveBeenCalledWith({
-        data: [{ mealId: "m-1", categoryId: "c-1" }],
-        skipDuplicates: true,
-      });
     });
 
-    it("does not touch taxonomy joins when tags/categories are omitted", async () => {
+    it("does not touch taxonomy joins when tags are omitted", async () => {
       stubTransaction();
       prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
       await createMeal("fam-1", { name: "Plain" });
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
-      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
-      expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
     });
 
     // #109: collections assign by name inside the same family transaction,
@@ -942,7 +888,6 @@ describe("meals service", () => {
         id: "m-1",
         ingredients: [],
         tags: [],
-        categories: [],
       } as never);
     });
 
@@ -1232,7 +1177,7 @@ describe("meals service", () => {
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
     });
 
-    it("leaves taxonomy joins untouched when tags/categories are omitted", async () => {
+    it("leaves taxonomy joins untouched when tags are omitted", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({
         id: "m-1",
@@ -1243,9 +1188,7 @@ describe("meals service", () => {
       await updateMeal("m-1", "fam-1", { name: "Renamed" });
 
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
-      expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.tag.upsert).not.toHaveBeenCalled();
-      expect(prismaMock.category.upsert).not.toHaveBeenCalled();
     });
 
     it("does not assign taxonomy to a placeholder meal (guard runs first)", async () => {
@@ -1568,23 +1511,16 @@ describe("meals service", () => {
       expect(result.errors[0].name).toBe("A");
     });
 
-    it("resolves and assigns tags/categories by name on a newly created meal", async () => {
+    it("resolves and assigns tags by name on a newly created meal", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue(null);
       prismaMock.meal.create.mockResolvedValue({ id: "m-new" } as never);
       prismaMock.tag.upsert.mockResolvedValue({ id: "t-1" } as never);
-      prismaMock.category.upsert.mockResolvedValue({ id: "c-1" } as never);
       prismaMock.mealTag.deleteMany.mockResolvedValue({ count: 0 } as never);
       prismaMock.mealTag.createMany.mockResolvedValue({ count: 1 } as never);
-      prismaMock.mealCategory.deleteMany.mockResolvedValue({
-        count: 0,
-      } as never);
-      prismaMock.mealCategory.createMany.mockResolvedValue({
-        count: 1,
-      } as never);
 
       const result = await importMeals("fam-1", [
-        { name: "Tacos", tags: ["Quick"], categories: ["Dinner"] },
+        { name: "Tacos", tags: ["Quick"] },
       ]);
 
       expect(result.created).toBe(1);
@@ -1599,13 +1535,9 @@ describe("meals service", () => {
         data: [{ mealId: "m-new", tagId: "t-1" }],
         skipDuplicates: true,
       });
-      expect(prismaMock.mealCategory.createMany).toHaveBeenCalledWith({
-        data: [{ mealId: "m-new", categoryId: "c-1" }],
-        skipDuplicates: true,
-      });
     });
 
-    it("re-syncs tags/categories when replacing an existing meal", async () => {
+    it("re-syncs tags when replacing an existing meal", async () => {
       stubTransaction();
       prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
       prismaMock.mealIngredient.deleteMany.mockResolvedValue({
@@ -1738,7 +1670,6 @@ describe("meals service", () => {
             },
           ],
           tags: [],
-          categories: [],
         },
       ] as never);
 
@@ -1772,13 +1703,12 @@ describe("meals service", () => {
             },
           ],
           tags: [],
-          categories: [],
           collections: [],
         },
       ]);
     });
 
-    it("flattens tag/category join rows to name lists for the CSV round trip", async () => {
+    it("flattens tag join rows to name lists for the CSV round trip", async () => {
       prismaMock.meal.findMany.mockResolvedValue([
         {
           name: "Tacos",
@@ -1794,23 +1724,18 @@ describe("meals service", () => {
           rating: null,
           ingredients: [],
           tags: [{ tag: { name: "Quick" } }, { tag: { name: "Vegetarian" } }],
-          categories: [{ category: { name: "Dinner" } }],
         },
       ] as never);
 
       const result = await exportMeals("fam-1");
 
       expect(result[0].tags).toEqual(["Quick", "Vegetarian"]);
-      expect(result[0].categories).toEqual(["Dinner"]);
       // Export must pull the join rows scoped to the family with only the
       // display name selected (no nameNormalized leakage).
       expect(prismaMock.meal.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
             tags: { include: { tag: { select: { name: true } } } },
-            categories: {
-              include: { category: { select: { name: true } } },
-            },
           }),
         }),
       );

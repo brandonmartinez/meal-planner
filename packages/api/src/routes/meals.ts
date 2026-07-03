@@ -49,7 +49,6 @@ export const createMealSchema = z.object({
     )
     .optional(),
   tags: z.array(z.string()).optional(),
-  categories: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
@@ -77,7 +76,6 @@ export const updateMealSchema = z.object({
     )
     .optional(),
   tags: z.array(z.string()).optional(),
-  categories: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
@@ -109,7 +107,6 @@ const importMealsSchema = z.object({
           )
           .optional(),
         tags: z.array(z.string()).optional(),
-        categories: z.array(z.string()).optional(),
         collections: z.array(z.string()).optional(),
         instructions: z.array(instructionInputSchema).optional(),
       }),
@@ -118,7 +115,7 @@ const importMealsSchema = z.object({
     .max(500),
 });
 
-// Family-scoped create for a single tag/category. Name is trimmed & non-empty;
+// Family-scoped create for a single tag. Name is trimmed & non-empty;
 // case-insensitive uniqueness is enforced in the service via nameNormalized.
 const taxonomyCreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -308,7 +305,7 @@ mealsRouter.delete(
 );
 
 // ---------------------------------------------------------------------------
-// Taxonomy routes (tags + categories). Family-scoped; needed by the tags UI
+// Taxonomy routes (tags). Family-scoped; needed by the tags UI
 // (#108). List is available to any member; create/delete require meal:write,
 // which for JWT users maps to family membership (parents & children can both
 // manage the family catalog, matching meal create/update).
@@ -374,73 +371,10 @@ mealsRouter.delete(
   },
 );
 
-// List categories
-mealsRouter.get(
-  "/:familyId/categories",
-  authenticateJWT,
-  requireMembership,
-  async (req: Request, res: Response) => {
-    try {
-      const familyId = paramStr(req.params.familyId);
-      const categories = await taxonomyService.listCategories(familyId);
-      res.json({ categories });
-    } catch {
-      res.status(500).json({ error: "Failed to fetch categories" });
-    }
-  },
-);
-
-// Create category
-mealsRouter.post(
-  "/:familyId/categories",
-  authenticateJWT,
-  requireMembership,
-  async (req: Request, res: Response) => {
-    try {
-      const data = taxonomyCreateSchema.parse(req.body);
-      const familyId = paramStr(req.params.familyId);
-      const category = await taxonomyService.createCategory(
-        familyId,
-        data.name,
-      );
-      res.status(201).json(category);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res
-          .status(400)
-          .json({ error: "Validation failed", details: error.errors });
-        return;
-      }
-      res.status(500).json({ error: "Failed to create category" });
-    }
-  },
-);
-
-// Delete category
-mealsRouter.delete(
-  "/:familyId/categories/:categoryId",
-  authenticateJWT,
-  requireMembership,
-  async (req: Request, res: Response) => {
-    try {
-      const familyId = paramStr(req.params.familyId);
-      const categoryId = paramStr(req.params.categoryId);
-      await taxonomyService.deleteCategory(familyId, categoryId);
-      res.status(204).send();
-    } catch (error) {
-      if (error instanceof Error && error.message === "Category not found") {
-        res.status(404).json({ error: "Category not found" });
-        return;
-      }
-      res.status(500).json({ error: "Failed to delete category" });
-    }
-  },
-);
-
 // ---------------------------------------------------------------------------
 // Recipe collection routes (issue #109). Family-scoped curated lists. List /
 // get / create / update are member-level (parents & children both curate the
-// family catalog, matching the tags/categories convention). DELETE is gated by
+// family catalog, matching the tags convention). DELETE is gated by
 // requireRole(PARENT): removing a curated collection is more consequential than
 // dropping a single tag, so it matches the meal-delete gate rather than the
 // tag-delete one.

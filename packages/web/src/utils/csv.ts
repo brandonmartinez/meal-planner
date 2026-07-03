@@ -102,8 +102,6 @@ export interface ParsedImportMeal {
   }[];
   /** Meal-level tag names (semicolon-delimited in CSV). #107. */
   tags?: string[];
-  /** Meal-level category names (semicolon-delimited in CSV). #107. */
-  categories?: string[];
   /** Meal-level recipe collection names (semicolon-delimited in CSV). #109. */
   collections?: string[];
   /** Ordered preparation steps (newline-delimited in CSV). Only `text` and
@@ -131,7 +129,7 @@ export interface ParseMealsCSVResult {
  *   ingredient <- ingredientName, item
  *   difficulty <- diff, effort
  *   tags       <- tag, labels (semicolon-delimited names; meal-level)
- *   categories <- cats, category names (semicolon-delimited names; meal-level)
+ *   categories <- cats (legacy #107 column; folded into tags for backward-compat)
  *   collections <- collection, recipe collections (semicolon-delimited names; meal-level)
  */
 export function parseMealsCSV(input: string): ParseMealsCSVResult {
@@ -173,7 +171,7 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     unit: ["unit", "units"],
     category: ["category", "cat"],
     tags: ["tags", "tag", "labels"],
-    categories: ["categories", "cats", "category names", "meal categories"],
+    categories: ["categories", "cats", "category names", "meal categories"], // legacy #107 — folded into tags
     collections: [
       "collections",
       "collection",
@@ -301,16 +299,28 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       return out;
     };
 
-    const tagsRaw = get(row, "tags");
-    if (tagsRaw && !meal.tags) {
-      const parsed = splitNames(tagsRaw);
-      if (parsed.length > 0) meal.tags = parsed;
-    }
-
-    const categoriesRaw = get(row, "categories");
-    if (categoriesRaw && !meal.categories) {
-      const parsed = splitNames(categoriesRaw);
-      if (parsed.length > 0) meal.categories = parsed;
+    // Tags — plus a backward-compat fold of the legacy meal `categories` column.
+    // #107 removed meal categories; old exports still carry that column, so we
+    // merge any category names into tags rather than hard-erroring on old files.
+    // Only the first row per meal seeds tags; names dedupe case-insensitively.
+    if (!meal.tags) {
+      const names: string[] = [];
+      const tagsRaw = get(row, "tags");
+      if (tagsRaw) names.push(...splitNames(tagsRaw));
+      const legacyCategoriesRaw = get(row, "categories");
+      if (legacyCategoriesRaw) names.push(...splitNames(legacyCategoriesRaw));
+      if (names.length > 0) {
+        const seen = new Set<string>();
+        const deduped: string[] = [];
+        for (const n of names) {
+          const key = n.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            deduped.push(n);
+          }
+        }
+        meal.tags = deduped;
+      }
     }
 
     const collectionsRaw = get(row, "collections");
@@ -365,7 +375,6 @@ export const MEALS_CSV_HEADER = [
   "favorite",
   "rating",
   "tags",
-  "categories",
   "collections",
   "instructions",
 ] as const;
@@ -390,8 +399,6 @@ export interface ExportMeal {
   }[];
   /** Meal-level tag names, emitted semicolon-delimited. #107. */
   tags?: string[] | null;
-  /** Meal-level category names, emitted semicolon-delimited. #107. */
-  categories?: string[] | null;
   /** Meal-level recipe collection names, emitted semicolon-delimited. #109. */
   collections?: string[] | null;
   /** Ordered preparation steps, emitted newline-delimited (numbered) in a single
@@ -441,7 +448,6 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.favorite),
         csvField(meal.rating),
         csvField(meal.tags?.join(";")),
-        csvField(meal.categories?.join(";")),
         csvField(meal.collections?.join(";")),
         csvField(formatInstructionCell(meal.instructions)),
       ].join(","),

@@ -26,7 +26,6 @@ export async function listMeals(
     search?: string;
     difficulty?: string[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
     favorite?: boolean;
     minRating?: number;
@@ -41,17 +40,14 @@ export async function listMeals(
   if (opts?.difficulty?.length) {
     for (const d of opts.difficulty) params.append("difficulty", d);
   }
-  // Tags & categories filter by name, repeated once per value (#107). The
-  // backend treats multiple values within a facet as OR, and combines facets
-  // (tags AND categories AND difficulty AND search) with AND.
+  // Tags filter by name, repeated once per value (#107). The
+  // backend treats multiple values within the facet as OR, and combines facets
+  // (tags AND difficulty AND search) with AND.
   if (opts?.tags?.length) {
     for (const t of opts.tags) params.append("tags", t);
   }
-  if (opts?.categories?.length) {
-    for (const c of opts.categories) params.append("categories", c);
-  }
   // Collections filter by name, repeated once per value (#109). Same OR-within,
-  // AND-across-facet semantics as tags/categories.
+  // AND-across-facet semantics as tags.
   if (opts?.collections?.length) {
     for (const c of opts.collections) params.append("collections", c);
   }
@@ -96,7 +92,6 @@ export async function createMeal(
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
   },
 ): Promise<Meal> {
@@ -123,7 +118,6 @@ export async function updateMeal(
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
   },
 ): Promise<Meal> {
@@ -158,7 +152,6 @@ export async function importMeals(
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
     tags?: string[];
-    categories?: string[];
     collections?: string[];
     instructions?: { text: string; timerMinutes?: number | null }[];
   }[],

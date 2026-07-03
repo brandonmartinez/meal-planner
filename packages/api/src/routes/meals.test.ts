@@ -17,9 +17,6 @@ vi.mock("../services/taxonomy.js", () => ({
   listTags: vi.fn(),
   createTag: vi.fn(),
   deleteTag: vi.fn(),
-  listCategories: vi.fn(),
-  createCategory: vi.fn(),
-  deleteCategory: vi.fn(),
 }));
 vi.mock("../services/recipeCollections.js", () => ({
   listCollections: vi.fn(),
@@ -135,7 +132,7 @@ describe("GET /:familyId/meals (list)", () => {
     expect(mealService.listMeals).not.toHaveBeenCalled();
   });
 
-  it("forwards tag/category filters through to the service", async () => {
+  it("forwards tag filters through to the service", async () => {
     const envelope = {
       items: [],
       total: 0,
@@ -148,7 +145,7 @@ describe("GET /:familyId/meals (list)", () => {
     await handler(
       req({
         params: { familyId: FAMILY_ID },
-        query: { tags: ["Quick", "Vegetarian"], categories: ["Dinner"] },
+        query: { tags: ["Quick", "Vegetarian"] },
       }),
       res,
       buildNext(),
@@ -158,7 +155,6 @@ describe("GET /:familyId/meals (list)", () => {
       FAMILY_ID,
       expect.objectContaining({
         tags: ["Quick", "Vegetarian"],
-        categories: ["Dinner"],
       }),
     );
   });
@@ -245,7 +241,7 @@ describe("POST /:familyId/meals (create)", () => {
     );
   });
 
-  it("forwards tag/category name lists through to the service", async () => {
+  it("forwards tag name lists through to the service", async () => {
     vi.mocked(mealService.createMeal).mockResolvedValue({
       id: MEAL_ID,
     } as never);
@@ -256,7 +252,6 @@ describe("POST /:familyId/meals (create)", () => {
         body: {
           name: "Tacos",
           tags: ["Quick", "Vegetarian"],
-          categories: ["Dinner"],
         },
       }),
       res,
@@ -267,7 +262,6 @@ describe("POST /:familyId/meals (create)", () => {
       FAMILY_ID,
       expect.objectContaining({
         tags: ["Quick", "Vegetarian"],
-        categories: ["Dinner"],
       }),
     );
   });
@@ -756,7 +750,7 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     );
   });
 
-  it("forwards tag/category name lists through to the service", async () => {
+  it("forwards tag name lists through to the service", async () => {
     vi.mocked(mealService.updateMeal).mockResolvedValue({
       id: MEAL_ID,
     } as never);
@@ -764,7 +758,7 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     await handler(
       req({
         params,
-        body: { tags: ["Quick"], categories: [] },
+        body: { tags: ["Quick"] },
       }),
       res,
       buildNext(),
@@ -773,7 +767,7 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     expect(mealService.updateMeal).toHaveBeenCalledWith(
       MEAL_ID,
       FAMILY_ID,
-      expect.objectContaining({ tags: ["Quick"], categories: [] }),
+      expect.objectContaining({ tags: ["Quick"] }),
     );
   });
 
@@ -961,7 +955,7 @@ describe("DELETE /:familyId/meals/:mealId (parents only)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Taxonomy routes (tags + categories). Family-scoped: every handler must pass
+// Taxonomy routes (tags). Family-scoped: every handler must pass
 // the path :familyId straight through to the service so one family can never
 // read or mutate another's taxonomy (IDOR / #9).
 // ---------------------------------------------------------------------------
@@ -1064,96 +1058,8 @@ describe("DELETE /:familyId/tags/:tagId", () => {
   });
 });
 
-describe("GET /:familyId/categories (list)", () => {
-  const handler = getRouteHandler(mealsRouter, "get", "/:familyId/categories");
-
-  it("200s with the family's categories, scoped by :familyId", async () => {
-    vi.mocked(taxonomyService.listCategories).mockResolvedValue([
-      { id: "c-1", name: "Dinner", familyId: FAMILY_ID },
-    ] as never);
-    const res = buildFullRes();
-    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
-    expect(res.statusCode).toBe(200);
-    expect(taxonomyService.listCategories).toHaveBeenCalledWith(FAMILY_ID);
-    expect((res.body as { categories: unknown[] }).categories).toHaveLength(1);
-  });
-});
-
-describe("POST /:familyId/categories (create)", () => {
-  const handler = getRouteHandler(mealsRouter, "post", "/:familyId/categories");
-
-  it("201s and creates the category scoped to :familyId", async () => {
-    vi.mocked(taxonomyService.createCategory).mockResolvedValue({
-      id: "c-1",
-      name: "Dinner",
-      familyId: FAMILY_ID,
-    } as never);
-    const res = buildFullRes();
-    await handler(
-      req({ params: { familyId: FAMILY_ID }, body: { name: "Dinner" } }),
-      res,
-      buildNext(),
-    );
-    expect(res.statusCode).toBe(201);
-    expect(taxonomyService.createCategory).toHaveBeenCalledWith(
-      FAMILY_ID,
-      "Dinner",
-    );
-  });
-
-  it("400s on an empty name (Zod)", async () => {
-    const res = buildFullRes();
-    await handler(
-      req({ params: { familyId: FAMILY_ID }, body: { name: "" } }),
-      res,
-      buildNext(),
-    );
-    expect(res.statusCode).toBe(400);
-    expect(taxonomyService.createCategory).not.toHaveBeenCalled();
-  });
-});
-
-describe("DELETE /:familyId/categories/:categoryId", () => {
-  const handler = getRouteHandler(
-    mealsRouter,
-    "delete",
-    "/:familyId/categories/:categoryId",
-  );
-
-  it("204s and deletes the category scoped to :familyId (IDOR guard)", async () => {
-    vi.mocked(taxonomyService.deleteCategory).mockResolvedValue(
-      undefined as never,
-    );
-    const res = buildFullRes();
-    await handler(
-      req({ params: { familyId: FAMILY_ID, categoryId: "c-1" } }),
-      res,
-      buildNext(),
-    );
-    expect(res.statusCode).toBe(204);
-    expect(taxonomyService.deleteCategory).toHaveBeenCalledWith(
-      FAMILY_ID,
-      "c-1",
-    );
-  });
-
-  it("404s when the category is not found in this family", async () => {
-    vi.mocked(taxonomyService.deleteCategory).mockRejectedValue(
-      new Error("Category not found"),
-    );
-    const res = buildFullRes();
-    await handler(
-      req({ params: { familyId: FAMILY_ID, categoryId: "c-x" } }),
-      res,
-      buildNext(),
-    );
-    expect(res.statusCode).toBe(404);
-    expect(res.body).toEqual({ error: "Category not found" });
-  });
-});
-
 // Recipe collections (issue #109). Curated, family-scoped lists. These route
-// tests mirror the tags/categories suite above but add explicit cross-family
+// tests mirror the tags suite above but add explicit cross-family
 // (IDOR) coverage: a member of Family A must never read, mutate, or delete a
 // collection owned by Family B — the service resolves such attempts to a 404.
 describe("GET /:familyId/collections (list)", () => {

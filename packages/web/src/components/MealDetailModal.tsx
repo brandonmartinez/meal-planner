@@ -34,7 +34,7 @@ function formatIngredient(ingredient: MealIngredient): string {
  * Opened by clicking a real (non-placeholder) meal card in {@link DayCard}. It
  * fetches the full recipe by id via the same `getMeal` endpoint the standalone
  * {@link MealDetailPage} uses, and surfaces the key metadata (name, image,
- * difficulty, favorite/rating, tags/categories, collections, ingredients,
+ * difficulty, favorite/rating, tags, collections, ingredients,
  * description, notes) without leaving the planner. A prominent "View cooking
  * mode" link routes to the full-screen CookingModePage.
  *
@@ -170,7 +170,6 @@ export default function MealDetailModal({
 
             <MealTagList
               tags={meal.tags}
-              categories={meal.categories}
               max={6}
               className="mt-4"
             />

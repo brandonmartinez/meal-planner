@@ -208,7 +208,7 @@ describe("fillWeek — existingMode policy", () => {
 });
 
 describe("fillWeek — eligibility filters (reused #113 semantics)", () => {
-  it("threads categories/collections/difficulty/favorite into the family-scoped where", async () => {
+  it("threads collections/difficulty/favorite into the family-scoped where", async () => {
     getOrCreateWeekPlan.mockResolvedValue(buildWeek() as never);
     prismaMock.meal.findMany.mockResolvedValue(candidates("a"));
 
@@ -217,7 +217,6 @@ describe("fillWeek — eligibility filters (reused #113 semantics)", () => {
       weekStart: REF,
       userId: USER,
       filters: {
-        categories: ["Dinner"],
         collections: ["Weeknights"],
         difficulty: ["EASY"],
         favorite: true,
@@ -231,9 +230,6 @@ describe("fillWeek — eligibility filters (reused #113 semantics)", () => {
       placeholderKind: null,
       favorite: true,
       difficulty: { in: ["EASY"] },
-      categories: {
-        some: { category: { nameNormalized: { in: ["dinner"] } } },
-      },
       collections: {
         some: { recipeCollection: { nameNormalized: { in: ["weeknights"] } } },
       },
@@ -279,7 +275,7 @@ describe("fillWeek — insufficient eligible meals", () => {
         familyId: FAMILY,
         weekStart: REF,
         userId: USER,
-        filters: { categories: ["nonexistent"] },
+        filters: { collections: ["nonexistent"] },
       }),
     ).rejects.toMatchObject({ status: 422 });
     expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();

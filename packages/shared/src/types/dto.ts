@@ -192,7 +192,6 @@ export interface ExportMealDTO {
     category: string | null;
   }[];
   tags: string[];
-  categories: string[];
   collections: string[];
   instructions: {
     text: string;
@@ -287,7 +286,6 @@ export interface ScheduleMealRequestDTO {
  *  `MealSuggestionDTO`. */
 export interface RandomScheduleInputDTO {
   date: string;
-  categories?: string[];
   tags?: string[];
   difficulty?: Difficulty[];
   favorite?: boolean;
@@ -322,7 +320,6 @@ export interface RepeatWeekRequestDTO {
  *  `false`, an eligible pool smaller than the open-day count is a 422. Response
  *  reuses `WeekPlanDTO`. */
 export interface FillWeekRequestDTO {
-  categories?: string[];
   tags?: string[];
   collections?: string[];
   difficulty?: Difficulty[];

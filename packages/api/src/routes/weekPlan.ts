@@ -49,7 +49,6 @@ const repeatWeekSchema = z.object({
 // coercion). Filters mirror the meals-list vocabulary; all are optional.
 const scheduleRandomSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
-  categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
   favorite: z.boolean().optional(),
@@ -63,7 +62,6 @@ const scheduleRandomSchema = z.object({
 // suggestions; `allowPartial` (default true) fills as many open days as the
 // eligible pool allows.
 const fillWeekSchema = z.object({
-  categories: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   difficulty: z.array(z.nativeEnum(Difficulty)).optional(),
@@ -226,7 +224,7 @@ weekPlanRouter.post(
 
 // POST /api/families/:familyId/weeks/:weekStart/fill
 // Fill the OPEN days of the target week (a Monday) with meals chosen at random
-// from the eligible catalog, filtered by categories/tags/collections/etc., as
+// from the eligible catalog, filtered by tags/collections/etc., as
 // new UNAPPROVED suggestions (issue #115). `existingMode` (default "error") is
 // the non-destructive policy for an already-populated target week; `allowPartial`
 // (default true) fills as many open days as the eligible pool allows. The

@@ -7,7 +7,7 @@ import { normalizeName } from "./taxonomy.js";
  *
  * This service manages a family's *custom* grocery categories, which layer on
  * top of the shared {@link INGREDIENT_CATEGORIES} defaults. Unlike the meal
- * Tag/Category taxonomies, ingredient/grocery `category` values are stored as
+ * Tag taxonomy, ingredient/grocery `category` values are stored as
  * free-form strings and are NOT foreign keys to these rows — the registry is an
  * advisory pick-list, not a constraint. The *effective* list a client offers is
  * `INGREDIENT_CATEGORIES ∪ custom rows` (defaults first in their canonical
@@ -15,7 +15,7 @@ import { normalizeName } from "./taxonomy.js";
  * is total: any legacy category string keeps validating because nothing is
  * tightened to a closed set.
  *
- * The uniqueness/normalization rules mirror the Tag/Category taxonomy so the two
+ * The uniqueness/normalization rules mirror the Tag taxonomy so the two
  * behaviors can never drift apart ({@link normalizeName} is reused directly).
  */
 
