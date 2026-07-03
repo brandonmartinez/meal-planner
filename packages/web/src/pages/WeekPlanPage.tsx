@@ -16,6 +16,7 @@ import {
     createWeekPlan,
     addSuggestion,
     approveSuggestion,
+    unapproveSuggestion,
     removeSuggestion,
     moveSuggestion,
 } from '../api/weekPlan';
@@ -82,6 +83,16 @@ export default function WeekPlanPage() {
             await loadWeekPlan();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to approve suggestion');
+        }
+    };
+
+    const handleUnapprove = async (suggestionId: string) => {
+        if (!familyId) return;
+        try {
+            await unapproveSuggestion(familyId, suggestionId);
+            await loadWeekPlan();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to unapprove suggestion');
         }
     };
 
@@ -191,6 +202,7 @@ export default function WeekPlanPage() {
                             currentUserId={user?.id || ''}
                             onAddMeal={() => setPickerDayPlanId(day.id)}
                             onApprove={handleApprove}
+                            onUnapprove={handleUnapprove}
                             onRemove={handleRemove}
                         />
                     ))}

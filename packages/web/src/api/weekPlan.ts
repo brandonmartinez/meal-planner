@@ -49,6 +49,18 @@ export async function approveSuggestion(
   );
 }
 
+export async function unapproveSuggestion(
+  familyId: string,
+  suggestionId: string,
+): Promise<void> {
+  return request<void>(
+    `${BASE}/${familyId}/suggestions/${suggestionId}/unapprove`,
+    {
+      method: "PATCH",
+    },
+  );
+}
+
 export async function removeSuggestion(
   familyId: string,
   suggestionId: string,

@@ -64,6 +64,20 @@ describe("weekPlan api client", () => {
     expect(method).toBe("PATCH");
   });
 
+  it("unapproveSuggestion uses PATCH to .../unapprove and resolves on 200", async () => {
+    let method = "";
+    server.use(
+      http.patch("/api/families/f-1/suggestions/s-1/unapprove", ({ request }) => {
+        method = request.method;
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    await expect(
+      wpApi.unapproveSuggestion("f-1", "s-1"),
+    ).resolves.toBeUndefined();
+    expect(method).toBe("PATCH");
+  });
+
   it("removeSuggestion uses DELETE", async () => {
     let method = "";
     server.use(

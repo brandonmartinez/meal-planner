@@ -20,6 +20,7 @@ function stubClient() {
     scheduleMeal: vi.fn(),
     repeatWeek: vi.fn(),
     approveSuggestion: vi.fn(),
+    unapproveSuggestion: vi.fn(),
     createMeal: vi.fn(),
     updateMeal: vi.fn(),
     getCurrentGroceryList: vi.fn(),
@@ -255,6 +256,18 @@ describe("createToolHandlers", () => {
 
     await handlers.approve_suggestion({ suggestionId: "s-1" });
     expect(client.approveSuggestion).toHaveBeenCalledWith(FAMILY, "s-1");
+  });
+
+  it("unapprove_suggestion forwards the suggestionId", async () => {
+    const client = stubClient();
+    client.unapproveSuggestion.mockResolvedValue({ id: "s-1", approved: false });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.unapprove_suggestion({ suggestionId: "s-1" });
+    expect(client.unapproveSuggestion).toHaveBeenCalledWith(FAMILY, "s-1");
   });
 
   it("create_meal forwards the structured recipe (no familyId in the call)", async () => {
@@ -829,6 +842,7 @@ describe("registerTools", () => {
       "apply_template",
       "fill_week",
       "approve_suggestion",
+      "unapprove_suggestion",
       "create_meal",
       "update_meal",
       "get_current_grocery_list",
@@ -1049,6 +1063,7 @@ describe("TOOL_SCOPES", () => {
       apply_template: "meal_plan:schedule",
       fill_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
+      unapprove_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",
       create_collection: "meal:write",
