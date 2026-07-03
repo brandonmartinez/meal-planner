@@ -65,11 +65,30 @@ export default function TemplateFormModal({
   const loadMeals = useCallback(async () => {
     setMealsLoading(true);
     try {
-      const res = await listMeals(familyId, { limit: 500, sort: 'name', order: 'asc' });
-      setMeals(res.items);
-    } catch {
+      // The template modal needs the FULL catalog to place any meal on any day.
+      // The list-meals endpoint caps `limit` at 100 (a `limit=500` request 400s),
+      // so page through respecting that cap, accumulating each page's items until
+      // `hasMore` is false. Guard against an infinite loop: stop on an empty page
+      // and hard-cap the number of pages.
+      const PAGE_SIZE = 100;
+      const MAX_PAGES = 50; // safety bound → up to 5000 meals
+      const all: MealListItemDTO[] = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const res = await listMeals(familyId, {
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+          sort: 'name',
+          order: 'asc',
+        });
+        all.push(...res.items);
+        if (!res.hasMore || res.items.length === 0) break;
+      }
+      setMeals(all);
+    } catch (err) {
       // A meal-load failure shouldn't block editing name/description; surface a
-      // gentle inline note but keep the form usable.
+      // gentle inline note but keep the form usable. Log for debuggability rather
+      // than swallowing the underlying error entirely.
+      console.error('Failed to load meals for template modal', err);
       setError('Could not load meals — you can still edit the name and blurb.');
     } finally {
       setMealsLoading(false);
