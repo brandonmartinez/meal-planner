@@ -104,6 +104,8 @@ export interface ParsedImportMeal {
   tags?: string[];
   /** Meal-level category names (semicolon-delimited in CSV). #107. */
   categories?: string[];
+  /** Meal-level recipe collection names (semicolon-delimited in CSV). #109. */
+  collections?: string[];
   /** Ordered preparation steps (newline-delimited in CSV). Only `text` and
    *  order round-trip through CSV; `timerMinutes` is not encoded. #100. */
   instructions?: { text: string }[];
@@ -130,6 +132,7 @@ export interface ParseMealsCSVResult {
  *   difficulty <- diff, effort
  *   tags       <- tag, labels (semicolon-delimited names; meal-level)
  *   categories <- cats, category names (semicolon-delimited names; meal-level)
+ *   collections <- collection, recipe collections (semicolon-delimited names; meal-level)
  */
 export function parseMealsCSV(input: string): ParseMealsCSVResult {
   const rows = parseCSV(input);
@@ -171,6 +174,12 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
     category: ["category", "cat"],
     tags: ["tags", "tag", "labels"],
     categories: ["categories", "cats", "category names", "meal categories"],
+    collections: [
+      "collections",
+      "collection",
+      "recipe collections",
+      "recipe collection",
+    ],
     instructions: ["instructions", "steps", "directions", "method"],
   };
 
@@ -304,6 +313,12 @@ export function parseMealsCSV(input: string): ParseMealsCSVResult {
       if (parsed.length > 0) meal.categories = parsed;
     }
 
+    const collectionsRaw = get(row, "collections");
+    if (collectionsRaw && !meal.collections) {
+      const parsed = splitNames(collectionsRaw);
+      if (parsed.length > 0) meal.collections = parsed;
+    }
+
     const instructionsRaw = get(row, "instructions");
     if (instructionsRaw && !meal.instructions) {
       const parsed = parseInstructionCell(instructionsRaw);
@@ -351,6 +366,7 @@ export const MEALS_CSV_HEADER = [
   "rating",
   "tags",
   "categories",
+  "collections",
   "instructions",
 ] as const;
 
@@ -376,6 +392,8 @@ export interface ExportMeal {
   tags?: string[] | null;
   /** Meal-level category names, emitted semicolon-delimited. #107. */
   categories?: string[] | null;
+  /** Meal-level recipe collection names, emitted semicolon-delimited. #109. */
+  collections?: string[] | null;
   /** Ordered preparation steps, emitted newline-delimited (numbered) in a single
    *  quoted cell, in `position` order. Only `text` and order round-trip through
    *  CSV; `timerMinutes` is not encoded. #100. */
@@ -424,6 +442,7 @@ export function mealsToCSV(meals: ExportMeal[]): string {
         csvField(meal.rating),
         csvField(meal.tags?.join(";")),
         csvField(meal.categories?.join(";")),
+        csvField(meal.collections?.join(";")),
         csvField(formatInstructionCell(meal.instructions)),
       ].join(","),
     );

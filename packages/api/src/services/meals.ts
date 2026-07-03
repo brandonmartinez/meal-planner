@@ -8,6 +8,7 @@ import type { Difficulty, MealListResponseDTO } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
 import { syncMealTaxonomy } from "./taxonomy.js";
+import { syncMealCollections } from "./recipeCollections.js";
 import type { ListMealsQuery } from "../schemas/meals.js";
 
 /** Prisma `include` that pulls a meal's tag/category join rows with their
@@ -16,6 +17,7 @@ import type { ListMealsQuery } from "../schemas/meals.js";
 const MEAL_TAXONOMY_INCLUDE = {
   tags: { include: { tag: true } },
   categories: { include: { category: true } },
+  collections: { include: { recipeCollection: true } },
 } satisfies Prisma.MealInclude;
 
 /** Full detail `include` for single-meal read paths: ingredients, ordered
@@ -44,6 +46,14 @@ function mapInstructionCreates(
 type TaxonomyJoinRows = {
   tags: { tag: { id: string; name: string; familyId: string } }[];
   categories: { category: { id: string; name: string; familyId: string } }[];
+  collections: {
+    recipeCollection: {
+      id: string;
+      name: string;
+      familyId: string;
+      description: string | null;
+    };
+  }[];
 };
 
 /** Project a meal's tag/category join rows into flat `Tag[]` / `Category[]`
@@ -59,6 +69,12 @@ function mapTaxonomy(meal: TaxonomyJoinRows) {
       id: mc.category.id,
       name: mc.category.name,
       familyId: mc.category.familyId,
+    })),
+    collections: (meal.collections ?? []).map((mrc) => ({
+      id: mrc.recipeCollection.id,
+      name: mrc.recipeCollection.name,
+      familyId: mrc.recipeCollection.familyId,
+      description: mrc.recipeCollection.description,
     })),
   };
 }
@@ -87,6 +103,7 @@ export async function listMeals(
     minRating,
     tags,
     categories,
+    collections,
     sort,
     order,
     limit,
@@ -100,6 +117,9 @@ export async function listMeals(
   const categoryNames = (categories ?? [])
     .map((c) => c.trim().toLowerCase())
     .filter(Boolean);
+  const collectionNames = (collections ?? [])
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
 
   const hasFilter = Boolean(
     search ||
@@ -107,7 +127,8 @@ export async function listMeals(
       favorite !== undefined ||
       minRating !== undefined ||
       tagNames.length ||
-      categoryNames.length,
+      categoryNames.length ||
+      collectionNames.length,
   );
 
   const where: Prisma.MealWhereInput = { familyId };
@@ -145,6 +166,14 @@ export async function listMeals(
   if (categoryNames.length) {
     where.categories = {
       some: { category: { nameNormalized: { in: categoryNames } } },
+    };
+  }
+  // Collection filter (issue #109): same OR-within / AND-across semantics as
+  // tags/categories. Join rows are family-scoped transitively via the parent
+  // RecipeCollection record, so a Family-B collection name can never match.
+  if (collectionNames.length) {
+    where.collections = {
+      some: { recipeCollection: { nameNormalized: { in: collectionNames } } },
     };
   }
 
@@ -385,6 +414,7 @@ export async function createMeal(
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -411,6 +441,7 @@ export async function createMeal(
       },
     });
     await syncMealTaxonomy(tx, familyId, meal.id, data.tags, data.categories);
+    await syncMealCollections(tx, familyId, meal.id, data.collections);
     const withTaxonomy = await tx.meal.findUniqueOrThrow({
       where: { id: meal.id },
       include: MEAL_DETAIL_INCLUDE,
@@ -443,6 +474,7 @@ export async function updateMeal(
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -493,6 +525,7 @@ export async function updateMeal(
       },
     });
     await syncMealTaxonomy(tx, familyId, mealId, data.tags, data.categories);
+    await syncMealCollections(tx, familyId, mealId, data.collections);
     const meal = await tx.meal.findUniqueOrThrow({
       where: { id: mealId },
       include: MEAL_DETAIL_INCLUDE,
@@ -553,6 +586,7 @@ export async function importMeals(
     instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     categories?: string[];
+    collections?: string[];
   }[],
   options?: { mode?: "skip" | "replace" },
 ) {
@@ -622,6 +656,7 @@ export async function importMeals(
             data.tags,
             data.categories,
           );
+          await syncMealCollections(tx, familyId, existing.id, data.collections);
           result.updated++;
           return;
         }
@@ -655,6 +690,7 @@ export async function importMeals(
           data.tags,
           data.categories,
         );
+        await syncMealCollections(tx, familyId, created.id, data.collections);
         result.created++;
       });
     } catch (err) {
@@ -687,6 +723,9 @@ export async function exportMeals(familyId: string) {
       },
       tags: { include: { tag: { select: { name: true } } } },
       categories: { include: { category: { select: { name: true } } } },
+      collections: {
+        include: { recipeCollection: { select: { name: true } } },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -707,6 +746,9 @@ export async function exportMeals(familyId: string) {
     instructions: meal.instructions,
     tags: (meal.tags ?? []).map((mt) => mt.tag.name),
     categories: (meal.categories ?? []).map((mc) => mc.category.name),
+    collections: (meal.collections ?? []).map(
+      (mrc) => mrc.recipeCollection.name,
+    ),
   }));
 }
 

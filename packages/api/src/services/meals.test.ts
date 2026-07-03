@@ -453,6 +453,57 @@ describe("meals service", () => {
       expect(arg.where).not.toHaveProperty("placeholderKind");
     });
 
+    // #109: collections are a third filter facet, independent of tags/categories.
+    it("filters by collections (OR-within-facet, normalized to lowercase)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", {
+        collections: ["Weeknight Dinners", "HOLIDAY BAKING"],
+      } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: {
+          collections?: {
+            some?: { recipeCollection?: { nameNormalized?: { in?: string[] } } };
+          };
+          placeholderKind?: unknown;
+        };
+      };
+      expect(
+        arg.where.collections?.some?.recipeCollection?.nameNormalized?.in,
+      ).toEqual(["weeknight dinners", "holiday baking"]);
+      // Filtering excludes placeholders.
+      expect(arg.where.placeholderKind).toBeNull();
+    });
+
+    it("AND-across-facets: collection AND tag filters both applied to where", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", {
+        collections: ["weeknight"],
+        tags: ["quick"],
+      } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: {
+          collections?: {
+            some?: { recipeCollection?: { nameNormalized?: { in?: string[] } } };
+          };
+          tags?: { some?: { tag?: { nameNormalized?: { in?: string[] } } } };
+        };
+      };
+      expect(
+        arg.where.collections?.some?.recipeCollection?.nameNormalized?.in,
+      ).toEqual(["weeknight"]);
+      expect(arg.where.tags?.some?.tag?.nameNormalized?.in).toEqual(["quick"]);
+    });
+
+    it("ignores blank/whitespace-only collection names (no collection filter applied)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { collections: ["  ", ""] } as never);
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { collections?: unknown; placeholderKind?: unknown };
+      };
+      expect(arg.where).not.toHaveProperty("collections");
+      expect(arg.where).not.toHaveProperty("placeholderKind");
+    });
+
     it("lastCooked sort: fetches all via findMany (not $transaction), sorts nulls-last tiebreak name asc", async () => {
       prismaMock.meal.findMany.mockResolvedValue([
         { id: "m-c", name: "Zucchini soup", _count: { ingredients: 0 } },
@@ -789,6 +840,49 @@ describe("meals service", () => {
       expect(prismaMock.mealTag.deleteMany).not.toHaveBeenCalled();
       expect(prismaMock.category.upsert).not.toHaveBeenCalled();
       expect(prismaMock.mealCategory.deleteMany).not.toHaveBeenCalled();
+    });
+
+    // #109: collections assign by name inside the same family transaction,
+    // upsert-by-(family, normalized name), then replace-set the join rows.
+    it("assigns collections by name within the family transaction", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      prismaMock.recipeCollection.upsert.mockResolvedValue({
+        id: "col-1",
+      } as never);
+      prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+        count: 0,
+      } as never);
+      prismaMock.mealRecipeCollection.createMany.mockResolvedValue({
+        count: 1,
+      } as never);
+
+      await createMeal("fam-1", {
+        name: "Tacos",
+        collections: ["Weeknight Dinners"],
+      } as never);
+
+      const upsert = prismaMock.recipeCollection.upsert.mock.calls[0][0] as {
+        where: { familyId_nameNormalized: unknown };
+      };
+      expect(upsert.where.familyId_nameNormalized).toEqual({
+        familyId: "fam-1",
+        nameNormalized: "weeknight dinners",
+      });
+      expect(prismaMock.mealRecipeCollection.createMany).toHaveBeenCalledWith({
+        data: [{ mealId: "m-1", recipeCollectionId: "col-1" }],
+        skipDuplicates: true,
+      });
+    });
+
+    it("does not touch collection joins when collections are omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      await createMeal("fam-1", { name: "Plain" });
+      expect(prismaMock.recipeCollection.upsert).not.toHaveBeenCalled();
+      expect(
+        prismaMock.mealRecipeCollection.deleteMany,
+      ).not.toHaveBeenCalled();
     });
 
     // #100: instructions are nested-created with a dense 0-based position that
