@@ -10,6 +10,7 @@ import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TokenField from '../components/TokenField';
 import Combobox from '../components/Combobox';
+import StarRating from '../components/StarRating';
 import { MealImageField, type MealImageFieldHandle } from '../components/MealImageField';
 
 interface IngredientRow {
@@ -37,7 +38,6 @@ export default function MealFormPage() {
   const sourceUrlId = useId();
   const notesId = useId();
   const favoriteId = useId();
-  const ratingId = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -209,21 +209,41 @@ export default function MealFormPage() {
           />
         </div>
 
-        <div>
-          <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Difficulty</label>
-          <select
-            id="difficulty"
-            value={difficulty}
-            onChange={e => setDifficulty(e.target.value as Difficulty | '')}
-            className="w-full sm:w-48 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
-          >
-            <option value="">None</option>
-            {MEAL_DIFFICULTIES.map(level => (
-              <option key={level} value={level}>
-                {level.charAt(0) + level.slice(1).toLowerCase()}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap gap-6 items-end">
+          <div>
+            <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Difficulty</label>
+            <select
+              id="difficulty"
+              value={difficulty}
+              onChange={e => setDifficulty(e.target.value as Difficulty | '')}
+              className="w-full sm:w-48 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+            >
+              <option value="">None</option>
+              {MEAL_DIFFICULTIES.map(level => (
+                <option key={level} value={level}>
+                  {level.charAt(0) + level.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="pb-1">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                id={favoriteId}
+                type="checkbox"
+                checked={favorite}
+                onChange={e => setFavorite(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 accent-blue-600 cursor-pointer"
+              />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Favorite</span>
+            </label>
+          </div>
+
+          <StarRating
+            value={Number(rating) || 0}
+            onChange={n => setRating(n === 0 ? '' : String(n))}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -323,31 +343,6 @@ export default function MealFormPage() {
             rows={4}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
           />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="flex items-center gap-2">
-            <input
-              id={favoriteId}
-              type="checkbox"
-              checked={favorite}
-              onChange={e => setFavorite(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
-            />
-            <label htmlFor={favoriteId} className="text-sm font-medium text-gray-700 dark:text-gray-300">Favorite</label>
-          </div>
-          <div>
-            <label htmlFor={ratingId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rating (1–5)</label>
-            <input
-              id={ratingId}
-              type="number"
-              min={1}
-              max={5}
-              value={rating}
-              onChange={e => setRating(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
-            />
-          </div>
         </div>
 
         <div>

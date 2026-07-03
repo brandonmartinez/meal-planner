@@ -241,7 +241,7 @@ describe('MealFormPage favorite and rating', () => {
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Favorite' }));
-    await userEvent.type(screen.getByRole('spinbutton', { name: 'Rating (1–5)' }), '5');
+    await userEvent.click(screen.getByRole('radio', { name: '5 stars' }));
     await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
@@ -294,14 +294,15 @@ describe('MealFormPage favorite and rating', () => {
       name: 'Favorite',
     });
     await waitFor(() => expect(favorite.checked).toBe(true));
-    const ratingInput = screen.getByRole<HTMLInputElement>('spinbutton', {
-      name: 'Rating (1–5)',
-    });
-    expect(ratingInput.value).toBe('4');
+    // 4th star should be active (aria-checked=true); 5th should not be.
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: '4 stars' })).toHaveAttribute('aria-checked', 'true'),
+    );
+    expect(screen.getByRole('radio', { name: '5 stars' })).toHaveAttribute('aria-checked', 'false');
 
-    // Untoggle favorite and clear the rating, then save.
+    // Untoggle favorite and clear the rating by clicking the active (4th) star again.
     await userEvent.click(favorite);
-    await userEvent.clear(ratingInput);
+    await userEvent.click(screen.getByRole('radio', { name: '4 stars' }));
     await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
 
     await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
