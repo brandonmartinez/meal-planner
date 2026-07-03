@@ -695,6 +695,85 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(prismaMock.weekPlan.findFirst).not.toHaveBeenCalled();
   });
 
+  it("fill: fills an open day with an eligible meal, unapproved (schedule scope)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    // getOrCreateWeekPlan(target): empty week (one seeded Monday), then re-fetch.
+    prismaMock.weekPlan.findFirst
+      .mockResolvedValueOnce({
+        id: "tgt",
+        days: [
+          { id: "t-mon", date: new Date("2026-05-11T00:00:00Z"), suggestions: [] },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "tgt", days: [] } as never);
+    // Candidate pool — a single eligible meal makes the pick deterministic.
+    prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+    prismaMock.mealSuggestion.createMany.mockResolvedValue({ count: 1 } as never);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/fill");
+    const req = agentReq(
+      { familyId: "fam-1", weekStart: "2026-05-11" },
+      { difficulty: ["EASY"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    // The open day is filled with the eligible meal as a new unapproved row.
+    const createArg = prismaMock.mealSuggestion.createMany.mock
+      .calls[0][0] as { data: { mealId: string; approved: boolean; userId: string }[] };
+    expect(createArg.data).toEqual([
+      { dayPlanId: "t-mon", mealId: "meal-1", userId: "parent-1", approved: false },
+    ]);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "allowed",
+        targetType: "weekPlan",
+      }),
+    });
+  });
+
+  it("fill: a read-only credential cannot fill (403, no write, audited denied)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/fill");
+    const req = agentReq(
+      { familyId: "fam-1", weekStart: "2026-05-11" },
+      { difficulty: ["EASY"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
+  });
+
+  it("fill: a credential for another family is denied (403, no service call)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/weeks/:weekStart/fill");
+    const req = agentReq(
+      { familyId: "fam-OTHER", weekStart: "2026-05-11" },
+      { difficulty: ["EASY"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.weekPlan.findFirst).not.toHaveBeenCalled();
+  });
+
   it("random: picks an eligible meal and schedules it unapproved (schedule scope)", async () => {
     mockCredential(["meal_plan:schedule"]);
     // selectRandomMeal candidate query — one eligible meal.

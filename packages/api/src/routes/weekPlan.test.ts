@@ -33,10 +33,12 @@ vi.mock("../services/weekPlan.js", () => {
   };
 });
 vi.mock("../services/randomPlan.js", () => ({ scheduleRandomMeal: vi.fn() }));
+vi.mock("../services/weekFill.js", () => ({ fillWeek: vi.fn() }));
 
 const { weekPlanRouter } = await import("./weekPlan.js");
 const weekPlanService = await import("../services/weekPlan.js");
 const randomPlanService = await import("../services/randomPlan.js");
+const weekFillService = await import("../services/weekFill.js");
 const { SuggestionError, MoveSuggestionError } = weekPlanService;
 
 const FAMILY_ID = "fam-1";
@@ -370,6 +372,80 @@ describe("POST /:familyId/weeks/:weekStart/repeat", () => {
       res,
       buildNext(),
     );
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("POST /:familyId/weeks/:weekStart/fill", () => {
+  const handler = getRouteHandler(
+    weekPlanRouter,
+    "post",
+    "/:familyId/weeks/:weekStart/fill",
+  );
+
+  const params = { familyId: FAMILY_ID, weekStart: "2026-05-11" };
+
+  it("201s with the target week and forwards normalized filters to the service", async () => {
+    vi.mocked(weekFillService.fillWeek).mockResolvedValue({
+      id: "wp-target",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", {
+        params,
+        body: {
+          categories: ["cat-1"],
+          collections: ["col-1"],
+          avoidRecentDays: 14,
+          existingMode: "skip",
+          allowPartial: false,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(weekFillService.fillWeek).toHaveBeenCalledWith({
+      familyId: FAMILY_ID,
+      weekStart: new Date("2026-05-11T00:00:00Z"),
+      userId: USER_ID,
+      filters: {
+        categories: ["cat-1"],
+        collections: ["col-1"],
+        avoidRecentDays: 14,
+      },
+      existingMode: "skip",
+      allowPartial: false,
+    });
+  });
+
+  it("400s on Zod failure (invalid existingMode)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", { params, body: { existingMode: "bogus" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(weekFillService.fillWeek).not.toHaveBeenCalled();
+  });
+
+  it("maps a SuggestionError (422 insufficient eligible meals) to its own status code", async () => {
+    vi.mocked(weekFillService.fillWeek).mockRejectedValue(
+      new SuggestionError(
+        422,
+        "Not enough eligible meals to fill the requested days",
+      ),
+    );
+    const res = buildFullRes();
+    await handler(req("PARENT", { params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(weekFillService.fillWeek).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(req("PARENT", { params, body: {} }), res, buildNext());
     expect(res.statusCode).toBe(500);
   });
 });
