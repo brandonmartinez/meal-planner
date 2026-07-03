@@ -21,6 +21,7 @@ model Family {
   agentCredentials AgentCredential[]
   tags             Tag[]
   categories       Category[]
+  imageAssets      ImageAsset[]
 }
 
 model User {
@@ -72,6 +73,7 @@ model Meal {
   tags                 MealTag[]
   categories           MealCategory[]
   instructions         MealInstruction[]
+  imageAssets          ImageAsset[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -319,4 +321,29 @@ model AgentAuditLog {
 
   @@index([familyId])
   @@index([credentialId])
+}
+
+/// A binary image asset (photo) uploaded for a family, optionally associated
+/// with a meal. Bytes live on the configured `ImageStorage` backend under a
+/// family-scoped, opaque path — never served by raw filesystem path. The row
+/// stores only validated metadata (MIME, extension, size) plus ownership.
+/// `family` cascades on delete (an asset must not outlive its family); `meal`
+/// is SetNull so deleting a meal releases the association without destroying
+/// the family-owned asset. On-disk file GC on family delete is a future
+/// concern — families are not deleted in current flows.
+model ImageAsset {
+  id          String   @id @default(uuid())
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  familyId    String
+  meal        Meal?    @relation(fields: [mealId], references: [id], onDelete: SetNull)
+  mealId      String?
+  contentType String
+  extension   String
+  byteSize    Int
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([familyId])
+  @@index([mealId])
 }
