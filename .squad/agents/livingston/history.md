@@ -39,3 +39,7 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 📌 Team update (2026-07-02T21:37:00-0400): Sprint 3 Wave 1 complete. Livingston shipped #114 repeat previous week planning (`repeatWeek`, REST/agent/MCP/web parity); Basher shipped #104 image asset backend; Linus shipped #102 local cooking mode. Merges: #104 PR #137 SHA a9a5df5; #102 PR #138 SHA 6acf0d0; #114 PR #139 SHA 68b6637. — logged by Scribe
 
 📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #113 random meal selection merged via PR #140 (e95372c): auditable RNG meal selection/scheduling, REST+agent+MCP parity, no schema or CSV changes. — logged by Scribe
+
+## 2026-07-03T02:23:57-0400 — Wave 3 shipped
+
+- Shipped #120 ingredient normalization; PR #144 squash `e604ab3` merged after Saul #116 and before Linus #110. State reconciled by Scribe.
