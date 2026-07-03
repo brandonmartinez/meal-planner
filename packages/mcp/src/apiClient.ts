@@ -8,6 +8,7 @@ import type {
   Meal,
   GroceryList,
   Difficulty,
+  RecipeCollection,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -56,6 +57,8 @@ export interface CreateMealInput {
   tags?: string[];
   /** Category names to assign (family-scoped, resolved/created by name). #107. */
   categories?: string[];
+  /** Collection names to assign (family-scoped, resolved/created by name). #109. */
+  collections?: string[];
   /** Ordered preparation steps; order is preserved as `position`. #100. */
   instructions?: {
     text: string;
@@ -88,6 +91,8 @@ export interface UpdateMealInput {
   tags?: string[];
   /** Category names to replace the meal's categories with (by name). #107. */
   categories?: string[];
+  /** Collection names to replace the meal's collections with (by name). #109. */
+  collections?: string[];
   /** Ordered steps to replace the meal's instructions with; order preserved. #100. */
   instructions?: {
     text: string;
@@ -137,6 +142,7 @@ export class MealPlannerApiClient {
       minRating?: number;
       tags?: string[];
       categories?: string[];
+      collections?: string[];
       sort?: string;
       order?: string;
       limit?: number;
@@ -155,6 +161,7 @@ export class MealPlannerApiClient {
     if (opts?.difficulty?.length) query["difficulty"] = opts.difficulty;
     if (opts?.tags?.length) query["tags"] = opts.tags;
     if (opts?.categories?.length) query["categories"] = opts.categories;
+    if (opts?.collections?.length) query["collections"] = opts.collections;
     return this.request<MealListResponseDTO>(
       "GET",
       `/api/agent/${encodeURIComponent(familyId)}/meals`,
@@ -190,6 +197,15 @@ export class MealPlannerApiClient {
       `/api/agent/${encodeURIComponent(familyId)}/weeks`,
       { query: { before: options.before, limit: options.limit } },
     );
+  }
+
+  /** List the family's recipe collections (#109). Read-only surface. */
+  async listCollections(familyId: string): Promise<RecipeCollection[]> {
+    const res = await this.request<{ collections: RecipeCollection[] }>(
+      "GET",
+      `/api/agent/${encodeURIComponent(familyId)}/collections`,
+    );
+    return res.collections;
   }
 
   // --- Mutation tools -------------------------------------------------------

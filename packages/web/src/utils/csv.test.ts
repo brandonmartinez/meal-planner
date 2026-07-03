@@ -305,7 +305,7 @@ describe("mealsToCSV", () => {
   it("emits the canonical header", () => {
     const csv = mealsToCSV([]);
     expect(csv.split("\n")[0]).toBe(
-      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories,instructions",
+      "meal,description,difficulty,ingredient,quantity,unit,category,prepTimeMinutes,cookTimeMinutes,servings,sourceUrl,imageUrl,notes,favorite,rating,tags,categories,collections,instructions",
     );
   });
 
@@ -322,8 +322,8 @@ describe("mealsToCSV", () => {
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,,,,");
-    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,,,,");
+    expect(lines[1]).toBe("Tacos,Yum,EASY,Tortillas,6,,produce,,,,,,,,,,,,");
+    expect(lines[2]).toBe("Tacos,Yum,EASY,Salsa,1,cup,condiments,,,,,,,,,,,,");
   });
 
   it("emits a single row for a meal with no ingredients", () => {
@@ -332,7 +332,7 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,,,,");
+    expect(lines[1]).toBe("Cereal,,,,,,,,,,,,,,,,,,");
   });
 
   it("emits meal-level metadata columns, repeating them per ingredient row", () => {
@@ -354,10 +354,10 @@ describe("mealsToCSV", () => {
     ]);
     const lines = csv.trim().split("\n");
     expect(lines[1]).toBe(
-      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,",
+      "Tacos,Yum,EASY,Tortillas,6,,produce,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,,",
     );
     expect(lines[2]).toBe(
-      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,",
+      "Tacos,Yum,EASY,Salsa,1,cup,condiments,10,20,4,https://example.com/tacos,,Use fresh cilantro,,,,,,",
     );
   });
 
@@ -374,8 +374,8 @@ describe("mealsToCSV", () => {
       { name: "Cereal", favorite: false, rating: null },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5,,,");
-    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,,,,");
+    expect(lines[1]).toBe("Tacos,,,Tortillas,6,,produce,,,,,,,true,5,,,,");
+    expect(lines[2]).toBe("Cereal,,,,,,,,,,,,,false,,,,,");
   });
 
   it("quotes fields containing commas, quotes, or newlines", () => {
@@ -489,7 +489,9 @@ describe("mealsToCSV — tags & categories (#107)", () => {
       },
     ]);
     const dataRow = csv.trim().split("\n")[1];
-    expect(dataRow.endsWith("Quick;Weeknight,Dinner;Mexican,")).toBe(true);
+    // tags,categories,collections,instructions — this meal has no collections
+    // or instructions, so both trailing cells are empty.
+    expect(dataRow.endsWith("Quick;Weeknight,Dinner;Mexican,,")).toBe(true);
   });
 
   it("round-trips tag and category assignments by name", () => {
@@ -531,6 +533,97 @@ describe("mealsToCSV — tags & categories (#107)", () => {
     const r = parseMealsCSV(csv);
     const tacos = r.meals.find((m) => m.name === "Tacos");
     expect(tacos?.tags).toEqual(["Quick"]);
+  });
+});
+
+describe("parseMealsCSV — collections (#109)", () => {
+  it("parses semicolon-delimited collection name lists", () => {
+    const csv =
+      "meal,collections\nTacos,Weeknight Dinners;Family Favorites\n";
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.collections).toEqual([
+      "Weeknight Dinners",
+      "Family Favorites",
+    ]);
+  });
+
+  it("trims whitespace and drops empty segments", () => {
+    const csv = "meal,collections\nTacos, Weeknight ; ;Favorites; \n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.collections).toEqual(["Weeknight", "Favorites"]);
+  });
+
+  it("dedupes case-insensitively within a cell, preserving first casing", () => {
+    const csv = "meal,collections\nTacos,Weeknight;weeknight;WEEKNIGHT\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.collections).toEqual(["Weeknight"]);
+  });
+
+  it("supports collection header aliases", () => {
+    const csv = "meal,collection\nTacos,Weeknight Dinners\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.collections).toEqual(["Weeknight Dinners"]);
+  });
+
+  it("keeps the first non-empty collection list across grouped rows", () => {
+    const csv =
+      "meal,ingredient,collections\nTacos,Tortillas,Weeknight Dinners\nTacos,Salsa,Ignored\n";
+    const r = parseMealsCSV(csv);
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    expect(tacos?.collections).toEqual(["Weeknight Dinners"]);
+  });
+
+  it("leaves collections undefined when the column is absent or empty", () => {
+    const csv = "meal,collections\nCereal,\n";
+    const r = parseMealsCSV(csv);
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    expect(cereal?.collections).toBeUndefined();
+  });
+});
+
+describe("mealsToCSV — collections (#109)", () => {
+  it("emits a semicolon-joined collection name list", () => {
+    const csv = mealsToCSV([
+      { name: "Tacos", collections: ["Weeknight Dinners", "Family Favorites"] },
+    ]);
+    const dataRow = csv.trim().split("\n")[1];
+    // collections is the penultimate column (instructions trails empty).
+    expect(
+      dataRow.endsWith("Weeknight Dinners;Family Favorites,"),
+    ).toBe(true);
+  });
+
+  it("round-trips collection assignments by name", () => {
+    const csv = mealsToCSV([
+      {
+        name: "Tacos",
+        collections: ["Weeknight Dinners", "Family Favorites"],
+        ingredients: [
+          { name: "Tortillas", quantity: "6", unit: "", category: "produce" },
+          { name: "Salsa", quantity: "1", unit: "cup", category: "produce" },
+        ],
+      },
+      { name: "Cereal", collections: [] },
+    ]);
+    const r = parseMealsCSV(csv);
+    expect(r.warnings).toEqual([]);
+
+    const tacos = r.meals.find((m) => m.name === "Tacos");
+    // Multi-ingredient meal repeats the collections column on every row;
+    // the first-non-empty guard keeps a single assignment.
+    expect(tacos?.collections).toEqual([
+      "Weeknight Dinners",
+      "Family Favorites",
+    ]);
+
+    const cereal = r.meals.find((m) => m.name === "Cereal");
+    // An empty collection list exports as an empty cell → undefined on re-import.
+    expect(cereal?.collections).toBeUndefined();
   });
 });
 

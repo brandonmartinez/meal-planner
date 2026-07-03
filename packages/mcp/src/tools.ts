@@ -106,6 +106,7 @@ export function createToolHandlers(
       minRating?: number;
       tags?: string[];
       categories?: string[];
+      collections?: string[];
       sort?: string;
       order?: string;
       limit?: number;
@@ -119,12 +120,16 @@ export function createToolHandlers(
           minRating: args.minRating,
           tags: args.tags,
           categories: args.categories,
+          collections: args.collections,
           sort: args.sort,
           order: args.order,
           limit: args.limit,
           offset: args.offset,
         }),
       ),
+
+    list_collections: (): Promise<ToolResult> =>
+      run(() => client.listCollections(familyId)),
 
     get_current_week_plan: (): Promise<ToolResult> =>
       run(() => client.getCurrentWeekPlan(familyId)),
@@ -192,6 +197,7 @@ export function createToolHandlers(
       }[];
       tags?: string[];
       categories?: string[];
+      collections?: string[];
       instructions?: {
         text: string;
         timerMinutes?: number | null;
@@ -219,6 +225,7 @@ export function createToolHandlers(
       }[];
       tags?: string[];
       categories?: string[];
+      collections?: string[];
       instructions?: {
         text: string;
         timerMinutes?: number | null;
@@ -239,6 +246,7 @@ export type ToolHandlers = ReturnType<typeof createToolHandlers>;
  *  the API is the authoritative enforcer). */
 export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   list_meals: "meal_plan:read",
+  list_collections: "meal_plan:read",
   get_current_week_plan: "meal_plan:read",
   get_week_plan: "meal_plan:read",
   get_previous_week_plans: "meal_plan:read",
@@ -271,11 +279,12 @@ export function registerTools(
         "indicator, last-cooked date, and all-time times-cooked count. " +
         "Supports name search, difficulty " +
         "filter, favorite filter, minimum-rating filter, tag filter, " +
-        "category filter, sort " +
+        "category filter, collection filter, sort " +
         "(name|lastCooked|created), pagination " +
         "(limit/offset), and sort order (asc|desc). Multiple values within " +
-        "the tags (or categories) filter are OR'd; the tags and categories " +
-        "filters are AND'd together and with the other filters. Requires the " +
+        "the tags (or categories, or collections) filter are OR'd; the tags, " +
+        "categories, and collections filters are AND'd together and with the " +
+        "other filters. Requires the " +
         "meal_plan:read scope.",
       inputSchema: {
         search: z
@@ -310,6 +319,12 @@ export function registerTools(
           .describe(
             "Filter by category names (case-insensitive). Multiple categories are OR'd.",
           ),
+        collections: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Filter by recipe collection names (case-insensitive). Multiple collections are OR'd.",
+          ),
         sort: z
           .enum(["name", "lastCooked", "created"])
           .optional()
@@ -334,6 +349,21 @@ export function registerTools(
       },
     },
     (args) => handlers.list_meals(args),
+  );
+
+  server.registerTool(
+    "list_collections",
+    {
+      title: "List recipe collections",
+      description:
+        "List the family's recipe collections — curated, named lists a meal " +
+        "can belong to (e.g. 'Weeknight Dinners'). Returns each collection's " +
+        "id, name, and optional description. Use the names with the " +
+        "collections filter on list_meals, or with create_meal/update_meal to " +
+        "assign a meal to collections. Requires the meal_plan:read scope.",
+      inputSchema: {},
+    },
+    () => handlers.list_collections(),
   );
 
   server.registerTool(
@@ -542,6 +572,13 @@ export function registerTools(
             "Optional category names to assign (case-insensitive, created " +
               "within the family if new).",
           ),
+        collections: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Optional recipe collection names to assign the meal to " +
+              "(case-insensitive, created within the family if new).",
+          ),
         instructions: z
           .array(instructionSchema)
           .optional()
@@ -643,6 +680,14 @@ export function registerTools(
           .optional()
           .describe(
             "Replacement category names (replaces all existing; " +
+              "case-insensitive, created within the family if new). Pass [] " +
+              "to clear.",
+          ),
+        collections: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            "Replacement recipe collection names (replaces all existing; " +
               "case-insensitive, created within the family if new). Pass [] " +
               "to clear.",
           ),

@@ -23,6 +23,7 @@ function stubClient() {
     createMeal: vi.fn(),
     updateMeal: vi.fn(),
     getCurrentGroceryList: vi.fn(),
+    listCollections: vi.fn(),
   };
 }
 
@@ -415,6 +416,62 @@ describe("createToolHandlers", () => {
     });
   });
 
+  it("create_meal forwards collections by name (#109, parity row 7)", async () => {
+    const client = stubClient();
+    client.createMeal.mockResolvedValue({ id: "meal-new" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const input = {
+      name: "Tacos",
+      collections: ["Weeknight Dinners", "Family Favorites"],
+    };
+    await handlers.create_meal(input);
+
+    expect(client.createMeal).toHaveBeenCalledWith(input);
+  });
+
+  it("update_meal forwards collections and clears them with [] (#109, parity row 7)", async () => {
+    const client = stubClient();
+    client.updateMeal.mockResolvedValue({ id: "meal-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.update_meal({
+      mealId: "meal-1",
+      collections: [],
+    });
+    expect(client.updateMeal).toHaveBeenCalledWith("meal-1", {
+      collections: [],
+    });
+  });
+
+  it("list_collections forwards the family and returns the envelope JSON (#109, parity row 8)", async () => {
+    const client = stubClient();
+    const collections = [
+      { id: "col-1", name: "Weeknight Dinners", description: "Fast meals" },
+      { id: "col-2", name: "Holiday Baking", description: null },
+    ];
+    client.listCollections.mockResolvedValue(collections);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.list_collections();
+
+    expect(client.listCollections).toHaveBeenCalledWith(FAMILY);
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual(collections);
+    // Row 8: the description surface exposes each collection's blurb.
+    expect(parsed[0].description).toBe("Fast meals");
+  });
+
   it("get_current_grocery_list calls the family-from-key client method", async () => {
     const client = stubClient();
     client.getCurrentGroceryList.mockResolvedValue({ id: "gl-1" });
@@ -489,7 +546,7 @@ describe("createToolHandlers", () => {
 });
 
 describe("registerTools", () => {
-  it("registers all nine meal-planning tools", () => {
+  it("registers all eleven meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -499,6 +556,7 @@ describe("registerTools", () => {
     const names = registerTool.mock.calls.map((c) => c[0]);
     expect(names).toEqual([
       "list_meals",
+      "list_collections",
       "get_current_week_plan",
       "get_week_plan",
       "get_previous_week_plans",
@@ -574,6 +632,55 @@ describe("registerTools", () => {
     expect(createSchema).toHaveProperty("instructions");
   });
 
+  it("registers list_collections and documents the collection surface (#109, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    // A dedicated list_collections tool exposes the list/get description surface.
+    const listCollectionsCall = registerTool.mock.calls.find(
+      (c) => c[0] === "list_collections",
+    );
+    expect(listCollectionsCall).toBeDefined();
+    const collDescription = (
+      listCollectionsCall?.[1] as { description: string }
+    ).description;
+    expect(collDescription).toContain("recipe collections");
+    expect(collDescription).toContain("optional description");
+    expect(collDescription).toContain("meal_plan:read");
+
+    // Row 8: list_meals advertises the collection filter facet + schema param.
+    const listMealsCall = registerTool.mock.calls.find(
+      (c) => c[0] === "list_meals",
+    );
+    const listMealsDescription = (
+      listMealsCall?.[1] as { description: string }
+    ).description;
+    expect(listMealsDescription).toContain("collection filter");
+    const listMealsSchema = (
+      listMealsCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(listMealsSchema).toHaveProperty("collections");
+
+    // Both write tools expose a collections param so agents can assign membership.
+    const createMealCall = registerTool.mock.calls.find(
+      (c) => c[0] === "create_meal",
+    );
+    const createSchema = (
+      createMealCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(createSchema).toHaveProperty("collections");
+    const updateMealCall = registerTool.mock.calls.find(
+      (c) => c[0] === "update_meal",
+    );
+    const updateSchema = (
+      updateMealCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(updateSchema).toHaveProperty("collections");
+  });
+
   it("documents repeat_week policy + exposes its schema (#114, parity row 8)", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
@@ -606,6 +713,7 @@ describe("TOOL_SCOPES", () => {
   it("documents the least-privilege scope for each tool", () => {
     expect(TOOL_SCOPES).toEqual({
       list_meals: "meal_plan:read",
+      list_collections: "meal_plan:read",
       get_current_week_plan: "meal_plan:read",
       get_week_plan: "meal_plan:read",
       get_previous_week_plans: "meal_plan:read",
