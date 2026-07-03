@@ -25,10 +25,18 @@ vi.mock("../services/grocery.js", () => {
     removeItem: vi.fn(),
   };
 });
+vi.mock("../services/groceryCategories.js", () => ({
+  listGroceryCategories: vi.fn(),
+  listEffectiveGroceryCategories: vi.fn(),
+  createGroceryCategory: vi.fn(),
+  renameGroceryCategory: vi.fn(),
+  deleteGroceryCategory: vi.fn(),
+}));
 
 const { groceryRouter } = await import("./grocery.js");
 const groceryService = await import("../services/grocery.js");
 const { GroceryError } = groceryService;
+const groceryCategoryService = await import("../services/groceryCategories.js");
 
 const FAMILY_ID = "fam-1";
 const WEEK = "2026-05-04";
@@ -347,6 +355,169 @@ describe("DELETE /:familyId/grocery/:listId/items/:itemId (remove)", () => {
 
   it("500s on an unexpected error", async () => {
     vi.mocked(groceryService.removeItem).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("GET /:familyId/grocery-categories (effective list, #119)", () => {
+  const handler = getRouteHandler(
+    groceryRouter,
+    "get",
+    "/:familyId/grocery-categories",
+  );
+  const params = { familyId: FAMILY_ID };
+
+  it("200s with the effective categories and the custom rows", async () => {
+    vi.mocked(
+      groceryCategoryService.listEffectiveGroceryCategories,
+    ).mockResolvedValue(["produce", "Bulk Bins"] as never);
+    vi.mocked(groceryCategoryService.listGroceryCategories).mockResolvedValue([
+      { id: "gc-1", name: "Bulk Bins", familyId: FAMILY_ID },
+    ] as never);
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      categories: ["produce", "Bulk Bins"],
+      custom: [{ id: "gc-1", name: "Bulk Bins" }],
+    });
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(
+      groceryCategoryService.listEffectiveGroceryCategories,
+    ).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("POST /:familyId/grocery-categories (create, #119)", () => {
+  const handler = getRouteHandler(
+    groceryRouter,
+    "post",
+    "/:familyId/grocery-categories",
+  );
+  const params = { familyId: FAMILY_ID };
+
+  it("201s with the created custom category", async () => {
+    vi.mocked(groceryCategoryService.createGroceryCategory).mockResolvedValue({
+      id: "gc-2",
+      name: "International",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { name: "International" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(groceryCategoryService.createGroceryCategory).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "International",
+    );
+  });
+
+  it("400s on Zod failure (missing name)", async () => {
+    const res = buildFullRes();
+    await handler(req({ params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(groceryCategoryService.createGroceryCategory).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /:familyId/grocery-categories/:categoryId (rename, #119)", () => {
+  const handler = getRouteHandler(
+    groceryRouter,
+    "patch",
+    "/:familyId/grocery-categories/:categoryId",
+  );
+  const params = { familyId: FAMILY_ID, categoryId: "gc-1" };
+
+  it("200s with the renamed category", async () => {
+    vi.mocked(groceryCategoryService.renameGroceryCategory).mockResolvedValue({
+      id: "gc-1",
+      name: "Bulk & Bins",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { name: "Bulk & Bins" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(groceryCategoryService.renameGroceryCategory).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "gc-1",
+      "Bulk & Bins",
+    );
+  });
+
+  it("400s on Zod failure (empty name)", async () => {
+    const res = buildFullRes();
+    await handler(req({ params, body: { name: "" } }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(groceryCategoryService.renameGroceryCategory).not.toHaveBeenCalled();
+  });
+
+  it("404s when the category does not exist", async () => {
+    vi.mocked(groceryCategoryService.renameGroceryCategory).mockRejectedValue(
+      new Error("Grocery category not found"),
+    );
+    const res = buildFullRes();
+    await handler(req({ params, body: { name: "Nope" } }), res, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("409s on a unique-constraint collision (P2002)", async () => {
+    vi.mocked(groceryCategoryService.renameGroceryCategory).mockRejectedValue(
+      Object.assign(new Error("dup"), { code: "P2002" }),
+    );
+    const res = buildFullRes();
+    await handler(req({ params, body: { name: "Produce" } }), res, buildNext());
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+describe("DELETE /:familyId/grocery-categories/:categoryId (delete, #119)", () => {
+  const handler = getRouteHandler(
+    groceryRouter,
+    "delete",
+    "/:familyId/grocery-categories/:categoryId",
+  );
+  const params = { familyId: FAMILY_ID, categoryId: "gc-1" };
+
+  it("204s on success", async () => {
+    vi.mocked(groceryCategoryService.deleteGroceryCategory).mockResolvedValue(
+      undefined as never,
+    );
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(204);
+    expect(groceryCategoryService.deleteGroceryCategory).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "gc-1",
+    );
+  });
+
+  it("404s when the category does not exist", async () => {
+    vi.mocked(groceryCategoryService.deleteGroceryCategory).mockRejectedValue(
+      new Error("Grocery category not found"),
+    );
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(groceryCategoryService.deleteGroceryCategory).mockRejectedValue(
+      new Error("db"),
+    );
     const res = buildFullRes();
     await handler(req({ params }), res, buildNext());
     expect(res.statusCode).toBe(500);

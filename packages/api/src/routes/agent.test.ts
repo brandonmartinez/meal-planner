@@ -141,6 +141,52 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(prismaMock.recipeCollection.findMany).not.toHaveBeenCalled();
   });
 
+  it("read-only: GET grocery-categories returns the effective list and audits the read (#119)", async () => {
+    mockCredential(["meal_plan:read"]);
+    // The effective list unions the shared defaults with the family's custom
+    // rows; the audit records the custom row ids that were surfaced.
+    prismaMock.groceryCategory.findMany.mockResolvedValue([
+      { id: "gc-1", name: "Bulk Bins", familyId: "fam-1" },
+      { id: "gc-2", name: "International", familyId: "fam-1" },
+    ] as never);
+
+    const handlers = findStack("/:familyId/grocery-categories");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body.categories)).toBe(true);
+    // Shared defaults come first (backward compat), custom names ride along.
+    expect(res.body.categories).toContain("produce");
+    expect(res.body.categories).toContain("Bulk Bins");
+    expect(res.body.categories).toContain("International");
+    // Family-scoped query.
+    expect(prismaMock.groceryCategory.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: "fam-1" } }),
+    );
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:read",
+        outcome: "allowed",
+        targetType: "groceryCategory",
+        targetIds: ["gc-1", "gc-2"],
+      }),
+    });
+  });
+
+  it("denied out-of-scope: a schedule-only credential cannot list grocery categories (403, #119)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/grocery-categories");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.groceryCategory.findMany).not.toHaveBeenCalled();
+  });
+
   it("schedule: POST suggestion attributes suggestedBy to the provisioning parent", async () => {
     mockCredential(["meal_plan:schedule"]);
     prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);
