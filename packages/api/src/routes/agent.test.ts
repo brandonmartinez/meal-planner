@@ -97,6 +97,50 @@ describe("agent routes (end-to-end middleware chain)", () => {
     });
   });
 
+  it("read-only: GET collections returns the family's collections and audits the read (#109)", async () => {
+    mockCredential(["meal_plan:read"]);
+    prismaMock.recipeCollection.findMany.mockResolvedValue([
+      { id: "col-1", name: "Weeknight Dinners", familyId: "fam-1" },
+      { id: "col-2", name: "Holiday Baking", familyId: "fam-1" },
+    ] as never);
+
+    const handlers = findStack("/:familyId/collections");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      collections: [
+        { id: "col-1", name: "Weeknight Dinners" },
+        { id: "col-2", name: "Holiday Baking" },
+      ],
+    });
+    // The service is family-scoped: the query filters by the path familyId.
+    expect(prismaMock.recipeCollection.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: "fam-1" } }),
+    );
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:read",
+        outcome: "allowed",
+        targetIds: ["col-1", "col-2"],
+      }),
+    });
+  });
+
+  it("denied out-of-scope: a schedule-only credential cannot list collections (403, #109)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/collections");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.recipeCollection.findMany).not.toHaveBeenCalled();
+  });
+
   it("schedule: POST suggestion attributes suggestedBy to the provisioning parent", async () => {
     mockCredential(["meal_plan:schedule"]);
     prismaMock.dayPlan.findFirst.mockResolvedValue({ id: "day-1" } as never);

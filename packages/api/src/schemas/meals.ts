@@ -75,6 +75,16 @@ export const listMealsQuerySchema = z.object({
     .optional(),
 
   /**
+   * Filter to meals belonging to any of these collection names (OR-within-facet,
+   * case-insensitive). AND-composed with every other facet. Collection joins are
+   * transitively family-scoped, so a foreign family's collection never matches.
+   * Issue #109.
+   */
+  collections: z
+    .union([z.array(z.string()), z.string().transform((v) => [v])])
+    .optional(),
+
+  /**
    * Sort field.
    * - `name`       — alphabetical (DB-side)
    * - `created`    — newest first by default (DB-side)

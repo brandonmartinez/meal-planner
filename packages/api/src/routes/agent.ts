@@ -11,6 +11,7 @@ import {
 } from "../services/agentCredential.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as mealService from "../services/meals.js";
+import * as collectionService from "../services/recipeCollections.js";
 import * as groceryService from "../services/grocery.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
@@ -104,6 +105,7 @@ const createMealSchema = z.object({
   ingredients: z.array(ingredientInputSchema).optional(),
   tags: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
+  collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
 });
 
@@ -123,6 +125,7 @@ const updateMealSchema = z
     ingredients: z.array(ingredientInputSchema).optional(),
     tags: z.array(z.string()).optional(),
     categories: z.array(z.string()).optional(),
+    collections: z.array(z.string()).optional(),
     instructions: z.array(instructionInputSchema).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
@@ -320,6 +323,34 @@ agentRouter.get(
       res.json(result);
     } catch {
       res.status(500).json({ error: "Failed to fetch meals" });
+    }
+  },
+);
+
+// GET /api/agent/:familyId/collections — scope: meal_plan:read
+// Lists the family's recipe collections (issue #109) so an agent can reference
+// them by id/name when curating meals. Read-only; there is intentionally no
+// agent create/update/delete surface for collections.
+agentRouter.get(
+  "/:familyId/collections",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.READ),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    try {
+      const collections = await collectionService.listCollections(familyId);
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.READ,
+        outcome: "allowed",
+        targetType: "collection",
+        targetIds: collections.map((c) => c.id),
+      });
+      res.json({ collections });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch collections" });
     }
   },
 );

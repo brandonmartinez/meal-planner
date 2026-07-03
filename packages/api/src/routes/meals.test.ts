@@ -21,10 +21,18 @@ vi.mock("../services/taxonomy.js", () => ({
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
 }));
+vi.mock("../services/recipeCollections.js", () => ({
+  listCollections: vi.fn(),
+  createCollection: vi.fn(),
+  getCollection: vi.fn(),
+  updateCollection: vi.fn(),
+  deleteCollection: vi.fn(),
+}));
 
 const { mealsRouter } = await import("./meals.js");
 const mealService = await import("../services/meals.js");
 const taxonomyService = await import("../services/taxonomy.js");
+const collectionService = await import("../services/recipeCollections.js");
 
 const FAMILY_ID = "fam-1";
 const MEAL_ID = "meal-1";
@@ -1140,5 +1148,255 @@ describe("DELETE /:familyId/categories/:categoryId", () => {
     );
     expect(res.statusCode).toBe(404);
     expect(res.body).toEqual({ error: "Category not found" });
+  });
+});
+
+// Recipe collections (issue #109). Curated, family-scoped lists. These route
+// tests mirror the tags/categories suite above but add explicit cross-family
+// (IDOR) coverage: a member of Family A must never read, mutate, or delete a
+// collection owned by Family B — the service resolves such attempts to a 404.
+describe("GET /:familyId/collections (list)", () => {
+  const handler = getRouteHandler(mealsRouter, "get", "/:familyId/collections");
+
+  it("200s with the family's collections, scoped by :familyId", async () => {
+    vi.mocked(collectionService.listCollections).mockResolvedValue([
+      { id: "col-1", name: "Weeknight Dinners", familyId: FAMILY_ID },
+    ] as never);
+    const res = buildFullRes();
+    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    expect(collectionService.listCollections).toHaveBeenCalledWith(FAMILY_ID);
+    expect((res.body as { collections: unknown[] }).collections).toHaveLength(1);
+  });
+
+  it("500s when the service throws", async () => {
+    vi.mocked(collectionService.listCollections).mockRejectedValue(
+      new Error("db"),
+    );
+    const res = buildFullRes();
+    await handler(req({ params: { familyId: FAMILY_ID } }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("POST /:familyId/collections (create)", () => {
+  const handler = getRouteHandler(
+    mealsRouter,
+    "post",
+    "/:familyId/collections",
+  );
+
+  it("201s and creates the collection scoped to :familyId", async () => {
+    vi.mocked(collectionService.createCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Weeknight Dinners", description: "Fast meals" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(collectionService.createCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "Weeknight Dinners",
+      "Fast meals",
+    );
+  });
+
+  it("201s with description omitted (optional)", async () => {
+    vi.mocked(collectionService.createCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: { name: "Weeknight Dinners" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(collectionService.createCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "Weeknight Dinners",
+      undefined,
+    );
+  });
+
+  it("400s on an empty name (Zod)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID }, body: { name: "   " } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(collectionService.createCollection).not.toHaveBeenCalled();
+  });
+
+  it("500s when the service throws", async () => {
+    vi.mocked(collectionService.createCollection).mockRejectedValue(
+      new Error("db"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID }, body: { name: "Weeknight" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+describe("GET /:familyId/collections/:collectionId (detail)", () => {
+  const handler = getRouteHandler(
+    mealsRouter,
+    "get",
+    "/:familyId/collections/:collectionId",
+  );
+
+  it("200s with the collection when it belongs to the family", async () => {
+    vi.mocked(collectionService.getCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight Dinners",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID, collectionId: "col-1" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(collectionService.getCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+    );
+  });
+
+  it("404s when the collection belongs to another family (IDOR guard)", async () => {
+    // Service returns null for a cross-family id → route maps to 404, so a
+    // missing collection and another family's collection are indistinguishable.
+    vi.mocked(collectionService.getCollection).mockResolvedValue(
+      null as never,
+    );
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID, collectionId: "col-owned-by-B" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Collection not found" });
+  });
+});
+
+describe("PATCH /:familyId/collections/:collectionId (update)", () => {
+  const handler = getRouteHandler(
+    mealsRouter,
+    "patch",
+    "/:familyId/collections/:collectionId",
+  );
+
+  it("200s and updates the collection scoped to :familyId", async () => {
+    vi.mocked(collectionService.updateCollection).mockResolvedValue({
+      id: "col-1",
+      name: "Holiday Baking",
+      familyId: FAMILY_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-1" },
+        body: { name: "Holiday Baking" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(collectionService.updateCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+      { name: "Holiday Baking" },
+    );
+  });
+
+  it("400s when neither name nor description is provided (Zod refine)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-1" },
+        body: {},
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(collectionService.updateCollection).not.toHaveBeenCalled();
+  });
+
+  it("404s when the collection belongs to another family (IDOR guard)", async () => {
+    vi.mocked(collectionService.updateCollection).mockRejectedValue(
+      new Error("Collection not found"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, collectionId: "col-owned-by-B" },
+        body: { name: "Hijack" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Collection not found" });
+  });
+});
+
+describe("DELETE /:familyId/collections/:collectionId (parents only)", () => {
+  const handler = getRouteHandler(
+    mealsRouter,
+    "delete",
+    "/:familyId/collections/:collectionId",
+  );
+
+  it("204s and deletes the collection scoped to :familyId (IDOR guard)", async () => {
+    vi.mocked(collectionService.deleteCollection).mockResolvedValue(
+      undefined as never,
+    );
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID, collectionId: "col-1" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(204);
+    expect(collectionService.deleteCollection).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "col-1",
+    );
+  });
+
+  it("404s when the collection belongs to another family", async () => {
+    vi.mocked(collectionService.deleteCollection).mockRejectedValue(
+      new Error("Collection not found"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID, collectionId: "col-owned-by-B" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Collection not found" });
   });
 });

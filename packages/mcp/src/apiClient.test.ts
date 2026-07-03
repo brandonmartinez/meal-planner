@@ -84,13 +84,25 @@ describe("MealPlannerApiClient", () => {
     expect(url.searchParams.getAll("categories")).toEqual(["Dinner"]);
   });
 
-  it("listMeals omits tags and categories when empty or absent (#107)", async () => {
+  it("listMeals serialises collections as repeated query params (#109)", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
-    await client.listMeals("fam-1", { tags: [], categories: [] });
+    await client.listMeals("fam-1", {
+      collections: ["Weeknight Dinners", "Family Favorites"],
+    });
 
     const { url } = lastCall(fetchFn);
-    expect(url.searchParams.has("tags")).toBe(false);
-    expect(url.searchParams.has("categories")).toBe(false);
+    expect(url.searchParams.getAll("collections")).toEqual([
+      "Weeknight Dinners",
+      "Family Favorites",
+    ]);
+  });
+
+  it("listMeals omits collections when empty or absent (#109)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ items: [], total: 0, limit: 25, offset: 0, hasMore: false }));
+    await client.listMeals("fam-1", { collections: [] });
+
+    const { url } = lastCall(fetchFn);
+    expect(url.searchParams.has("collections")).toBe(false);
   });
 
   it("listMeals serialises sort, order, limit, offset as query params", async () => {
@@ -347,6 +359,29 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(patch);
   });
 
+  it("createMeal forwards collections by name in the body (#109)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-new" }, 201));
+    const input = {
+      name: "Tacos",
+      collections: ["Weeknight Dinners", "Family Favorites"],
+    };
+
+    await client.createMeal(input);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(input);
+  });
+
+  it("updateMeal forwards collections and clears them with [] verbatim (#109)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
+
+    const patch = { collections: [] };
+    await client.updateMeal("meal-1", patch);
+
+    const { init } = lastCall(fetchFn);
+    expect(JSON.parse(init.body as string)).toEqual(patch);
+  });
+
   it("updateMeal forwards a replacement instruction list verbatim (#100)", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
 
@@ -375,6 +410,22 @@ describe("MealPlannerApiClient", () => {
     expect(init.method).toBe("GET");
     expect(url.pathname).toBe("/api/agent/grocery/current");
     expect(result).toEqual({ id: "gl-1" });
+  });
+
+  it("listCollections GETs the family collections and unwraps the envelope (#109)", async () => {
+    const collections = [
+      { id: "c-1", name: "Weeknight Dinners", familyId: "fam-1" },
+      { id: "c-2", name: "Holiday Baking", familyId: "fam-1", description: "Cookies" },
+    ];
+    const { client, fetchFn } = makeClient(jsonResponse({ collections }));
+
+    const result = await client.listCollections("fam-1");
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("GET");
+    expect(url.pathname).toBe("/api/agent/fam-1/collections");
+    // The client unwraps the { collections } envelope and returns the array.
+    expect(result).toEqual(collections);
   });
 
   it("maps a non-2xx response to an ApiError carrying status + message", async () => {

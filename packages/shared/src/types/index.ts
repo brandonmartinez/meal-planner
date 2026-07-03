@@ -47,6 +47,7 @@ export interface Meal {
   tags?: Tag[];
   categories?: Category[];
   instructions?: MealInstruction[];
+  collections?: RecipeCollection[];
 }
 
 export interface MealIngredient {
@@ -84,6 +85,19 @@ export interface Category {
   id: string;
   name: string;
   familyId: string;
+}
+
+/** A family-scoped, curated recipe collection (issue #109) — a named list a
+ *  meal can belong to. Like {@link Tag}/{@link Category} the `nameNormalized`
+ *  uniqueness key is a service-internal detail and NOT part of the wire
+ *  contract, but a collection additionally carries an optional display
+ *  `description` (a curated list may have a blurb). Only the collection `name`
+ *  round-trips through CSV; `description` is API-only. */
+export interface RecipeCollection {
+  id: string;
+  name: string;
+  familyId: string;
+  description?: string | null;
 }
 
 export interface WeekPlan {
