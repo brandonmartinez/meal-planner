@@ -293,12 +293,12 @@ describe('DayCard', () => {
         );
         const stamp = screen.getByRole('img', { name: /tacos/i });
         expect(stamp).toBeInTheDocument();
-        // Image fills its container with object-cover (no distortion)
+        // object-cover prevents distortion
         expect(stamp).toHaveClass('object-cover');
-        // Container is a square flush to the chip's left/top/bottom edges
-        const container = stamp.parentElement!;
-        expect(container).toHaveClass('aspect-square');
-        expect(container).toHaveClass('self-stretch');
+        // Definite square (size-16) — both w+h are fixed px, NOT derived from stretch height.
+        // Catches any regression back to absolute/inset-0 or aspect-square-from-stretch (zero-width bug).
+        expect(stamp).toHaveClass('size-16');
+        expect(stamp).not.toHaveClass('absolute');
     });
 
     it('shows no stamp img when meal has no imageUrl', () => {
