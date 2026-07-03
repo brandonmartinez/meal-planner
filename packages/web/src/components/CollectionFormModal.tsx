@@ -243,6 +243,10 @@ export default function CollectionFormModal({
             maxLength={100}
             required
             data-autofocus
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
           />
         </div>
