@@ -1194,6 +1194,10 @@ describe("agent routes (end-to-end middleware chain)", () => {
 
   it("write: PATCH /collections/:collectionId updates a collection (#112)", async () => {
     mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.findFirst.mockResolvedValue({
+      id: "col-1",
+      familyId: "fam-1",
+    } as never);
     prismaMock.recipeCollection.update.mockResolvedValue({
       id: "col-1",
       name: "Renamed",

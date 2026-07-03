@@ -27,6 +27,7 @@ vi.mock("../services/recipeCollections.js", () => ({
   getCollection: vi.fn(),
   updateCollection: vi.fn(),
   deleteCollection: vi.fn(),
+  setCollectionMeals: vi.fn(),
 }));
 
 const { mealsRouter } = await import("./meals.js");
