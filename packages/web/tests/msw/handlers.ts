@@ -23,4 +23,31 @@ export const handlers = [
   http.get("/api/families/:id/categories", () =>
     HttpResponse.json({ categories: [] }),
   ),
+  // Meal image assets (issue #105). Default handlers so image upload/preview UX
+  // doesn't trip `onUnhandledRequest: "error"`. Tests that assert on validation
+  // failures (413/400) override POST per-case via server.use(...).
+  http.post("/api/families/:id/images", () =>
+    HttpResponse.json(
+      {
+        id: "asset-default",
+        mealId: null,
+        contentType: "image/png",
+        byteSize: 128,
+        createdAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+      },
+      { status: 201 },
+    ),
+  ),
+  http.delete("/api/families/:id/images/:assetId", () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+  // 1x1 transparent PNG so jsdom `<img>` GETs resolve during preview assertions.
+  http.get("/api/families/:id/images/:assetId", () =>
+    new HttpResponse(
+      Uint8Array.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]),
+      { status: 200, headers: { "Content-Type": "image/png" } },
+    ),
+  ),
 ];
