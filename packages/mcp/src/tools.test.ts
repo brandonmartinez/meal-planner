@@ -600,6 +600,8 @@ describe("createToolHandlers", () => {
     expect(result.isError).toBe(true);
     expect(textOf(result)).toMatch(/404|not found/i);
   });
+
+  it("get_current_grocery_list calls the family-from-key client method", async () => {
     const client = stubClient();
     client.getCurrentGroceryList.mockResolvedValue({ id: "gl-1" });
     const handlers = createToolHandlers(
@@ -810,7 +812,7 @@ describe("createToolHandlers", () => {
 });
 
 describe("registerTools", () => {
-  it("registers all fifteen meal-planning tools", () => {
+  it("registers all meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -834,6 +836,8 @@ describe("registerTools", () => {
       "approve_suggestion",
       "create_meal",
       "update_meal",
+      "create_collection",
+      "update_collection",
       "get_current_grocery_list",
     ]);
     // Each registration provides a config with an inputSchema and a handler.
