@@ -135,3 +135,13 @@ Local and dev migration workflows are unaffected — run them in the devcontaine
 scripts/dc-exec.sh pnpm db:migrate      # apply (prisma migrate deploy)
 scripts/dc-exec.sh pnpm db:migrate:dev  # create + apply a new migration
 ```
+
+## Backups & image-volume consistency
+
+The database and the uploaded-image volume are a **matched pair** — backing up
+one without the other yields broken recipe images. A durable image PVC is **not
+yet wired** into these manifests (deferred #93). See
+[`docs/ops/backup-and-restore.md`](../docs/ops/backup-and-restore.md) for the
+backup/restore procedure, a commented example PVC + volumeMount, the
+`images:cleanup` orphan-reconciliation command (#106), and the object-storage
+migration path.
