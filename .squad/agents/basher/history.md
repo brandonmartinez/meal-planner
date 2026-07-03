@@ -31,3 +31,5 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 delivery: #121 triage workflow fix PR #122 merged (squash), issue auto-closed. #93 image storage abstraction APPROVED. Contract: MealImageResolver(none/external/asset) + pluggable ImageStorage; asset wins; opaque assetId serving; DisplayMealEntry.imageUrl unchanged; prod backend (S3 vs RWX PVC) deferred to #104. Issue closed, decision record posted. Ready for Sprint 2. — logged by Scribe
 
 📌 Team update (2026-07-02T21:37:00-0400): Sprint 3 Wave 1 complete. Basher shipped #104 uploaded image asset backend + migration keystone `20260702210000_add_image_asset`; Linus shipped #102 local cooking mode; Livingston shipped #114 repeat previous week planning. Merges: #104 PR #137 SHA a9a5df5; #102 PR #138 SHA 6acf0d0; #114 PR #139 SHA 68b6637. — logged by Scribe
+
+📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #106 image cleanup + backup guidance merged via PR #141 (32c70de): dry-run-default cleanup service/CLI, backup/restore docs, and additive imageStorage exports. — logged by Scribe

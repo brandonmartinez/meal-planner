@@ -2,6 +2,8 @@
 
 ## Active Decisions
 
+> Archive gate 2026-07-03T01:15:59-0400: no entries older than 2026-06-26T01:15:59-04:00 were eligible; see [archive gate report](decisions/archive/2026-07-03T01-15-59-0400-no-eligible-entries.md).
+
 ### 2026-07-01: MCP HTTP transport — Bearer accept + WWW-Authenticate + RFC 9728 stub, scoped-key model retained (#87)
 
 Requested by Brandon Martinez. Follow-up to #81. The hosted **Streamable HTTP** transport authenticated with a custom `x-agent-key` header; that works but diverges from the MCP Authorization convention for HTTP transports, which models the MCP server as an **OAuth 2.1 Resource Server** — credentials in the standard `Authorization: Bearer` header, and an unauthenticated request answered with `401` + a `WWW-Authenticate` challenge (optionally advertising RFC 9728 protected-resource metadata). We closed the cheap spec-compat gaps **without changing the auth model**.
@@ -553,3 +555,105 @@ New `packages/web/src/components/MealThumbnail.tsx` renders `null` when `!src` o
 **What:** Shipped `repeatWeek()` in the week-plan service (Sprint 3 Wave 1). Copies APPROVED source-week suggestions into a target week as NEW `approved: false` suggestions, preserving the parent approval workflow. No schema change — reuses existing WeekPlan/DayPlan/MealSuggestion. Day mapping by date offset (both weeks Monday-anchored, 7 days). Empty/nonexistent source = no-op. Existing-target handling via tested `existingMode` param: `error` (DEFAULT — 409 before any write if target already populated; never silently dup/overwrite), `skip` (fill only empty target days), `replace` (clear target week then copy). Surfaces at full parity 4/7/8: browser REST `POST /families/:familyId/weeks/:weekStart/repeat` (JWT+membership), agent route reusing `meal_plan:schedule` scope (no new scope, audited allowed/denied), MCP `repeat_week` tool + client, plus a parent-gated WeekPlanPage action. Shared `RepeatWeekRequest` DTO + mode union. CSV rule not triggered (no persisted meal field).
 **Why:** #114 preserves the family approval gate — repeated meals arrive unapproved so a parent still confirms. Default `error` mode is the safest/most explicit choice (forces a conscious skip/replace on an already-populated week). Cross-family isolation enforced on both source and target (family-scoped queries → cross-family source treated as empty/404). Note: reconstructed by coordinator from Livingston's completion report — original worktree inbox file did not survive worktree removal.
 
+### 2026-07-03: Recipe collections backend (#109)
+**By:** Saul (Data/Migrations), requested by brandonmartinez
+**PR:** #142 (base main) — Refs #109 · **Branch:** brandonmartinez-recipe-collections-backend @ 051f2bb
+**Migration:** `20260702220000_add_recipe_collections` (offline `migrate diff`, purely additive: 2 CREATE TABLE + 3 CREATE INDEX + 3 FK ADD CONSTRAINT; zero destructive)
+
+**Schema:**
+- `RecipeCollection` (id, name, nameNormalized, description?, familyId, timestamps) — `@@unique([familyId, nameNormalized])`, `@@index([familyId])`.
+- `MealRecipeCollection` join (mealId, recipeCollectionId) — composite `@@id`, `@@index([recipeCollectionId])`.
+- `Meal` gains `collections MealRecipeCollection[]`; `Family` gains `recipeCollections RecipeCollection[]`.
+- **FK onDelete:** RecipeCollection→Family = **Restrict**; both join FKs = **Cascade**. M2M (a meal can belong to many collections).
+
+**4 decisions:**
+1. DELETE collection = **PARENT-gated**; create/list/get/update = member-level (mirrors tag-delete).
+2. Optional **`description`** on RecipeCollection powers the MCP row-8 surface; NOT in CSV.
+3. **No new scope** — reuse `meal:write` / `meal_plan:read`.
+4. apiClient **`listCollections` unwraps** the `{collections:[...]}` envelope → `RecipeCollection[]`.
+
+**CSV (lockstep like tags/categories #107):** collections referenced by NAME (semicolon-delimited). Import: new `collections` column after `categories`; aliases `["collections","collection","recipe collections"]`; `splitNames` → `ParsedImportMeal.collections?: string[]`; Zod `importMealsSchema` gains `collections: z.array(z.string()).optional()` → `syncMealCollections`. Export: `mealsToCSV` emits `meal.collections?.join(";")`. `description` NOT in CSV (names only).
+
+**Parity 4/7/8:** Row 4 — agent meal create/update body gains `collections[]`, `GET /:familyId/collections` (scope `meal_plan:read`), shared list-meals filter, no agent DELETE. Row 7 — MCP apiClient `collections?` on Create/Update + listMeals opts + new `listCollections`. Row 8 — `collections` param on create_meal/update_meal/list_meals + new `list_collections` tool; `TOOL_SCOPES: list_collections → meal_plan:read`.
+
+**Cross-family tests (prismaMock, globals:false):** Family A cannot read/list/update/delete Family B's collection (404), cannot attach a Family-B collection, filter-by-collection never leaks. Plus service unit, route CRUD+Zod 400s, CSV round-trip, placeholder symmetry, agent + MCP coverage.
+
+**Verification:** migration re-verified LIVE vs current main → diff EXIT 0, byte-identical to committed migration.sql, purely additive. Full build/test/lint blocked by devcontainer network outage (DNS down) — PR body carries honest Verification section; CI (Postgres 16) is the green gate. Not self-merged.
+
+### 2026-07-02: Image orphan cleanup + backup guidance (#106)
+
+**By:** Basher (DevOps/Security), requested by brandonmartinez
+**PR:** #141 (base main) — Refs #106 · Branch brandonmartinez-image-cleanup-backup @ 0c07c5f
+
+**Context:** #104 shipped the uploaded-image asset backend (ImageAsset rows + on-disk files at {root}/{familyId}/{assetId}.{ext}). On-disk GC flagged there as a future caveat; #106 is that follow-up. NO schema/migration this wave (#109 owns schema) — command/service + docs only.
+
+**What shipped:**
+- packages/api/src/services/imageCleanup.ts — pure cleanup service. scanStorageRoot (read-only readdir), planCleanup (classifies orphanedFiles/missingFiles/unrecognized), runCleanup (dry-run default). Deletions route through #104's audited FilesystemImageStorage.delete() — never a hand-rolled unlink.
+- packages/api/src/scripts/imageCleanup.ts — CLI runner under src/ (tsc/eslint covered). Wired as `images:cleanup` (tsx) script in packages/api/package.json.
+- packages/api/src/services/imageStorage.ts — ADDITIVE ONLY: exported UUID_RE + ALLOWED_EXTENSIONS (single source of truth) + added exists().
+- packages/api/src/services/imageCleanup.test.ts — 9 tests, temp dir + prismaMock.
+- docs/ops/backup-and-restore.md (new) + k8s/README.md pointer.
+
+**Decisions (3 open questions, all approved YES):**
+1. k8s PVC = document-only (commented example PVC+mount in ops doc, NOT active kustomization — respects #93 deferral).
+2. Additive edits to imageStorage.ts approved (export validators + exists(); no schema/behavior change).
+3. --delete-rows is opt-in and OFF-by-default even under --apply.
+
+**Orphan definition (both directions):**
+- on-disk-without-row (orphanedFiles) — recognized file whose assetId is provably absent from live DB set. Deletable under --apply.
+- row-without-file (missingFiles) — live row whose expected file is gone. Deletable only under --apply --delete-rows.
+- unrecognized — stray/misnamed entries not matching {uuid}/{uuid}.{ext}. Reported only, NEVER auto-deleted.
+
+**Safety invariant:** a file is a deletion candidate ONLY if its assetId is not in the live-id set. Dry-run default (apply=false). Reuses #104 defenses (UUID regex, MIME-allowlist ext, post-resolve under-root assertion) by routing all deletes through storage.delete().
+
+**Test strategy:** vitest globals:false; real temp dir (fs.mkdtemp) + real FilesystemImageStorage; prisma via direct prismaMock injection. Headline test: file with matching row → never flagged, never deleted.
+
+**Doc locations:** docs/ops/backup-and-restore.md (DB+image-volume matched-pair consistency, durable-PVC prerequisite w/ commented example, cleanup usage + safety contract, object-storage migration path). Pointer appended to k8s/README.md.
+
+**Verification:** api build tsc exit 0, 675 tests pass, lint 0 errors, in-container at 0c07c5f via /tmp/verify-106 detached worktree (node_modules symlink-borrow, zero /workspace pollution). NO self-merge.
+
+### 2026-07-03: Random meal selection (#113) — design decisions
+
+**By:** Livingston (Backend), requested by brandonmartinez
+**Issue:** #113 (Sprint 3 Wave 2, NO-MIGRATION lane) — PR #140, final commit d1bd42c (CI green; d27f946→87d80eb eslint→d1bd42c MCP tool-count=11)
+
+**What / Why:**
+1. **RNG isolation (auditable core).** Pure exported `selectRandomMeal(familyId, filters, referenceDate, rng)`, `type Rng = () => number` default `Math.random`. Candidates ordered `id asc`; pick = `candidates[clamp(floor(rng()*n))]`. Tests inject deterministic rng. Satisfies the issue's auditable/testable requirement.
+2. **No schema change.** Reuses WeekPlan/DayPlan/MealSuggestion + family-scoped `scheduleMealByDate`→`addSuggestion`. schema.prisma untouched (Saul owns #109). Created suggestions stay UNAPPROVED (parent approval preserved).
+3. **Reuse `meal_plan:schedule` scope** (no new scope). Agent route uses `AGENT_SCOPES.SCHEDULE`.
+4. **Plural filter naming** `categories`/`tags`/`difficulty`/`favorite`/`avoidRecentDays`, matching `listMeals`. OR-within facet, AND-across facets; category/tag on `nameNormalized`.
+5. **Placeholders always excluded** — candidate WHERE pins `placeholderKind: null`.
+6. **Avoid-recent = TARGET schedule date, boundary inclusive-eligible.** Drops candidates cooked within the window before target; cooked exactly N days before is KEPT. Reuses double family-scoped `getLastCookedMap`. Omitted/0 = off.
+7. **422 (not 404) when no eligible meals** — reused `weekPlan.SuggestionError(422, ...)`. ZodError→400, else→500.
+8. **Cross-family protection on BOTH paths** — candidate query `WHERE familyId` + `addSuggestion` 404s foreign day plan/meal. Tested.
+9. **Agent audit** — allowed → `targetType:"mealSuggestion"`, `targetIds:[suggestion.id, suggestion.mealId]`; on SuggestionError → denied, `targetIds:[]`, `reason:"error_<status>"`. `suggestedBy = agent.createdBy`.
+10. **Parity 4/7** — REST `POST /api/families/:familyId/schedule/random`; agent `POST /api/agent/:familyId/schedule/random`; shared `RandomScheduleInputDTO`; MCP client `scheduleRandomMeal`; MCP tool `schedule_random_meal`. tools.ts append self-contained (parallel Saul #109 append → kept-both at squash-merge). No CSV. Web UI out of scope.
+11. **Verification deferred to CI (environmental).** Local devcontainer verify blocked by Docker Desktop VM network outage. `pnpm-lock.yaml` byte-identical to main (zero new deps); mirrors merged #114. CI (ci.yml, Postgres 16) is authoritative. Did NOT self-merge.
+
+Files: NEW `packages/api/src/services/randomPlan.ts` + `.test.ts`; EDITED weekPlan.ts/.test.ts, agent.ts/.test.ts, shared dto.ts, mcp apiClient.ts, mcp tools.ts. 9 files, 933 insertions.
+
+### 2026-07-03: Meal image upload UI (#105)
+**By:** Linus (Frontend), requested by brandonmartinez
+**PR:** #143 (base main) — Refs #105 · **Branch:** brandonmartinez-linus-image-upload-ui @ 6933ea2
+**Lane:** WEB ONLY (packages/web/src + tests/msw). Consumes #104 image-asset backend; does NOT touch api/mcp/schema/csv.
+
+**What shipped:**
+- `MealImageField` in MealFormPage — Link vs Upload segmented radio toggle; active mode inferred on mount from current imageUrl.
+- Web api client `api/images.ts`: uploadMealImage, deleteMealImage, imageAssetUrl, parseAssetId, validateImageFile (MAX_IMAGE_BYTES 5MB, ALLOWED_IMAGE_MIME_TYPES png/jpeg/webp/gif, ImageValidationError).
+- MSW default handlers (POST 201 / DELETE 204 / GET 200-PNG) + tests (upload success, validation failure, preview render).
+- Inline thumbnail on DayCard meal pills.
+
+**Key decisions:**
+1. UNIFIED imageUrl (no schema/shared-type change). External URLs and uploaded assets both live in existing `Meal.imageUrl`. Uploaded → same-origin read path `/api/families/${familyId}/images/${assetId}`. One `<MealThumbnail src={meal.imageUrl}>` everywhere; httpOnly JWT cookie auto-sent on `<img>` GET.
+2. Eager upload on file-select. Pick → client validate (mirrors #104: 5MB + MIME allowlist, backend authoritative) → uploadMealImage → set value to asset URL → preview. CREATE uploads WITHOUT mealId (unassociated); mealId only on EDIT.
+3. Replace/Delete semantics (main risk): two refs — sessionAssetIdRef (this-session throwaway, reaped on supersede/Remove/abandon) + savedAssetIdRef (mount-persisted asset, reaped only via commitCleanup() AFTER successful save that replaced it). External URLs NEVER deleted. commitCleanup() on save success, abandon() on cancel. All cleanup best-effort/non-blocking (swallows 404).
+4. No blob:/object URLs — CSP img-src is 'self' data: https: (no blob:), so previews use the real same-origin asset URL (enabled by eager upload).
+5. Local error surfacing — MealImageField uses role="alert" + role="status", NOT useToast() (existing MealFormPage tests render without ToastProvider; useToast would throw).
+
+**Accepted limitations / residual risk:**
+- Magic Mirror gap (out of lane): #104 image GET is JWT+membership-gated; Mirror uses authenticateApiKey, so uploaded images won't render on the Mirror (external URLs still do). Needs a future backend auth change.
+- Orphan on browser-back: uploading then navigating away before saving can orphan an asset. Matches #104's no-GC caveat; #106's cleanup CLI reaps unassociated assets (future backend sweep). No web-lane fix possible.
+
+**Test note (convention):** images.test.ts:61 asserts byteLength > 0 (not exact count) for the upload body — under vitest jsdom a jsdom File passed as fetch body to Node undici stringifies to "[object File]" (13 bytes). Production code (body: file) is correct; test-realm artifact, not a production bug.
+
+**Verify gate (devcontainer):** web test 380/380, lint 0 errors at 6933ea2. Container DNS down → full build-order gate runs on CI (PR #143). Verified via workspace-clone donor pattern (/tmp/v105); /workspace never written. No self-merge.
