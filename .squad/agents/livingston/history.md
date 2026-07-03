@@ -43,3 +43,7 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 ## 2026-07-03T02:23:57-0400 — Wave 3 shipped
 
 - Shipped #120 ingredient normalization; PR #144 squash `e604ab3` merged after Saul #116 and before Linus #110. State reconciled by Scribe.
+
+## 2026-07-03T03:07:00-0400 — Wave 4 shipped
+
+- Shipped #115 category/collection week-filling; PR #149 squash `eafed5e` merged. `fillWeek()` creates unapproved suggestions, reuses random-plan filters, supports error/skip/replace, and adds REST/agent/MCP parity without schema changes.

@@ -277,3 +277,136 @@ touch schema, CSV, web, MCP `tools.ts`, or route indexes → zero conflict with 
 - **Honest method note:** recurring devcontainer DNS outage blocked fresh `pnpm install` (EAI_AGAIN). Branch touches only `packages/web` with NO `package.json`/`pnpm-lock.yaml` change, so verify ran by symlinking the dependency-identical already-installed `node_modules` from `/workspace` (base main 64bb640) into a detached verify worktree; `/workspace` confirmed pristine (HEAD unchanged) afterward. CI is authoritative.
 
 **Scope guardrails honored:** No edits to api/services, api/routes, schema/migrations, csv, or MCP. Backend #109 consumed as-is. No self-merge.
+
+## 2026-07-03T03:07:00-0400: Sprint 3 Wave 4
+
+### 2026-07-03T02:53:41-0400 — Family-configurable grocery categories (#119, Wave 4 migration keystone)
+
+**By:** Saul (Data/Migrations) — autonomous run, requested by brandonmartinez (away)
+
+**What:**
+Shipped issue #119 in PR #148 (branch `brandonmartinez-saul-grocery-categories`, SHA `fe5fbb7`). Families can now define custom grocery aisle categories beyond the shared `INGREDIENT_CATEGORIES` defaults, validated across REST + MCP + web.
+
+1. **Model + onDelete choice.** New `GroceryCategory` Prisma model (`id`, `name`, `nameNormalized`, `familyId`, timestamps), mirroring the existing family-scoped taxonomy (Tag/RecipeCollection/Category). `familyId → Family` uses **`onDelete: Restrict`** to match the sibling taxonomy relations — a family with categories cannot be silently cascade-deleted. `@@unique([familyId, nameNormalized])` enforces case-insensitive per-family uniqueness; `@@index([familyId])` for list queries. Migration `20260703023913_add_grocery_categories` is **purely additive** (CREATE TABLE + FK RESTRICT + unique + index), zero backfill, timestamp strictly after `20260703012000_add_planning_templates` (latest on main). Authored OFFLINE via `prisma migrate diff --from-schema-datamodel <main> --to-schema-datamodel <worktree> --script` — **never** `prisma migrate dev` (shared dev-DB advisory lock wedged this sprint). Does not touch `Meal_name_trgm_idx`.
+
+2. **enum → dynamic contract change.** The ingredient `category` was a closed `z.enum(INGREDIENT_CATEGORIES)` in `agent.ts` and MCP `tools.ts`. Relaxed to an open **`z.string().min(1)`** (runtime-validated non-empty string). Design **Option A — registry as advisory pick-list**: the `GroceryCategory` table is a *suggestion source* for UI selects; the stored ingredient/grocery `category` stays raw `String?` — **not** FK-resolved, **not** auto-created on meal save. Effective list surfaced to clients = `INGREDIENT_CATEGORIES ∪ custom rows` (defaults first canonical, custom appended, deduped case-insensitively via `normalizeName`). This keeps meals decoupled from category-row lifecycle (renaming/deleting a category row never orphans a meal's stored string).
+
+3. **Backward-compat handling.** enum→string only *relaxes* — every legacy hard-coded category string keeps validating; nothing tightened to reject prior values. Existing rows need no migration because `category` was already a free string column. Web selects fail-soft: `useGroceryCategories` falls back to `[...INGREDIENT_CATEGORIES]` if the fetch fails, so the forms never break.
+
+4. **Parity (rows 4/7/8).** Honored per `.github/instructions/parity.instructions.md`: (row 4) `agent.ts` GET `/:familyId/grocery-categories` READ route with audit log; (row 7) MCP `apiClient.listGroceryCategories`; (row 8) `tools.ts` `list_grocery_categories` tool + `registerTool` + `TOOL_SCOPES` entry (`meal_plan:read`). Reused the existing `meal_plan:read` scope — no new scope invented. Category *writes* go through the authenticated REST/agent routes (JWT + membership); the MCP surface is read-only for categories this iteration, consistent with the read-oriented MCP contract.
+
+5. **CSV impact (#72 lockstep rule).** **Effectively N/A — documented explicitly per guardrail.** Grocery/ingredient `category` already round-trips through CSV import/export as a plain string in both directions. The enum→string change *relaxes* validation, so no import that previously succeeded can now fail, and custom category strings export/import identically to legacy ones. No parser, Zod schema, `importMeals`, `mealsToCSV`, or `exportMeals` change was required. The new `GroceryCategory` registry is a separate resource (its own REST routes) and is not part of the meal CSV shape.
+
+**Why:**
+- **Restrict over Cascade/SetNull**: matches established family-scoped taxonomy precedent; prevents accidental data loss and keeps the deletion contract predictable. A family delete already restricts on sibling taxonomy, so categories join that guard consistently.
+- **Option A (raw string, advisory registry) over FK resolution**: purely additive migration with zero backfill and zero risk to existing meal data; avoids a destructive/complex data migration during a sprint where the shared dev DB is locked; preserves the decoupling that makes rename/delete safe (acceptance criterion: "existing category strings keep working").
+- **Reuse `meal_plan:read`**: parity requires an MCP surface but the feature is a read-oriented pick-list; inventing a new scope would violate the "reuse existing scopes where possible" guardrail.
+
+**Verification:** Devcontainer against `fe5fbb7`, reusing `/workspace` node_modules (branch has zero lockfile changes; DNS outage blocked fresh install): shared/mcp/api builds ✅, db:generate ✅, api lint ✅ (0 errors), api test ✅ 845, mcp test ✅ 105. CI (Postgres 16) authoritative — running at PR open.
+
+**Cross-lane touches:** `tools.ts` + route-index parallel appends are additive (kept-both resolves at squash-merge). No conflicts expected with concurrent Wave-4 lanes.
+
+### 2026-07-03: Category/Collection Week Filling (#115)
+**By:** Livingston (Backend) — autonomous run, requested by brandonmartinez
+**Date:** 2026-07-03
+**PR:** #149 (`feat(#115): category/collection week filling`)
+**Wave:** 4 — NO SCHEMA lane
+
+#### Context
+Issue #115 asked for a bulk-planning helper that fills open days of a target week from
+selected categories/collections, avoiding recently-cooked meals, creating UNAPPROVED
+suggestions, exposed on REST + MCP. Depends on #107 (categories), #109 (collections),
+#113 (random selection) — all merged on main.
+
+#### Decisions
+
+#### 1. Selection algorithm + determinism hook
+- `fillWeek()` (packages/api/src/services/weekFill.ts) reuses #113's `buildCandidateWhere`
+  + `filterAvoidRecent`, now **exported** from `randomPlan.ts` (no logic reinvented).
+- Added a `collections?` filter to `RandomSelectFilters` so week-fill can scope by collection
+  membership alongside category/tags/difficulty/favorite.
+- **Determinism:** selection takes an injectable `rng: () => number` param (default `Math.random`).
+  Pick is **without replacement** via array splice, so no meal repeats within one fill.
+  Tests pin outcomes deterministically using single-candidate pools (splice is forced) or a
+  seeded rng — satisfying the "seedable/stable under test" risk called out in the brief.
+
+#### 2. existingMode semantics (non-destructive default)
+Mirrors `applyTemplate`'s `existingMode`:
+- `error` (**default**) → if the week already has ANY suggestion, throw → **409**. Non-destructive.
+- `skip` → fill only currently-empty days; occupied days left untouched.
+- `replace` → `deleteMany` existing suggestions then `createMany`, inside a `$transaction`.
+Existing suggestions are therefore NEVER overwritten unless `replace` is explicitly passed.
+
+#### 3. Unapproved-only
+Every created `MealSuggestion` row is `approved:false`, exactly like scheduleMeal / repeatWeek /
+applyTemplate. A PARENT approves separately via the existing `approve_suggestion` surface.
+No auto-approval path exists.
+
+#### 4. Insufficient-eligible-meals handling
+- Empty candidate pool after filtering → **422** (`SuggestionError`).
+- `!allowPartial && candidateIds.length < daysToFill` → **422**.
+- `allowPartial` (default `true`) lets a caller accept a partial fill when the pool is smaller
+  than the open-day count. Service tests cover the insufficient case (acceptance requirement).
+
+#### 5. Parity rows + reused scopes
+Per parity.instructions.md rows 4/7/8:
+- Row 4 — agent REST route `POST /agent/families/:familyId/weeks/:weekStart/fill`
+  guarded by `requireScope(meal_plan:schedule)`; browser route `POST .../weeks/:weekStart/fill`
+  under normal JWT + membership. Symmetry matches applyTemplate.
+- Row 7 — MCP `apiClient.fillWeek`.
+- Row 8 — MCP `fill_week` tool + `TOOL_SCOPES.fill_week = "meal_plan:schedule"`.
+- **Reused existing scopes** `meal_plan:schedule` (write) / `meal_plan:read` — no new scopes invented.
+
+#### 6. NO-SCHEMA compliance
+Zero edits to `schema.prisma`; no migration authored. Saul #119 owns the only Wave 4 migration.
+All new capability rides on existing tables (Meal, MealSuggestion, DayPlan, WeekPlan, Collection).
+
+#### Verification (honest)
+Devcontainer gates at committed HEAD `9e94726` (detached worktree, prismaMock, no live DB):
+- shared build ✅ · api db:generate ✅ · api build ✅
+- api lint ✅ 0 errors (7 pre-existing warnings) · api test ✅ **837 passed**
+- mcp test ✅ 104 passed (at parent `fba2dba`; MCP files unchanged since)
+CI is authoritative.
+
+#### Cross-lane file touches (append-only / localized)
+`mcp/src/tools.ts`, `mcp/src/apiClient.ts`, `mcp/src/tools.test.ts`, `api/src/routes/agent.ts`,
+`api/src/routes/weekPlan.ts`, `shared/src/types/dto.ts`, `api/src/services/randomPlan.ts`.
+Saul #119 overlaps MCP schemas/routes — kept edits localized/append-only to minimize squash conflict.
+
+### 2026-07-03T02:46:56-0400: Planning templates UI (#117)
+
+**By:** Linus (Frontend) — autonomous run, requested by brandonmartinez (away)
+**PR:** #147 — `feat(#117): planning templates UI` (base main, non-draft)
+**Lane:** WEB-ONLY. Zero edits to packages/api, csv, or MCP. Consumed the merged #116 backend as-is.
+
+#### Page vs. modal
+- **Management = full page** at `/templates` (`TemplatesPage`), mirroring the #110 CollectionsPage shelf pattern. Templates are a first-class planning entity that users curate over time, so they earn a durable route + nav link rather than a transient modal.
+- **Create/edit = modal** (`TemplateFormModal`) launched from the page — matches the Collections create/edit ergonomics and keeps the 7-day entry editor focused.
+- **Apply = modal** (`ApplyTemplateModal`) launched from `WeekPlanPage`, because apply is an action taken in the context of a specific week, not a management task.
+
+#### Apply-confirmation UX + existingMode mapping (the load-bearing decision)
+Non-destructive by default. The UI never sends a destructive `replace` without explicit user confirmation.
+- **Initial apply** → `existingMode: 'error'`. If the target week already has suggestions the backend returns **409**; the modal catches `ApiError.status === 409` and transitions from the `select` phase to a `confirm` phase.
+- **Confirm phase** offers two explicit choices:
+  - "Skip filled days" → `existingMode: 'skip'` (fills only empty days).
+  - "Replace week" → `existingMode: 'replace'` (deletes all target suggestions first). Styled as the destructive option; not the default focus.
+- Empty week (no 409) applies immediately with `error` mode and closes.
+- Applied rows are **unapproved** (`approved:false`) — a parent approves separately; the modal messaging says "added for approval," not "scheduled."
+
+#### Motif
+- 🗓️ **calendar** motif for templates, chosen to be visually distinct from the 📚 collections shelf (#110) and the tag/category **pill clouds**, while reusing the shelf's card/grid layout for consistency. Indigo accent on the WeekPlanPage apply button to separate it from the primary meal-add affordance.
+
+#### Empty / loading / error coverage
+- **Loading:** `LoadingSpinner` on the templates list and on meal-load inside the form modal.
+- **Empty:** `EmptyState` on TemplatesPage when no templates exist; entries grid shows a hint when a day has no meals.
+- **Error:** `ErrorMessage` on list-load failure. Meal-load failure inside the form is **non-blocking** (form still usable). Apply errors other than 409 surface inline in the modal.
+- **Parent gating:** delete controls and the apply button are gated on `isParent` (DELETE is PARENT-gated server-side / 403).
+
+#### Verification (honest)
+- Web gates run at committed SHA `f8f92be` in the devcontainer via a detached verify worktree.
+- `pnpm --filter @meal-planner/web run test` → **454 passed (51 files)** (39 new cases).
+- `pnpm --filter @meal-planner/web run lint` → **clean (exit 0)**.
+- ⚠️ DNS outage blocked a fresh `pnpm install`; per the web-only guardrail (no package.json/lockfile changes) the verify worktree reused the dependency-identical `/workspace` node_modules via symlinks. `/workspace` HEAD confirmed pristine. **CI is authoritative.**
+
+#### Cross-lane concerns
+- None. Strictly web-only; backend contract consumed unchanged.

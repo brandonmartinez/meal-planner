@@ -40,3 +40,7 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 ## 2026-07-03T02:23:57-0400 — Wave 3 shipped
 
 - Shipped #110 collections UI; PR #145 squash `e3b2651` merged after Saul #116 and Livingston #120. State reconciled by Scribe.
+
+## 2026-07-03T03:07:00-0400 — Wave 4 shipped
+
+- Shipped #117 planning templates UI; PR #147 squash `ed355be` merged. Added `/templates` management and WeekPlan apply flow with `existingMode:error` first, 409 confirmation, skip/replace choices, and parent-gated destructive actions.

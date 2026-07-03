@@ -11,3 +11,7 @@
 ## 2026-07-03T02:23:57-0400 — Wave 3 shipped
 
 - Shipped #116 planning templates backend as the Wave 3 migration keystone; PR #146 squash `e3083fe` merged first. State reconciled by Scribe after Livingston #120 and Linus #110 also merged.
+
+## 2026-07-03T03:07:00-0400 — Wave 4 shipped
+
+- Shipped #119 family-configurable grocery categories; PR #148 squash `edfbda3` merged as Wave 4 migration keystone. Migration `20260703023913_add_grocery_categories` is additive and keeps ingredient category storage as raw strings with a family advisory registry.
