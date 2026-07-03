@@ -219,6 +219,19 @@ export class MealPlannerApiClient {
     return res.templates;
   }
 
+  /**
+   * List the family's *effective* grocery categories (#119): the shared
+   * INGREDIENT_CATEGORIES defaults unioned with the family's custom categories.
+   * Read-only surface — category management stays browser-only.
+   */
+  async listGroceryCategories(familyId: string): Promise<string[]> {
+    const res = await this.request<{ categories: string[] }>(
+      "GET",
+      `/api/agent/${encodeURIComponent(familyId)}/grocery-categories`,
+    );
+    return res.categories;
+  }
+
   // --- Mutation tools -------------------------------------------------------
 
   /** Schedule a meal onto a calendar date (creates an unapproved suggestion). */

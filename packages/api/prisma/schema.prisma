@@ -24,6 +24,7 @@ model Family {
   imageAssets      ImageAsset[]
   recipeCollections RecipeCollection[]
   planningTemplates PlanningTemplate[]
+  groceryCategories GroceryCategory[]
 }
 
 model User {
@@ -164,6 +165,26 @@ model Category {
   meals          MealCategory[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// Family-scoped grocery aisle categories (issue #119). Unlike Tag/Category
+/// (which are FK-joined to meals), this model is an advisory *pick-list* layered
+/// over the shared INGREDIENT_CATEGORIES defaults: `MealIngredient.category` and
+/// `GroceryItem.category` remain free-form `String?` and are NOT foreign keys to
+/// this table. Families add custom aisle names here; the effective list a client
+/// offers is `INGREDIENT_CATEGORIES ∪ custom rows`. Same case-insensitive
+/// per-family uniqueness and Restrict on the Family relation as Tag/Category.
+model GroceryCategory {
+  id             String   @id @default(uuid())
+  name           String
+  nameNormalized String
+  family         Family   @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  familyId       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([familyId, nameNormalized])
   @@index([familyId])

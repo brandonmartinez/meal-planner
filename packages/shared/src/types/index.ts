@@ -87,6 +87,19 @@ export interface Category {
   familyId: string;
 }
 
+/** A family-scoped custom grocery aisle category (issue #119). Same shape and
+ *  per-family uniqueness rules as {@link Tag}/{@link Category}, but it is an
+ *  advisory pick-list layered over the shared `INGREDIENT_CATEGORIES` defaults —
+ *  ingredient/grocery `category` values are stored as free-form strings and are
+ *  NOT foreign keys to this record. The effective list a client offers is
+ *  `INGREDIENT_CATEGORIES ∪ custom rows`. Only the category `name` is user-facing
+ *  and round-trips through CSV as a plain string. */
+export interface GroceryCategory {
+  id: string;
+  name: string;
+  familyId: string;
+}
+
 /** A family-scoped, curated recipe collection (issue #109) — a named list a
  *  meal can belong to. Like {@link Tag}/{@link Category} the `nameNormalized`
  *  uniqueness key is a service-internal detail and NOT part of the wire
