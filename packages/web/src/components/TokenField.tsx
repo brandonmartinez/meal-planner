@@ -33,13 +33,20 @@ export default function TokenField({
   const listId = `${inputId}-list`;
   const [draft, setDraft] = useState('');
 
-  const addToken = (raw: string) => {
-    const name = raw.trim();
-    if (!name) return;
-    // Dedupe case-insensitively so "Quick" and "quick" don't both get sent;
-    // keep the casing already present, otherwise the new input's casing.
-    const exists = values.some(v => v.toLowerCase() === name.toLowerCase());
-    if (!exists) onChange([...values, name]);
+  const addTokens = (raw: string) => {
+    // Split on commas only (spaces are preserved — multi-word tokens stay intact).
+    // Trim each segment and drop blanks.
+    const segments = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (segments.length === 0) { setDraft(''); return; }
+
+    // Dedupe each segment case-insensitively against both existing values and
+    // previously-accumulated segments in this batch.
+    let next = [...values];
+    for (const name of segments) {
+      const exists = next.some(v => v.toLowerCase() === name.toLowerCase());
+      if (!exists) next = [...next, name];
+    }
+    if (next.length !== values.length) onChange(next);
     setDraft('');
   };
 
@@ -61,8 +68,40 @@ export default function TokenField({
         {label}
       </label>
 
+      <div className="flex gap-2">
+        <input
+          id={inputId}
+          type="text"
+          list={listId}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              // Never submit the surrounding form; add the token instead.
+              e.preventDefault();
+              addTokens(draft);
+            }
+          }}
+          onBlur={() => addTokens(draft)}
+          placeholder={placeholder}
+          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+        />
+        <datalist id={listId}>
+          {available.map(s => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+        <button
+          type="button"
+          onClick={() => addTokens(draft)}
+          className="shrink-0 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+        >
+          Add
+        </button>
+      </div>
+
       {values.length > 0 && (
-        <ul className="mb-2 flex flex-wrap gap-1.5" aria-label={`Selected ${label.toLowerCase()}`}>
+        <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`Selected ${label.toLowerCase()}`}>
           {values.map(name => (
             <li key={name}>
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-sm text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
@@ -80,38 +119,6 @@ export default function TokenField({
           ))}
         </ul>
       )}
-
-      <div className="flex gap-2">
-        <input
-          id={inputId}
-          type="text"
-          list={listId}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              // Never submit the surrounding form; add the token instead.
-              e.preventDefault();
-              addToken(draft);
-            }
-          }}
-          onBlur={() => addToken(draft)}
-          placeholder={placeholder}
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
-        />
-        <datalist id={listId}>
-          {available.map(s => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-        <button
-          type="button"
-          onClick={() => addToken(draft)}
-          className="shrink-0 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-        >
-          Add
-        </button>
-      </div>
     </div>
   );
 }
