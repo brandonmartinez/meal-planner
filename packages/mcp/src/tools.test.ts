@@ -489,7 +489,7 @@ describe("createToolHandlers", () => {
 });
 
 describe("registerTools", () => {
-  it("registers all nine meal-planning tools", () => {
+  it("registers all eleven meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -503,6 +503,7 @@ describe("registerTools", () => {
       "get_week_plan",
       "get_previous_week_plans",
       "schedule_meal",
+      "schedule_random_meal",
       "repeat_week",
       "approve_suggestion",
       "create_meal",
@@ -610,6 +611,7 @@ describe("TOOL_SCOPES", () => {
       get_week_plan: "meal_plan:read",
       get_previous_week_plans: "meal_plan:read",
       schedule_meal: "meal_plan:schedule",
+      schedule_random_meal: "meal_plan:schedule",
       repeat_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
