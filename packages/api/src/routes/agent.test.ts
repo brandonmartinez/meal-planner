@@ -794,4 +794,198 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.statusCode).toBe(403);
     expect(prismaMock.meal.findMany).not.toHaveBeenCalled();
   });
+
+  // --- Planning templates (#116, parity row 4: list + apply) --------------
+
+  it("templates: GET lists the family's templates and audits an allowed read", async () => {
+    mockCredential(["meal_plan:read"]);
+    prismaMock.planningTemplate.findMany.mockResolvedValue([
+      { id: "tmpl-1", name: "Weeknights", familyId: "fam-1", entries: [] },
+      { id: "tmpl-2", name: "Batch Cook", familyId: "fam-1", entries: [] },
+    ] as never);
+
+    const handlers = findStack("/:familyId/templates");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      templates: [{ id: "tmpl-1" }, { id: "tmpl-2" }],
+    });
+    // The service is family-scoped: the query filters by the path familyId.
+    expect(prismaMock.planningTemplate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: "fam-1" } }),
+    );
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:read",
+        outcome: "allowed",
+        targetType: "planningTemplate",
+        targetIds: ["tmpl-1", "tmpl-2"],
+      }),
+    });
+  });
+
+  it("templates: a schedule-only credential cannot list templates (403, no read)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/templates");
+    const req = agentReq({ familyId: "fam-1" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.planningTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it("templates: a credential for another family is denied listing (403, no service call)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/templates");
+    const req = agentReq({ familyId: "fam-OTHER" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.planningTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it("apply: materializes template entries as UNAPPROVED suggestions (schedule scope)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    // Template load: two entries on Mon (0) and Wed (2).
+    prismaMock.planningTemplate.findFirst.mockResolvedValue({
+      id: "tmpl-1",
+      familyId: "fam-1",
+      entries: [
+        { dayOfWeek: 0, mealId: "meal-A" },
+        { dayOfWeek: 2, mealId: "meal-B" },
+      ],
+    } as never);
+    // getOrCreateWeekPlan: empty target week (7 days, Mon..Sun) — used for the
+    // pre-check read AND the post-apply re-fetch.
+    prismaMock.weekPlan.findFirst.mockResolvedValue({
+      id: "tgt",
+      days: [0, 1, 2, 3, 4, 5, 6].map((i) => ({
+        id: `t-${i}`,
+        date: new Date(
+          `2026-05-${String(11 + i).padStart(2, "0")}T00:00:00Z`,
+        ),
+        suggestions: [],
+      })),
+    } as never);
+    prismaMock.mealSuggestion.createMany.mockResolvedValue({ count: 2 } as never);
+
+    const handlers = findStack("/:familyId/templates/:templateId/apply");
+    const req = agentReq(
+      { familyId: "fam-1", templateId: "tmpl-1" },
+      { targetWeekStart: "2026-05-11" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const createArg = prismaMock.mealSuggestion.createMany.mock.calls[0][0] as {
+      data: { dayPlanId: string; mealId: string; approved: boolean }[];
+    };
+    // dayOfWeek 0 -> t-0 (Mon), dayOfWeek 2 -> t-2 (Wed); all UNAPPROVED,
+    // suggestedBy the provisioning parent.
+    expect(createArg.data).toEqual([
+      { dayPlanId: "t-0", mealId: "meal-A", userId: "parent-1", approved: false },
+      { dayPlanId: "t-2", mealId: "meal-B", userId: "parent-1", approved: false },
+    ]);
+    expect(createArg.data.every((r) => r.approved === false)).toBe(true);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "allowed",
+        targetType: "planningTemplate",
+      }),
+    });
+  });
+
+  it("apply: a read-only credential cannot apply a template (403, audited denied)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/:familyId/templates/:templateId/apply");
+    const req = agentReq(
+      { familyId: "fam-1", templateId: "tmpl-1" },
+      { targetWeekStart: "2026-05-11" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.planningTemplate.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
+  });
+
+  it("apply: a credential for another family is denied (403, no service call)", async () => {
+    mockCredential(["meal_plan:schedule"]);
+
+    const handlers = findStack("/:familyId/templates/:templateId/apply");
+    const req = agentReq(
+      { familyId: "fam-OTHER", templateId: "tmpl-1" },
+      { targetWeekStart: "2026-05-11" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.planningTemplate.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("apply: a missing / cross-family template yields 404 and an audited denial", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.planningTemplate.findFirst.mockResolvedValue(null as never);
+
+    const handlers = findStack("/:familyId/templates/:templateId/apply");
+    const req = agentReq(
+      { familyId: "fam-1", templateId: "tmpl-x" },
+      { targetWeekStart: "2026-05-11" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal_plan:schedule",
+        outcome: "denied",
+        targetType: "planningTemplate",
+        reason: "error_404",
+      }),
+    });
+  });
+
+  it("apply: a non-Monday targetWeekStart is a 400 validation-style failure", async () => {
+    mockCredential(["meal_plan:schedule"]);
+    prismaMock.planningTemplate.findFirst.mockResolvedValue({
+      id: "tmpl-1",
+      familyId: "fam-1",
+      entries: [{ dayOfWeek: 0, mealId: "meal-A" }],
+    } as never);
+
+    const handlers = findStack("/:familyId/templates/:templateId/apply");
+    // 2026-05-12 is a Tuesday.
+    const req = agentReq(
+      { familyId: "fam-1", templateId: "tmpl-1" },
+      { targetWeekStart: "2026-05-12" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
+  });
 });

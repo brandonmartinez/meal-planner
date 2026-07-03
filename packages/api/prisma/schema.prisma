@@ -23,6 +23,7 @@ model Family {
   categories       Category[]
   imageAssets      ImageAsset[]
   recipeCollections RecipeCollection[]
+  planningTemplates PlanningTemplate[]
 }
 
 model User {
@@ -76,6 +77,7 @@ model Meal {
   instructions         MealInstruction[]
   imageAssets          ImageAsset[]
   collections          MealRecipeCollection[]
+  planningTemplateEntries PlanningTemplateEntry[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -385,4 +387,47 @@ model MealRecipeCollection {
 
   @@id([mealId, recipeCollectionId])
   @@index([recipeCollectionId])
+}
+
+/// Reusable, family-scoped week planning template. A template is a named set of
+/// (dayOfWeek -> meal) entries that can be APPLIED to any target week to produce
+/// UNAPPROVED MealSuggestion rows (same approval workflow as repeatWeek /
+/// scheduleMeal). Structurally mirrors RecipeCollection: case-insensitively
+/// unique within a family via `nameNormalized` (`lower(trim(name))`, computed in
+/// the service layer) while `name` preserves display casing. The Family relation
+/// is `onDelete: Restrict`, mirroring RecipeCollection/Tag/Category so family
+/// deletion stays guarded consistently.
+model PlanningTemplate {
+  id             String                  @id @default(uuid())
+  name           String
+  nameNormalized String
+  description    String?
+  family         Family                  @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  familyId       String
+  entries        PlanningTemplateEntry[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// A single (dayOfWeek -> meal) slot within a PlanningTemplate. `dayOfWeek` is a
+/// RELATIVE offset (0=Monday .. 6=Sunday), NOT a calendar date, so the template
+/// is reusable across weeks. `onDelete: Cascade` on BOTH foreign keys: deleting
+/// the template drops its entries, and deleting a meal silently removes the
+/// entries that referenced it (same dual-cascade join semantics as
+/// MealTag/MealCategory/MealRecipeCollection). This keeps the template valid and
+/// ensures `apply` never dereferences a dangling meal.
+model PlanningTemplateEntry {
+  id         String           @id @default(uuid())
+  template   PlanningTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId String
+  dayOfWeek  Int
+  meal       Meal             @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId     String
+
+  @@unique([templateId, dayOfWeek, mealId])
+  @@index([templateId])
+  @@index([mealId])
 }

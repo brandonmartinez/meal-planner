@@ -131,6 +131,9 @@ export function createToolHandlers(
     list_collections: (): Promise<ToolResult> =>
       run(() => client.listCollections(familyId)),
 
+    list_templates: (): Promise<ToolResult> =>
+      run(() => client.listTemplates(familyId)),
+
     get_current_week_plan: (): Promise<ToolResult> =>
       run(() => client.getCurrentWeekPlan(familyId)),
 
@@ -193,6 +196,20 @@ export function createToolHandlers(
       suggestionId: string;
     }): Promise<ToolResult> =>
       run(() => client.approveSuggestion(familyId, args.suggestionId)),
+
+    apply_template: (args: {
+      templateId: string;
+      targetWeekStart: string;
+      existingMode?: "error" | "skip" | "replace";
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.applyTemplate(
+          familyId,
+          args.templateId,
+          args.targetWeekStart,
+          args.existingMode,
+        ),
+      ),
 
     // Family-from-key tools: the API resolves the family from the presented
     // key, so these do not thread `familyId` into the request path.
@@ -266,12 +283,14 @@ export type ToolHandlers = ReturnType<typeof createToolHandlers>;
 export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   list_meals: "meal_plan:read",
   list_collections: "meal_plan:read",
+  list_templates: "meal_plan:read",
   get_current_week_plan: "meal_plan:read",
   get_week_plan: "meal_plan:read",
   get_previous_week_plans: "meal_plan:read",
   schedule_meal: "meal_plan:schedule",
   schedule_random_meal: "meal_plan:schedule",
   repeat_week: "meal_plan:schedule",
+  apply_template: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
@@ -385,6 +404,23 @@ export function registerTools(
     },
     () => handlers.list_collections(),
   );
+
+  server.registerTool(
+    "list_templates",
+    {
+      title: "List planning templates",
+      description:
+        "List the family's reusable week planning templates — named sets of " +
+        "(day-of-week → meal) entries that can be applied to any week. Returns " +
+        "each template's id, name, optional description, and its entries " +
+        "(dayOfWeek 0=Monday..6=Sunday with the referenced meal). Use a " +
+        "template's id with apply_template to materialize it into a week. " +
+        "Requires the meal_plan:read scope.",
+      inputSchema: {},
+    },
+    () => handlers.list_templates(),
+  );
+
 
   server.registerTool(
     "get_current_week_plan",
@@ -542,6 +578,40 @@ export function registerTools(
     },
     (args) => handlers.repeat_week(args),
   );
+
+  server.registerTool(
+    "apply_template",
+    {
+      title: "Apply a planning template",
+      description:
+        "Apply a reusable planning template into a target week: each of the " +
+        "template's (day-of-week → meal) entries becomes a new unapproved " +
+        "suggestion on the matching day, preserving the parent approval " +
+        "workflow. `existingMode` controls what happens when the target week " +
+        "already has suggestions: 'error' (default) refuses and changes " +
+        "nothing, 'skip' only fills days that have no suggestions, 'replace' " +
+        "clears the target week's suggestions first. Requires the " +
+        "meal_plan:schedule scope.",
+      inputSchema: {
+        templateId: z
+          .string()
+          .min(1)
+          .describe("The id of the planning template to apply."),
+        targetWeekStart: dateString.describe(
+          "The Monday (YYYY-MM-DD) of the week to apply the template INTO.",
+        ),
+        existingMode: z
+          .enum(["error", "skip", "replace"])
+          .optional()
+          .describe(
+            "How to handle a target week that already has suggestions. " +
+              "Defaults to 'error'.",
+          ),
+      },
+    },
+    (args) => handlers.apply_template(args),
+  );
+
 
   server.registerTool(
     "approve_suggestion",
