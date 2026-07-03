@@ -60,3 +60,62 @@ All issues are labeled `release:v0.5.0`.
 - **02:16 EDT** — #120 (PR #144) update-branch → CI green → MERGED squash `e604ab3`.
 - **02:19 EDT** — #110 (PR #145) update-branch → CI green → MERGED squash `e3b2651`. **Wave 3 COMPLETE** (all 3 issues on main). Local main synced to `e3b2651`. Merge order held keystone-first per D3.
 - **02:20 EDT** — Launching Wave 4 (autopilot): #119 (Saul, grocery categories migration keystone) + #115 (Livingston, week filling, no schema) + #117 (Linus, planning-templates UI, web-only). Scribe reconcile of Wave 3 decision inbox dispatched in parallel.
+
+### 2026-07-03T03:03 EDT — Wave 4 merges (2 of 3)
+- **#119 grocery categories** (PR #148, migration keystone) → merged `edfbda3`. Migration `20260703023913_add_grocery_categories` (timestamp after planning-templates; single-migration-per-wave held). CI green PG16.
+- **#117 planning templates UI** (PR #147, web-only) → update-branch `b1c9de7` → CI green → merged `ed355be`.
+  - **Minor order deviation (logged):** Banked #117 BEFORE #115 despite #115 being earlier in the wave lane order. Rationale: #117 is web-only and depends only on already-merged #116 backend — zero dependency on #115 (service lane). No conflict risk. Merging early reduces the held-PR-goes-BEHIND churn.
+- **#115 week-filling** (Livingston, session 3fd9d74f) — still building, no PR yet. Awaiting delivery.
+
+### 2026-07-03T03:12 EDT — Wave 4 COMPLETE (3 of 3)
+- **#115 category/collection week-filling** (PR #149, service lane, 11 files +1011/-4) → update-branch `139d0fb` → CI green → merged `eafed5e`.
+- **Sprint 3 Wave 4 fully merged.** Main tip `eafed5e`. All 13 feature issues (#102,104,105,106,109,110,113,114,115,116,117,119,120) landed across Waves 1–4.
+- Livingston stood down.
+- **Remaining:** Wave 4 Scribe state reconcile → close epic #91 → prepare v0.5.0 release notes (HOLD tag/publish for Brandon per D5).
+
+### 2026-07-03T03:12 EDT — Epic close-out
+- **Issue hygiene fix (logged):** All 13 feature PRs used `feat(#N): …` titles, which do NOT auto-close the linked issue (no "Closes #N" keyword). Found 6 issues still OPEN post-merge (#110,#115,#116,#117,#119,#120). Closed each manually with a comment citing PR + merge SHA. The other 7 (#102,104,105,106,109,113,114) were already closed.
+  - **Recommendation for Brandon:** adopt `Closes #N` in PR bodies (or a `feat(#N)` → auto-close automation) so future merges close issues automatically.
+- **Epic #91 CLOSED** with a full delivery summary (13/13 features across 4 waves; migration/parity/CSV discipline documented). Its charter was decomposition + delivery — both complete.
+- **Open-issue count now 0.** No remaining backlog to organize into further sprints. Exploratory ideas in the epic body (rich recipe metadata, step-by-step instructions, discovery) were noted as future-epic candidates, NOT scoped work.
+- Scribe (scribe-10) reconciling Wave 4 decisions in background.
+- **Next:** prepare v0.5.0 release notes as a DRAFT GitHub release (no tag published) — HELD for Brandon per decision D5.
+
+### 2026-07-03T03:12 EDT — Decision D6: v0.5.0 release plan REVISED (supersedes D5)
+**Options considered:**
+1. Cut a manual `v0.5.0` tag + GitHub release (original D5 assumption).
+2. Create a `v0.5.0` DRAFT release, hold publish for Brandon.
+3. Do NOT create any manual tag/release; rely on the existing automated pipeline; produce a human-readable milestone rollup for review.
+
+**Chosen: Option 3.**
+**Rationale (material finding):** The repo has an **automated per-merge release pipeline** (CI/CD workflow on push to `main`) that cuts sequential `v1.0.x` GitHub releases with auto-generated "What's Changed" notes. Latest = `v1.0.201` (targets Scribe commit `08899d2`); the CI/CD run on the Wave 4 Scribe commit `6b7cdc5` is in-progress and will publish v1.0.x releases for the Wave 4 merges automatically. A manual `v0.5.0` tag would be **numerically backwards** (repo is already on v1.0.x) and would pollute/confuse the automated semver stream. Creating a draft with a phantom `v0.5.0` tag is actively wrong here.
+**D5 status:** OBSOLETE — it was based on the incorrect assumption that releases are cut manually. No manual tag/release action taken or held. Nothing for Brandon to "publish" — the pipeline owns versioning.
+**What I produced instead:** the consolidated milestone rollup below, for Brandon's review.
+
+### 🍽️ Sprint 3 — "Recipe Management" Milestone Rollup (for review)
+Epic #91 decomposed into 13 focused features, all merged to `main` and auto-released via the v1.0.x pipeline. Delivered across 4 conflict-aware waves (one schema migration per wave).
+
+**Image support**
+- #104 Uploaded image asset backend (`ImageAsset` model + storage)
+- #105 Meal image upload UI
+- #106 Image cleanup & backup guidance (docs)
+
+**Recipe organization**
+- #109 Recipe collections backend
+- #110 Collections UI (distinct "shelf" UX — dropdown filter + dedicated pages, 📚 motif)
+- #120 Ingredient normalization for grocery generation
+
+**Planning workflow**
+- #113 Random meal selection
+- #114 Repeat previous week
+- #115 Category/collection-based week filling
+- #116 Planning templates backend
+- #117 Planning templates UI (🗓️ motif; non-destructive apply w/ skip-vs-replace confirm)
+- #119 Family-configurable grocery categories
+
+**Cooking experience**
+- #102 Local cooking mode (guided step view)
+
+**Cross-cutting discipline:** migrations serialized #104→#109→#116→#119 (strictly increasing timestamps, offline `migrate diff --script`); API↔MCP parity (rows 4/7/8) for every persisted-field backend feature; #72 CSV lockstep for new meal fields; all merges CI-gated on Postgres 16 (drift + recursive lint + full suites), squash-merged keystone-first on protected main.
+
+**Migration timeline on main:** `...220000_add_recipe_collections` < `20260703012000_add_planning_templates` < `20260703023913_add_grocery_categories`.
