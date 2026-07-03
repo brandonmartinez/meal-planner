@@ -75,6 +75,41 @@ describe("collections api client", () => {
     expect(updated.name).toBe("Renamed");
   });
 
+  it("createCollection forwards mealIds for replace-set membership (#152)", async () => {
+    let captured: unknown;
+    server.use(
+      http.post("/api/families/f-1/collections", async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json(
+          { id: "col-9", name: "New Shelf", familyId: "f-1", description: null },
+          { status: 201 },
+        );
+      }),
+    );
+    await collectionsApi.createCollection("f-1", {
+      name: "New Shelf",
+      description: null,
+      mealIds: ["m-1", "m-2"],
+    });
+    expect(captured).toEqual({
+      name: "New Shelf",
+      description: null,
+      mealIds: ["m-1", "m-2"],
+    });
+  });
+
+  it("updateCollection forwards mealIds, including [] to clear membership (#152)", async () => {
+    let captured: unknown;
+    server.use(
+      http.patch("/api/families/f-1/collections/col-1", async ({ request }) => {
+        captured = await request.json();
+        return HttpResponse.json({ id: "col-1", name: "Renamed", familyId: "f-1", description: null });
+      }),
+    );
+    await collectionsApi.updateCollection("f-1", "col-1", { name: "Renamed", mealIds: [] });
+    expect(captured).toEqual({ name: "Renamed", mealIds: [] });
+  });
+
   it("deleteCollection issues a DELETE and resolves on 204", async () => {
     let called = false;
     server.use(

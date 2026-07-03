@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { listCollections, deleteCollection } from '../api/collections';
+import { listCollections } from '../api/collections';
 import type { RecipeCollection } from '../api/collections';
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
@@ -46,17 +46,9 @@ export default function CollectionsPage() {
     loadCollections();
   }, [loadCollections]);
 
-  const handleDelete = async (collection: RecipeCollection) => {
-    if (!familyId) return;
-    if (!confirm(`Delete the "${collection.name}" collection? Meals are not deleted.`)) {
-      return;
-    }
-    try {
-      await deleteCollection(familyId, collection.id);
-      setCollections(prev => prev.filter(c => c.id !== collection.id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete collection');
-    }
+  const handleDeleted = (collectionId: string) => {
+    setEditing(null);
+    setCollections(prev => prev.filter(c => c.id !== collectionId));
   };
 
   const handleSaved = (saved: RecipeCollection) => {
@@ -134,42 +126,46 @@ export default function CollectionsPage() {
               key={collection.id}
               className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
             >
-              <div className="flex items-start gap-3 p-4">
-                <span className="mt-0.5 text-xl" aria-hidden="true">
-                  📖
-                </span>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={`/collections/${collection.id}`}
-                    className="text-lg font-semibold text-blue-700 hover:underline dark:text-blue-300"
-                  >
-                    {collection.name}
-                  </Link>
-                  {collection.description && (
-                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                      {collection.description}
-                    </p>
-                  )}
-                </div>
-                {isParent && (
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(collection)}
-                      className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(collection)}
-                      className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      Delete
-                    </button>
+              {isParent ? (
+                <button
+                  type="button"
+                  onClick={() => setEditing(collection)}
+                  className="flex w-full items-start gap-3 rounded-lg p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                >
+                  <span className="mt-0.5 text-xl" aria-hidden="true">
+                    📖
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-lg font-semibold text-blue-700 dark:text-blue-300">
+                      {collection.name}
+                    </span>
+                    {collection.description && (
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                        {collection.description}
+                      </p>
+                    )}
                   </div>
-                )}
-              </div>
+                </button>
+              ) : (
+                <div className="flex items-start gap-3 p-4">
+                  <span className="mt-0.5 text-xl" aria-hidden="true">
+                    📖
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      to={`/collections/${collection.id}`}
+                      className="text-lg font-semibold text-blue-700 hover:underline dark:text-blue-300"
+                    >
+                      {collection.name}
+                    </Link>
+                    {collection.description && (
+                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                        {collection.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -188,6 +184,7 @@ export default function CollectionsPage() {
           collection={editing}
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
