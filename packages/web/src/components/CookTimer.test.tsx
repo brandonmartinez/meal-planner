@@ -1,6 +1,5 @@
 import { vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import CookTimer from './CookTimer';
 
 beforeEach(() => {
@@ -10,11 +9,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
-
-/** userEvent bound to the fake timer clock so clicks resolve deterministically. */
-function setupUser() {
-  return userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-}
 
 describe('CookTimer', () => {
   it('shows the full duration as mm:ss with a start control', () => {
@@ -26,11 +20,11 @@ describe('CookTimer', () => {
     ).toBeInTheDocument();
   });
 
-  it('counts down and swaps Start for Pause while running', async () => {
-    const user = setupUser();
+  it('counts down and swaps Start for Pause while running', () => {
     render(<CookTimer minutes={1} label="step 2" />);
 
-    await user.click(screen.getByRole('button', { name: /start 1-minute timer/i }));
+    // fireEvent (not userEvent) — deterministic with fake timers; auto-wrapped in act.
+    fireEvent.click(screen.getByRole('button', { name: /start 1-minute timer/i }));
 
     expect(
       screen.getByRole('button', { name: 'Pause timer for step 2' }),
@@ -40,11 +34,10 @@ describe('CookTimer', () => {
     expect(screen.getByText('00:55')).toBeInTheDocument();
   });
 
-  it('announces completion when the countdown reaches zero', async () => {
-    const user = setupUser();
+  it('announces completion when the countdown reaches zero', () => {
     render(<CookTimer minutes={1} label="step 3" />);
 
-    await user.click(screen.getByRole('button', { name: /start/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start/i }));
     act(() => vi.advanceTimersByTime(60000));
 
     expect(screen.getByText('00:00')).toBeInTheDocument();
