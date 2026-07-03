@@ -124,21 +124,26 @@ const taxonomyCreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
 });
 
-// Recipe collection create/update bodies (issue #109). A collection is a curated,
+// Recipe collection create/update bodies (issue #109, extended #112). A collection is a curated,
 // family-scoped list a meal can belong to; `description` is an optional blurb.
+// `mealIds` (optional) triggers a REPLACE-SET of the collection's meal membership.
 const collectionCreateSchema = z.object({
   name: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500).nullable().optional(),
+  mealIds: z.array(z.string().min(1)).optional(),
 });
 
 const collectionUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
     description: z.string().trim().max(500).nullable().optional(),
+    mealIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((d) => d.name !== undefined || d.description !== undefined, {
-    message: "At least one of name or description is required",
-  });
+  .refine(
+    (d) =>
+      d.name !== undefined || d.description !== undefined || d.mealIds !== undefined,
+    { message: "At least one of name, description, or mealIds is required" },
+  );
 
 // List meals for a family
 mealsRouter.get(
@@ -471,12 +476,22 @@ mealsRouter.post(
         data.name,
         data.description,
       );
+      if (data.mealIds !== undefined) {
+        await collectionService.setCollectionMeals(familyId, collection.id, data.mealIds);
+      }
       res.status(201).json(collection);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res
           .status(400)
           .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (
+        error instanceof Error &&
+        error.message === "One or more meals do not belong to this family"
+      ) {
+        res.status(422).json({ error: error.message });
         return;
       }
       res.status(500).json({ error: "Failed to create collection" });
@@ -518,11 +533,15 @@ mealsRouter.patch(
       const data = collectionUpdateSchema.parse(req.body);
       const familyId = paramStr(req.params.familyId);
       const collectionId = paramStr(req.params.collectionId);
+      const { mealIds, ...rest } = data;
       const collection = await collectionService.updateCollection(
         familyId,
         collectionId,
-        data,
+        rest,
       );
+      if (mealIds !== undefined) {
+        await collectionService.setCollectionMeals(familyId, collectionId, mealIds);
+      }
       res.json(collection);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -533,6 +552,13 @@ mealsRouter.patch(
       }
       if (error instanceof Error && error.message === "Collection not found") {
         res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      if (
+        error instanceof Error &&
+        error.message === "One or more meals do not belong to this family"
+      ) {
+        res.status(422).json({ error: error.message });
         return;
       }
       res.status(500).json({ error: "Failed to update collection" });

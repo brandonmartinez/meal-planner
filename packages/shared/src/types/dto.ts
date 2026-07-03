@@ -345,3 +345,33 @@ export interface AgentIdentityDTO {
   scopes: string[];
   name: string;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Recipe collection write contracts (issue #112)                             */
+/*                                                                            */
+/* Collection membership (MealRecipeCollection join) can now be managed from  */
+/* the collection side. The mealIds field triggers a REPLACE-SET: when        */
+/* provided, all previous members are replaced with exactly the supplied ids. */
+/* Omit mealIds to leave membership untouched.                                */
+/* -------------------------------------------------------------------------- */
+
+/** The request body for `POST /families/:id/collections` and the agent mirror
+ *  `POST /api/agent/collections`. When `mealIds` is provided, the new
+ *  collection's meal membership is replace-set to exactly these ids; omit to
+ *  leave membership empty on creation. */
+export interface CreateCollectionRequestDTO {
+  name: string;
+  description?: string | null;
+  mealIds?: string[];
+}
+
+/** The request body for `PATCH /families/:id/collections/:id` and the agent
+ *  mirror `PATCH /api/agent/collections/:id`. When `mealIds` is provided, the
+ *  membership is REPLACE-SET (all previous members removed, replaced by these
+ *  ids). Pass `[]` to clear all members. Omit `mealIds` to leave membership
+ *  untouched. At least one of `name`, `description`, or `mealIds` is required. */
+export interface UpdateCollectionRequestDTO {
+  name?: string;
+  description?: string | null;
+  mealIds?: string[];
+}

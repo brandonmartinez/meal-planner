@@ -37,6 +37,8 @@ interface MealImageFieldProps {
 
 type Mode = 'link' | 'upload';
 
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
 const inputClass =
   'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded';
 
@@ -73,6 +75,7 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
     const [uploading, setUploading] = useState(false);
     const [status, setStatus] = useState('');
     const [error, setError] = useState('');
+    const [dragOver, setDragOver] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const urlInputId = useId();
@@ -96,13 +99,14 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
       void deleteMealImage(familyId, assetId).catch(() => {});
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      // Reset the input so re-selecting the same file fires change again.
-      e.target.value = '';
-      if (!file) return;
+    /** Core upload logic shared by the file input and the drop handler. */
+    const doUpload = async (file: File) => {
       if (!familyId) {
         setError('Select a family before uploading an image.');
+        return;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        setError('Image must be 5 MB or smaller.');
         return;
       }
 
@@ -125,6 +129,14 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
       } finally {
         setUploading(false);
       }
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Reset the input so re-selecting the same file fires change again.
+      e.target.value = '';
+      if (!file) return;
+      await doUpload(file);
     };
 
     const handleRemove = () => {
@@ -173,6 +185,7 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
     );
 
     const hasImage = value.trim().length > 0;
+    const isDisabled = uploading || !familyId;
 
     return (
       <div>
@@ -219,21 +232,124 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Link to an external photo of this meal. Displayed as a thumbnail.
             </p>
+            {hasImage && (
+              <div className="mt-2 flex items-center gap-3">
+                <MealThumbnail
+                  src={value}
+                  alt="Meal image preview"
+                  className="h-20 w-20 rounded object-cover border border-gray-200 dark:border-gray-700"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemove}
+                  className="text-sm text-red-600 dark:text-red-400 hover:underline"
+                >
+                  Remove image
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div>
+            {/* Hidden file input — always present; accessible via keyboard and
+                programmatic .click() from the dropzone button. */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
               aria-label="Upload meal image"
-              disabled={uploading || !familyId}
+              disabled={isDisabled}
               onChange={handleFileChange}
-              className="block w-full text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50"
+              className="sr-only"
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              PNG, JPEG, WebP, or GIF, up to 5 MB.
-            </p>
+
+            {hasImage ? (
+              /* Preview zone: existing image fills the zone with a Remove overlay */
+              <div className="relative w-full aspect-video rounded overflow-hidden border border-gray-200 dark:border-gray-700">
+                <MealThumbnail
+                  src={value}
+                  alt="Meal image preview"
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-end justify-end p-2 bg-gradient-to-t from-black/40 to-transparent">
+                  <button
+                    type="button"
+                    onClick={handleRemove}
+                    className="text-sm text-white bg-black/50 hover:bg-black/70 rounded px-2 py-1"
+                  >
+                    Remove image
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Drop zone: dashed card, centered CTA */
+              <div
+                role="button"
+                aria-label="Upload image drop zone"
+                aria-disabled={isDisabled}
+                tabIndex={isDisabled ? -1 : 0}
+                className={[
+                  'w-full aspect-video flex flex-col items-center justify-center',
+                  'rounded border-2 border-dashed cursor-pointer',
+                  'transition-colors',
+                  dragOver
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                    : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50',
+                  isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-400',
+                ].join(' ')}
+                onClick={() => !isDisabled && fileInputRef.current?.click()}
+                onKeyDown={e => {
+                  if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  if (!isDisabled) setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={async e => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  if (isDisabled) return;
+                  const file = e.dataTransfer.files[0];
+                  if (file) await doUpload(file);
+                }}
+              >
+                <svg
+                  className="mb-2 h-8 w-8 text-gray-400 dark:text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M3 16.5V19a2 2 0 002 2h14a2 2 0 002-2v-2.5M16 10l-4-4m0 0L8 10m4-4v12"
+                  />
+                </svg>
+                <button
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={e => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="mb-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                >
+                  Choose file
+                </button>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  or drag and drop
+                </p>
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  PNG, JPEG, WebP, or GIF, up to 5 MB.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -244,23 +360,6 @@ export const MealImageField = forwardRef<MealImageFieldHandle, MealImageFieldPro
           <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
             {error}
           </p>
-        )}
-
-        {hasImage && (
-          <div className="mt-2 flex items-center gap-3">
-            <MealThumbnail
-              src={value}
-              alt="Meal image preview"
-              className="h-20 w-20 rounded object-cover border border-gray-200 dark:border-gray-700"
-            />
-            <button
-              type="button"
-              onClick={handleRemove}
-              className="text-sm text-red-600 dark:text-red-400 hover:underline"
-            >
-              Remove image
-            </button>
-          </div>
         )}
       </div>
     );

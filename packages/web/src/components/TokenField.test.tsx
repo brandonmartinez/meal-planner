@@ -99,4 +99,93 @@ describe('TokenField', () => {
 
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('renders pills BELOW the input row, not above', () => {
+    render(<Harness initial={['Weeknight']} />);
+    const input = screen.getByRole('combobox', { name: 'Tags' });
+    const pillList = screen.getByRole('list');
+    // DOCUMENT_POSITION_FOLLOWING (4) means pillList comes after input in DOM order.
+    expect(input.compareDocumentPosition(pillList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('adds multiple tokens from a comma-separated string via Enter', async () => {
+    const onChange = vi.fn();
+    render(<Harness onChangeSpy={onChange} />);
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'alpha, beta{Enter}');
+
+    expect(onChange).toHaveBeenLastCalledWith(['alpha', 'beta']);
+    expect(screen.getByRole('button', { name: 'Remove alpha' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove beta' })).toBeInTheDocument();
+  });
+
+  it('adds multiple tokens via Add button with comma-separated input', async () => {
+    const onChange = vi.fn();
+    render(<Harness onChangeSpy={onChange} />);
+
+    await userEvent.type(screen.getByRole('combobox', { name: 'Tags' }), 'foo, bar, baz');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(onChange).toHaveBeenLastCalledWith(['foo', 'bar', 'baz']);
+  });
+
+  it('does NOT split on spaces — multi-word value stays one token', async () => {
+    const onChange = vi.fn();
+    render(<Harness onChangeSpy={onChange} />);
+
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Tags' }),
+      'Easy Weekday Meals{Enter}',
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith(['Easy Weekday Meals']);
+  });
+
+  it('splits "test1 test2, test3" into two tokens: "test1 test2" and "test3"', async () => {
+    const onChange = vi.fn();
+    render(<Harness onChangeSpy={onChange} />);
+
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Tags' }),
+      'test1 test2, test3{Enter}',
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith(['test1 test2', 'test3']);
+  });
+
+  it('trims whitespace around comma-separated tokens', async () => {
+    const onChange = vi.fn();
+    render(<Harness onChangeSpy={onChange} />);
+
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Tags' }),
+      '  alpha  ,  beta  {Enter}',
+    );
+
+    expect(onChange).toHaveBeenLastCalledWith(['alpha', 'beta']);
+  });
+
+  it('dedupes comma-separated tokens against existing values case-insensitively', async () => {
+    const onChange = vi.fn();
+    render(<Harness initial={['Existing']} onChangeSpy={onChange} />);
+
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Tags' }),
+      'new1, existing{Enter}',
+    );
+
+    // 'existing' is a case-insensitive match for 'Existing' — only 'new1' is added.
+    expect(onChange).toHaveBeenLastCalledWith(['Existing', 'new1']);
+  });
+
+  it('clears draft and fires no onChange when all comma segments are duplicates', async () => {
+    const onChange = vi.fn();
+    render(<Harness initial={['Alpha']} onChangeSpy={onChange} />);
+
+    const input = screen.getByRole('combobox', { name: 'Tags' });
+    await userEvent.type(input, 'alpha{Enter}');
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect((input as HTMLInputElement).value).toBe('');
+  });
 });

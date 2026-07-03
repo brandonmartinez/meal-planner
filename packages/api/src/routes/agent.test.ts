@@ -1113,4 +1113,188 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.statusCode).toBe(400);
     expect(prismaMock.mealSuggestion.createMany).not.toHaveBeenCalled();
   });
+
+  it("write: POST /collections creates a collection for the key's family (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.upsert.mockResolvedValue({
+      id: "col-new",
+      name: "Weekend Meals",
+      familyId: "fam-1",
+    } as never);
+
+    const handlers = findStack("/collections");
+    const req = agentReq({}, { name: "Weekend Meals" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toMatchObject({ id: "col-new", name: "Weekend Meals" });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "allowed",
+        targetIds: ["col-new"],
+      }),
+    });
+  });
+
+  it("write: POST /collections with mealIds sets collection membership (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.upsert.mockResolvedValue({
+      id: "col-new",
+      name: "Weekend Meals",
+      familyId: "fam-1",
+    } as never);
+    prismaMock.recipeCollection.findFirst.mockResolvedValue({
+      id: "col-new",
+    } as never);
+    prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof prismaMock) => Promise<void>) => fn(prismaMock),
+    );
+    prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+      count: 0,
+    } as never);
+    prismaMock.mealRecipeCollection.createMany.mockResolvedValue({
+      count: 1,
+    } as never);
+
+    const handlers = findStack("/collections");
+    const req = agentReq({}, { name: "Weekend Meals", mealIds: ["meal-1"] });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.mealRecipeCollection.createMany).toHaveBeenCalled();
+  });
+
+  it("denied: POST /collections without meal:write scope returns 403 (#112)", async () => {
+    mockCredential(["meal_plan:read"]);
+
+    const handlers = findStack("/collections");
+    const req = agentReq({}, { name: "Weeknight Dinners" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.recipeCollection.upsert).not.toHaveBeenCalled();
+  });
+
+  it("validation: POST /collections with empty name returns 400 (#112)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/collections");
+    const req = agentReq({}, { name: "   " });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.recipeCollection.upsert).not.toHaveBeenCalled();
+  });
+
+  it("write: PATCH /collections/:collectionId updates a collection (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.findFirst.mockResolvedValue({
+      id: "col-1",
+      familyId: "fam-1",
+    } as never);
+    prismaMock.recipeCollection.update.mockResolvedValue({
+      id: "col-1",
+      name: "Renamed",
+      familyId: "fam-1",
+    } as never);
+
+    const handlers = findStack("/collections/:collectionId");
+    const req = agentReq({ collectionId: "col-1" }, { name: "Renamed" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ id: "col-1", name: "Renamed" });
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "allowed",
+        targetIds: ["col-1"],
+      }),
+    });
+  });
+
+  it("write: PATCH /collections/:collectionId with mealIds updates membership (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.update.mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight",
+      familyId: "fam-1",
+    } as never);
+    prismaMock.recipeCollection.findFirst.mockResolvedValue({
+      id: "col-1",
+    } as never);
+    prismaMock.meal.findMany.mockResolvedValue([{ id: "meal-1" }] as never);
+    prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof prismaMock) => Promise<void>) => fn(prismaMock),
+    );
+    prismaMock.mealRecipeCollection.deleteMany.mockResolvedValue({
+      count: 0,
+    } as never);
+    prismaMock.mealRecipeCollection.createMany.mockResolvedValue({
+      count: 1,
+    } as never);
+
+    const handlers = findStack("/collections/:collectionId");
+    const req = agentReq(
+      { collectionId: "col-1" },
+      { mealIds: ["meal-1"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.mealRecipeCollection.createMany).toHaveBeenCalled();
+  });
+
+  it("not found: PATCH /collections/:collectionId for foreign collection returns 404 (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.update.mockRejectedValue(
+      new Error("Collection not found"),
+    );
+
+    const handlers = findStack("/collections/:collectionId");
+    const req = agentReq({ collectionId: "foreign-col" }, { name: "Hijack" });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(404);
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:write",
+        outcome: "denied",
+        targetIds: ["foreign-col"],
+      }),
+    });
+  });
+
+  it("422: PATCH /collections/:collectionId with cross-family mealId (#112)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.recipeCollection.update.mockResolvedValue({
+      id: "col-1",
+      name: "Weeknight",
+      familyId: "fam-1",
+    } as never);
+    prismaMock.recipeCollection.findFirst.mockResolvedValue({
+      id: "col-1",
+    } as never);
+    // Simulate cross-family meal: only 0 meals returned
+    prismaMock.meal.findMany.mockResolvedValue([] as never);
+
+    const handlers = findStack("/collections/:collectionId");
+    const req = agentReq(
+      { collectionId: "col-1" },
+      { mealIds: ["foreign-meal"] },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(422);
+  });
 });

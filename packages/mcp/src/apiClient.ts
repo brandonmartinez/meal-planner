@@ -344,6 +344,40 @@ export class MealPlannerApiClient {
     );
   }
 
+  // --- Collection write (family-from-key; meal:write scope) -----------------
+
+  /** Create a collection in the family the key resolves to. When `mealIds` is
+   *  provided, the new collection's meal membership is replace-set to those ids.
+   *  Idempotent by name: if a collection with the same name already exists it is
+   *  returned unchanged. */
+  createCollection(input: {
+    name: string;
+    description?: string | null;
+    mealIds?: string[];
+  }): Promise<RecipeCollection> {
+    return this.request<RecipeCollection>("POST", `/api/agent/collections`, {
+      body: input,
+    });
+  }
+
+  /** Update an existing collection by id in the family the key resolves to.
+   *  When `mealIds` is provided, the membership is REPLACE-SET. Pass `[]` to
+   *  clear all members. Omit `mealIds` to leave membership untouched. */
+  updateCollection(
+    collectionId: string,
+    input: {
+      name?: string;
+      description?: string | null;
+      mealIds?: string[];
+    },
+  ): Promise<RecipeCollection> {
+    return this.request<RecipeCollection>(
+      "PATCH",
+      `/api/agent/collections/${encodeURIComponent(collectionId)}`,
+      { body: input },
+    );
+  }
+
   // --- Grocery read (family-from-key; meal_plan:read scope) -----------------
 
   /** Get the family's CURRENT-week grocery list (generated on demand if none

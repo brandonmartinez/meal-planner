@@ -24,6 +24,8 @@ function stubClient() {
     updateMeal: vi.fn(),
     getCurrentGroceryList: vi.fn(),
     listCollections: vi.fn(),
+    createCollection: vi.fn(),
+    updateCollection: vi.fn(),
     listTemplates: vi.fn(),
     listGroceryCategories: vi.fn(),
     applyTemplate: vi.fn(),
@@ -496,6 +498,109 @@ describe("createToolHandlers", () => {
     expect(parsed[0].description).toBe("Fast meals");
   });
 
+  it("create_collection creates a collection with name/description (#112, parity row 8)", async () => {
+    const client = stubClient();
+    const collection = { id: "col-new", name: "Summer Grilling", description: "BBQ meals" };
+    client.createCollection.mockResolvedValue(collection);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.create_collection({ name: "Summer Grilling", description: "BBQ meals" });
+
+    expect(client.createCollection).toHaveBeenCalledWith({
+      name: "Summer Grilling",
+      description: "BBQ meals",
+    });
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual(collection);
+  });
+
+  it("create_collection with mealIds sets membership (#112)", async () => {
+    const client = stubClient();
+    const collection = { id: "col-new", name: "Weeknight", description: null };
+    client.createCollection.mockResolvedValue(collection);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.create_collection({ name: "Weeknight", mealIds: ["meal-1", "meal-2"] });
+
+    expect(client.createCollection).toHaveBeenCalledWith({
+      name: "Weeknight",
+      mealIds: ["meal-1", "meal-2"],
+    });
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("create_collection surfaces a 422 cross-family meal error as isError (#112)", async () => {
+    const client = stubClient();
+    client.createCollection.mockRejectedValue(
+      new ApiError(422, "One or more meals do not belong to this family"),
+    );
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.create_collection({ name: "Bad", mealIds: ["foreign-meal"] });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/422|meals do not belong/i);
+  });
+
+  it("update_collection updates a collection by id (#112, parity row 8)", async () => {
+    const client = stubClient();
+    const collection = { id: "col-1", name: "Renamed", description: null };
+    client.updateCollection.mockResolvedValue(collection);
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.update_collection({ collectionId: "col-1", name: "Renamed" });
+
+    expect(client.updateCollection).toHaveBeenCalledWith("col-1", {
+      name: "Renamed",
+    });
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed).toEqual(collection);
+  });
+
+  it("update_collection with mealIds replace-sets membership (#112)", async () => {
+    const client = stubClient();
+    client.updateCollection.mockResolvedValue({ id: "col-1", name: "Weeknight" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.update_collection({ collectionId: "col-1", mealIds: ["meal-1"] });
+
+    expect(client.updateCollection).toHaveBeenCalledWith("col-1", {
+      mealIds: ["meal-1"],
+    });
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("update_collection surfaces a 404 not-found as isError (#112)", async () => {
+    const client = stubClient();
+    client.updateCollection.mockRejectedValue(new ApiError(404, "Collection not found"));
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.update_collection({ collectionId: "missing", name: "X" });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/404|not found/i);
+  });
+
   it("get_current_grocery_list calls the family-from-key client method", async () => {
     const client = stubClient();
     client.getCurrentGroceryList.mockResolvedValue({ id: "gl-1" });
@@ -707,7 +812,7 @@ describe("createToolHandlers", () => {
 });
 
 describe("registerTools", () => {
-  it("registers all fifteen meal-planning tools", () => {
+  it("registers all meal-planning tools", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -718,6 +823,8 @@ describe("registerTools", () => {
     expect(names).toEqual([
       "list_meals",
       "list_collections",
+      "create_collection",
+      "update_collection",
       "list_templates",
       "list_grocery_categories",
       "get_current_week_plan",
@@ -952,6 +1059,8 @@ describe("TOOL_SCOPES", () => {
       approve_suggestion: "meal_plan:approve",
       create_meal: "meal:write",
       update_meal: "meal:write",
+      create_collection: "meal:write",
+      update_collection: "meal:write",
       get_current_grocery_list: "meal_plan:read",
     });
   });
