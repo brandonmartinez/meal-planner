@@ -434,3 +434,66 @@ describe('MealFormPage tags and categories', () => {
     expect(body.categories).toEqual(['Dinner']);
   });
 });
+
+describe('MealFormPage collections (#110)', () => {
+  it('sends the collections array when creating a meal', async () => {
+    let body: { collections?: unknown } = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as { collections?: unknown };
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
+    await userEvent.type(
+      screen.getByRole('combobox', { name: /Collections/ }),
+      'Weeknight Winners{Enter}',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body.collections).toEqual(['Weeknight Winners']);
+  });
+
+  it('seeds existing collections and persists a removal on edit', async () => {
+    let body: { collections?: unknown } = {};
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Lasagna',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          familyId: FAMILY_ID,
+          collections: [
+            { id: 'col-1', name: 'Weeknight Winners', familyId: FAMILY_ID, description: null },
+            { id: 'col-2', name: 'Freezer Friendly', familyId: FAMILY_ID, description: null },
+          ],
+          ingredients: [],
+        }),
+      ),
+      http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
+        body = (await request.json()) as { collections?: unknown };
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    // Existing memberships hydrate as removable pills.
+    expect(
+      await screen.findByRole('button', { name: 'Remove Weeknight Winners' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Freezer Friendly' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Freezer Friendly' }));
+    await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body.collections).toEqual(['Weeknight Winners']);
+  });
+});

@@ -165,6 +165,30 @@ export default function MealDetailPage() {
         </dl>
       )}
 
+      {meal.collections && meal.collections.length > 0 && (
+        <section className="mt-6" aria-labelledby="meal-collections-heading">
+          <h2
+            id="meal-collections-heading"
+            className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
+          >
+            <span aria-hidden="true">📚</span> In collections
+          </h2>
+          <ul className="mt-2 space-y-1.5">
+            {meal.collections.map(collection => (
+              <li key={collection.id}>
+                <Link
+                  to={`/collections/${collection.id}`}
+                  className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-400 hover:bg-blue-50 dark:border-gray-700 dark:text-gray-200 dark:hover:border-blue-500 dark:hover:bg-blue-900/20"
+                >
+                  <span aria-hidden="true">📖</span>
+                  {collection.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {meal.sourceUrl && (
         <p className="mt-6 text-sm">
           <span className="font-medium text-gray-700 dark:text-gray-300">Source: </span>

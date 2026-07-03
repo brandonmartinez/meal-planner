@@ -37,6 +37,14 @@ describe('Navigation', () => {
         expect(screen.getByRole('link', { name: 'Grocery' })).toBeInTheDocument();
     });
 
+    it('exposes the Collections shelf link once a family loads (#110)', async () => {
+        signedIn();
+        renderWithProviders(<Navigation />);
+
+        const link = await screen.findByRole('link', { name: 'Collections' });
+        expect(link).toHaveAttribute('href', '/collections');
+    });
+
     it('marks a navigation link active after it is followed', async () => {
         signedIn();
         const user = userEvent.setup();

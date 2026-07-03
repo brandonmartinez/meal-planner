@@ -182,3 +182,44 @@ describe('MealDetailPage', () => {
     expect(screen.queryByRole('link', { name: /start cooking/i })).not.toBeInTheDocument();
   });
 });
+
+describe('MealDetailPage collections (#110)', () => {
+  it('links each collection the meal belongs to', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(
+          meal({
+            collections: [
+              { id: 'col-1', name: 'Weeknight Winners', familyId: FAMILY_ID, description: null },
+              { id: 'col-2', name: 'Freezer Friendly', familyId: FAMILY_ID, description: null },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tacos' });
+    expect(screen.getByText('In collections')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Weeknight Winners/ }),
+    ).toHaveAttribute('href', '/collections/col-1');
+    expect(
+      screen.getByRole('link', { name: /Freezer Friendly/ }),
+    ).toHaveAttribute('href', '/collections/col-2');
+  });
+
+  it('omits the collections section when the meal is in none', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(meal({ collections: [] })),
+      ),
+    );
+
+    renderDetail();
+
+    await screen.findByRole('heading', { name: 'Tacos' });
+    expect(screen.queryByText('In collections')).not.toBeInTheDocument();
+  });
+});

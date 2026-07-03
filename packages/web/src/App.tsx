@@ -13,6 +13,8 @@ import MealsPage from './pages/MealsPage';
 import MealDetailPage from './pages/MealDetailPage';
 import CookingModePage from './pages/CookingModePage';
 import MealFormPage from './pages/MealFormPage';
+import CollectionsPage from './pages/CollectionsPage';
+import CollectionDetailPage from './pages/CollectionDetailPage';
 import WeekPlanPage from './pages/WeekPlanPage';
 import GroceryListPage from './pages/GroceryListPage';
 import Layout from './components/Layout';
@@ -131,6 +133,14 @@ function AppRoutes() {
       <Route
         path="/week"
         element={<ProtectedRoute><Layout><WeekPlanPage /></Layout></ProtectedRoute>}
+      />
+      <Route
+        path="/collections"
+        element={<ProtectedRoute><Layout><CollectionsPage /></Layout></ProtectedRoute>}
+      />
+      <Route
+        path="/collections/:collectionId"
+        element={<ProtectedRoute><Layout><CollectionDetailPage /></Layout></ProtectedRoute>}
       />
       <Route
         path="/grocery"
