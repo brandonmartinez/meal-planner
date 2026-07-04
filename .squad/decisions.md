@@ -498,3 +498,27 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **By:** Squad (Coordinator)
 **What:** Squad decision records are now COMMITTED to git as a standard part of the process, not left uncommitted for manual review. Scribe's reconciliation cycle ends with a git commit of `.squad/decisions.md` (+ processed inbox, orchestration/session logs, agent histories). Decision records follow the standard format (`### {date}: {title}` / **By** / **What** / **Why**) and live in `.squad/decisions/inbox/{author}-{slug}.md` until Scribe merges + commits them.
 **Why:** Brandon: "also standardize the squad decision records as part of the process and to commit." Reverses the prior "leave .squad/ writes local/uncommitted" convention so decision history is versioned and shared with the team.
+
+### 2026-07-04: Standardized Select control + page-width foundations (#169)
+
+**By:** Linus
+**What:** Created shared `packages/web/src/components/Select.tsx` (+ test). Replaced 12 native `<select>` elements across 7 files. Normalized 9 main pages to `max-w-7xl` (WeekPlanPage baseline); auth pages intentionally kept `max-w-md`. Base classes: `border-gray-300 dark:border-gray-600`, `rounded`, `focus:ring-2 focus:ring-blue-500`; sizes `sm` (px-2 py-1 text-sm) / `md` (px-3 py-2).
+**Why:** Brandon flagged inconsistent select styling (heights/appearance) and inconsistent page widths across main pages. A shared Select component + normalized page widths ensure cohesive visual identity.
+
+### 2026-07-04: Meal Library density + filtering (#170)
+
+**By:** Linus
+**What:** Added card/table view toggle with localStorage persistence (key `meal-library-view`). New `TagMultiSelect.tsx` searchable multi-select replacing the tag-chip wall. Hide-built-ins filter implemented as `placeholderKind !== null` (hides system placeholder meals: Free Day, Leftovers, Takeout, Dining Out, Travel, Skip). Full-metadata search was found to be server-side → deferred to #171. Frontend already sends `search` param transparently since #170.
+**Why:** With more data, the cards-only view + tag-chip wall became unmanageable for users with 10s–100s of recipes. Togglable view + searchable multi-select + built-in filter together provide density and discoverability.
+
+### 2026-07-04: Broaden meal search to full metadata (#172)
+
+**By:** Livingston
+**What:** Server-side `/meals` `search` param broadened from name-only ILIKE to a Prisma `OR` across name, description, tags (MealTag→Tag.name), and collections (MealRecipeCollection→RecipeCollection.name). Null-safe (description is String?). No schema migration — query-only. Transparent to frontend (web already sends `search` since #170). Note: Category/MealCategory was removed in #107, so there is no category field to match.
+**Why:** Search Meals should match all main metadata, not just title, to help users discover recipes by partial matches on description, tags, or collections.
+
+### 2026-07-04: Meal detail modal navigation (#173)
+
+**By:** Linus
+**What:** Meal title clicks in the library (card + table) now open the shared `MealDetailModal` (same component WeekPlanPage uses) instead of navigating to a standalone page. `/meals/:mealId` is now a bookmarkable deep-link that renders MealsPage with the modal open (two sibling routes `/meals` and `/meals/:mealId` share MealsPage). Standalone `MealDetailPage.tsx` (+ test) fully deleted/retired. Cooking-mode exit restores the modal with zero code changes because CookingModePage already exits to `/meals/${meal.id}`.
+**Why:** Brandon wanted title clicks to open the same view-modal as the weekly planner, the dedicated detail page to not exist, and cooking-mode exit to return to the last history location with the modal preserved. Product decision (Brandon): keep `/meals/:id` as a bookmarkable deep-link that opens the modal over the library.
