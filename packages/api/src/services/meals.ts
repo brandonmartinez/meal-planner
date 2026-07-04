@@ -128,7 +128,24 @@ export async function listMeals(
   }
 
   if (search) {
-    where.name = { contains: search, mode: "insensitive" };
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { description: { contains: search, mode: "insensitive" } },
+      {
+        tags: {
+          some: { tag: { name: { contains: search, mode: "insensitive" } } },
+        },
+      },
+      {
+        collections: {
+          some: {
+            recipeCollection: {
+              name: { contains: search, mode: "insensitive" },
+            },
+          },
+        },
+      },
+    ];
   }
 
   if (difficulty?.length) {
