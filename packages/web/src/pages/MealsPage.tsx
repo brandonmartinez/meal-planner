@@ -10,6 +10,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useTaxonomy } from '../hooks/useTaxonomy';
 import ImportMealsDialog from '../components/ImportMealsDialog';
 import Select from '../components/Select';
+import TagMultiSelect from '../components/TagMultiSelect';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
 import LastCookedBadge from '../components/LastCookedBadge';
@@ -54,6 +55,11 @@ export default function MealsPage() {
   const [error, setError] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
+    const saved = localStorage.getItem('meal-library-view');
+    return saved === 'table' ? 'table' : 'card';
+  });
+  const [hideBuiltins, setHideBuiltins] = useState(false);
 
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -68,7 +74,8 @@ export default function MealsPage() {
     debouncedSearch.trim() !== '' ||
     difficulty.length > 0 ||
     tagFilter.length > 0 ||
-    collectionFilter !== '';
+    collectionFilter !== '' ||
+    hideBuiltins;
 
   // Load the first page (replaces the grid). Runs whenever any filter/sort input
   // changes; a new search/filter always resets pagination to offset 0.
@@ -138,17 +145,12 @@ export default function MealsPage() {
     );
   };
 
-  const toggleTag = (value: string) => {
-    setTagFilter(prev =>
-      prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value],
-    );
-  };
-
   const clearFilters = () => {
     setSearch('');
     setDifficulty([]);
     setTagFilter([]);
     setCollectionFilter('');
+    setHideBuiltins(false);
   };
 
   const handleDelete = async (mealId: string) => {
@@ -194,11 +196,53 @@ export default function MealsPage() {
     return <LoadingSpinner message="Loading meals…" />;
   }
 
+  // Client-side filter: hide placeholder/built-in meals when the toggle is on.
+  const displayedMeals = hideBuiltins
+    ? meals.filter(m => m.placeholderKind === null)
+    : meals;
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Meal Library</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div
+            role="group"
+            aria-label="View mode"
+            className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === 'card'}
+              onClick={() => {
+                setViewMode('card');
+                localStorage.setItem('meal-library-view', 'card');
+              }}
+              className={`px-3 py-1.5 text-sm transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === 'table'}
+              onClick={() => {
+                setViewMode('table');
+                localStorage.setItem('meal-library-view', 'table');
+              }}
+              className={`px-3 py-1.5 text-sm border-l border-gray-300 dark:border-gray-600 transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              Table
+            </button>
+          </div>
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -329,31 +373,25 @@ export default function MealsPage() {
         </div>
 
         {tagOptions.length > 0 && (
-          <div
-            role="group"
-            aria-label="Filter by tag"
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {tagOptions.map(tag => {
-              const active = tagFilter.includes(tag.name);
-              return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => toggleTag(tag.name)}
-                  className={`rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
-                    active
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
+          <div role="group" aria-label="Filter by tag">
+            <TagMultiSelect
+              label="Filter by tag"
+              values={tagFilter}
+              options={tagOptions.map(t => t.name)}
+              onChange={setTagFilter}
+            />
           </div>
         )}
+
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-fit">
+          <input
+            type="checkbox"
+            checked={hideBuiltins}
+            onChange={e => setHideBuiltins(e.target.checked)}
+            className="rounded border-gray-300 dark:border-gray-600"
+          />
+          Hide built-ins
+        </label>
       </div>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -365,10 +403,12 @@ export default function MealsPage() {
       ) : (
         <>
           <p className="mb-3 text-sm text-gray-500 dark:text-gray-400" aria-live="polite">
-            Showing {meals.length} of {total}
+            Showing {displayedMeals.length} of {total}
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {meals.map(meal => {
+
+          {viewMode === 'card' ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {displayedMeals.map(meal => {
             const isPlaceholder = meal.placeholderKind !== null;
             const meta = isPlaceholder ? MEAL_PLACEHOLDERS[meal.placeholderKind!] : null;
             return (
@@ -479,6 +519,82 @@ export default function MealsPage() {
             );
           })}
           </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    <th className="pb-2 pr-4 font-semibold">Name</th>
+                    <th className="pb-2 pr-4 font-semibold">Tags</th>
+                    <th className="pb-2 pr-4 font-semibold">Difficulty</th>
+                    <th className="pb-2 pr-4 font-semibold">Built-in</th>
+                    <th className="pb-2 font-semibold sr-only">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {displayedMeals.map(meal => {
+                    const isPlaceholder = meal.placeholderKind !== null;
+                    return (
+                      <tr
+                        key={meal.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                      >
+                        <td className="py-2.5 pr-4">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            {meal.name}
+                          </span>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <MealTagList tags={meal.tags} />
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {!isPlaceholder && (
+                            <DifficultyBadge difficulty={meal.difficulty} />
+                          )}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          {isPlaceholder && (
+                            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                              Built-in
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5">
+                          {!isPlaceholder && (
+                            <div className="flex gap-2">
+                              <Link
+                                to={`/meals/${meal.id}`}
+                                aria-label={`View ${meal.name}`}
+                                className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                              >
+                                View
+                              </Link>
+                              <button
+                                onClick={() => navigate(`/meals/${meal.id}/edit`)}
+                                aria-label={`Edit ${meal.name}`}
+                                className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                              >
+                                Edit
+                              </button>
+                              {isParent && (
+                                <button
+                                  onClick={() => handleDelete(meal.id)}
+                                  aria-label={`Delete ${meal.name}`}
+                                  className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {hasMore && (
             <div className="mt-6 flex justify-center">
