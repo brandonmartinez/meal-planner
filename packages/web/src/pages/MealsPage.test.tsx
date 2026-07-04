@@ -547,16 +547,14 @@ describe('MealsPage tags', () => {
     renderWithProviders(<MealsPage />);
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    const tagInput = screen.getByRole('combobox', { name: 'Filter by tag' });
+    fireEvent.focus(tagInput);
+    fireEvent.pointerDown(await screen.findByRole('option', { name: 'Weeknight' }));
 
     await waitFor(() =>
       expect(new URL(urls[urls.length - 1]).searchParams.getAll('tags')).toEqual([
         'Weeknight',
       ]),
-    );
-    expect(screen.getByRole('button', { name: 'Weeknight' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
     );
   });
 
@@ -574,8 +572,10 @@ describe('MealsPage tags', () => {
     renderWithProviders(<MealsPage />);
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Vegan' }));
+    const tagInput = screen.getByRole('combobox', { name: 'Filter by tag' });
+    fireEvent.focus(tagInput);
+    fireEvent.pointerDown(await screen.findByRole('option', { name: 'Weeknight' }));
+    fireEvent.pointerDown(await screen.findByRole('option', { name: 'Vegan' }));
 
     await waitFor(() =>
       expect(
@@ -598,7 +598,9 @@ describe('MealsPage tags', () => {
     renderWithProviders(<MealsPage />);
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    const tagInput = screen.getByRole('combobox', { name: 'Filter by tag' });
+    fireEvent.focus(tagInput);
+    fireEvent.pointerDown(await screen.findByRole('option', { name: 'Weeknight' }));
     fireEvent.click(screen.getByRole('button', { name: 'Medium' }));
 
     await waitFor(() => {
@@ -622,7 +624,9 @@ describe('MealsPage tags', () => {
     renderWithProviders(<MealsPage />);
     expect(await screen.findByText('Tacos')).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
+    const tagInput = screen.getByRole('combobox', { name: 'Filter by tag' });
+    fireEvent.focus(tagInput);
+    fireEvent.pointerDown(await screen.findByRole('option', { name: 'Weeknight' }));
     await waitFor(() =>
       expect(new URL(urls[urls.length - 1]).searchParams.getAll('tags')).toEqual([
         'Weeknight',
@@ -651,7 +655,194 @@ describe('MealsPage tags', () => {
   });
 });
 
-describe('MealsPage collection filter', () => {
+describe('MealsPage view toggle', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('defaults to card view and shows meal cards', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cards' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'false');
+    // Card view renders meal names in a heading-like element, not a table cell
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('switches to table view when Table button is clicked', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Cards' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('persists view choice to localStorage', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+
+    expect(localStorage.getItem('meal-library-view')).toBe('table');
+  });
+
+  it('restores table view from localStorage on mount', async () => {
+    localStorage.setItem('meal-library-view', 'table');
+
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+});
+
+describe('MealsPage hide built-ins', () => {
+  it('shows built-in meals by default', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', placeholderKind: null }),
+            meal({ id: 'm-2', name: 'Free Day', placeholderKind: 'FREE_DAY' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    expect(screen.getByText('Free Day')).toBeInTheDocument();
+  });
+
+  it('hides built-in meals when checkbox is checked', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', placeholderKind: null }),
+            meal({ id: 'm-2', name: 'Free Day', placeholderKind: 'FREE_DAY' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide built-ins' }));
+
+    expect(screen.getByText('Tacos')).toBeInTheDocument();
+    expect(screen.queryByText('Free Day')).not.toBeInTheDocument();
+  });
+
+  it('shows built-in meals again after unchecking', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', placeholderKind: null }),
+            meal({ id: 'm-2', name: 'Free Day', placeholderKind: 'FREE_DAY' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Hide built-ins' });
+    fireEvent.click(checkbox);
+    expect(screen.queryByText('Free Day')).not.toBeInTheDocument();
+
+    fireEvent.click(checkbox);
+    expect(screen.getByText('Free Day')).toBeInTheDocument();
+  });
+
+  it('clear filters resets hide-built-ins to unchecked', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', placeholderKind: null }),
+            meal({ id: 'm-2', name: 'Free Day', placeholderKind: 'FREE_DAY' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Hide built-ins' });
+    fireEvent.click(checkbox);
+    expect(screen.queryByText('Free Day')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getByText('Free Day')).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('updates the meal count to reflect hidden built-ins', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([
+            meal({ id: 'm-1', name: 'Tacos', placeholderKind: null }),
+            meal({ id: 'm-2', name: 'Soup', placeholderKind: null }),
+            meal({ id: 'm-3', name: 'Free Day', placeholderKind: 'FREE_DAY' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+    expect(screen.getByText('Showing 3 of 3')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide built-ins' }));
+    expect(screen.getByText('Showing 2 of 3')).toBeInTheDocument();
+  });
+});
+
+describe('MealsPage collections', () => {
   it('sends the selected collection as a `collections` query param', async () => {
     const urls: string[] = [];
     server.use(
