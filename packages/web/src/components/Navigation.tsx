@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import ThemeToggle from './ThemeToggle';
 import WeekSelector from './WeekSelector';
+import Select from './Select';
 
 export default function Navigation() {
     const { user, logout } = useAuth();
@@ -115,16 +116,17 @@ export default function Navigation() {
                                     {families.length > 1 && (
                                         <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                                             <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Family</p>
-                                            <select
+                                            <Select
+                                                selectSize="sm"
                                                 value={familyId ?? ''}
                                                 onChange={e => handleSwitchFamily(e.target.value)}
-                                                className="w-full text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full rounded-md"
                                                 aria-label="Select family"
                                             >
                                                 {families.map(f => (
                                                     <option key={f.id} value={f.id}>{f.name}</option>
                                                 ))}
-                                            </select>
+                                            </Select>
                                         </div>
                                     )}
 
@@ -199,15 +201,16 @@ export default function Navigation() {
                     {families.length > 1 && (
                         <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-3">
                             <label className="block text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Family</label>
-                            <select
+                            <Select
+                                selectSize="sm"
                                 value={familyId ?? ''}
                                 onChange={e => switchFamily(e.target.value)}
-                                className="w-full text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-700 rounded-md px-2 py-1"
+                                className="w-full rounded-md"
                             >
                                 {families.map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </div>
                     )}
 

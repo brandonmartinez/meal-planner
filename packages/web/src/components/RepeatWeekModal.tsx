@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import Modal from './Modal';
+import Select from './Select';
 import { formatWeekRange, shiftWeek } from '../utils/date';
 import { repeatWeek } from '../api/weekPlan';
 import type { WeekPlan, RepeatWeekExistingMode } from '@meal-planner/shared';
@@ -101,15 +102,15 @@ export default function RepeatWeekModal({
           </label>
           <label className="flex flex-col text-sm text-gray-700 dark:text-gray-300">
             <span className="mb-1">If this week has meals</span>
-            <select
+            <Select
+              selectSize="sm"
               value={existingMode}
               onChange={e => setExistingMode(e.target.value as RepeatWeekExistingMode)}
-              className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             >
               <option value="error">Stop (don't overwrite)</option>
               <option value="skip">Skip days that already have meals</option>
               <option value="replace">Replace this week's meals</option>
-            </select>
+            </Select>
           </label>
         </div>
 

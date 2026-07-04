@@ -86,7 +86,7 @@ export default function TemplatesPage() {
   if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 text-gray-900 dark:text-gray-100">
+    <div className="mx-auto max-w-7xl px-4 py-8 text-gray-900 dark:text-gray-100">
       <div className="mb-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-2xl" aria-hidden="true">

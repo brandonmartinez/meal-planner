@@ -2,6 +2,7 @@ import { useRef, useState, useId } from 'react';
 import { importMeals, type ImportMealsResultDTO } from '../api/meals';
 import { parseMealsCSV, type ParsedImportMeal } from '../utils/csv';
 import Modal from './Modal';
+import Select from './Select';
 
 interface Props {
     familyId: string;
@@ -207,15 +208,15 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                         <label htmlFor={modeId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                             When a meal with the same name already exists
                         </label>
-                        <select
+                        <Select
                             id={modeId}
                             value={mode}
                             onChange={e => setMode(e.target.value as 'skip' | 'replace')}
-                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
+                            className="text-sm"
                         >
                             <option value="skip">Skip (keep existing meal)</option>
                             <option value="replace">Replace (overwrite description and ingredients)</option>
-                        </select>
+                        </Select>
                     </div>
 
                     {warnings.length > 0 && (

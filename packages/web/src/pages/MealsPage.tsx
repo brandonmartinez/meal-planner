@@ -9,6 +9,7 @@ import { useFamily } from '../hooks/useFamily';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useTaxonomy } from '../hooks/useTaxonomy';
 import ImportMealsDialog from '../components/ImportMealsDialog';
+import Select from '../components/Select';
 import DifficultyBadge from '../components/DifficultyBadge';
 import RecentBadge from '../components/RecentBadge';
 import LastCookedBadge from '../components/LastCookedBadge';
@@ -194,7 +195,7 @@ export default function MealsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
+    <div className="max-w-7xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Meal Library</h1>
         <div className="flex gap-2">
@@ -272,16 +273,16 @@ export default function MealsPage() {
             <label htmlFor="meals-sort" className="text-sm text-gray-600 dark:text-gray-300">
               Sort
             </label>
-            <select
+            <Select
               id="meals-sort"
+              selectSize="sm"
               value={sort}
               onChange={e => setSort(e.target.value as typeof sort)}
-              className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
             >
               {SORT_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
-            </select>
+            </Select>
             <button
               type="button"
               onClick={() => setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
@@ -300,11 +301,11 @@ export default function MealsPage() {
               >
                 Collection
               </label>
-              <select
+              <Select
                 id="collection-filter"
+                selectSize="sm"
                 value={collectionFilter}
                 onChange={e => setCollectionFilter(e.target.value)}
-                className="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-sm"
               >
                 <option value="">All collections</option>
                 {collectionOptions.map(c => (
@@ -312,7 +313,7 @@ export default function MealsPage() {
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 

@@ -56,7 +56,7 @@ export default function CookingModePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <LoadingSpinner message="Loading recipe..." />
       </div>
     );
@@ -64,7 +64,7 @@ export default function CookingModePage() {
 
   if (error || !meal) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div
           role="alert"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"
@@ -89,7 +89,7 @@ export default function CookingModePage() {
   // recipes — there is nothing to cook, so send the user back to the detail view.
   if (meal.placeholderKind !== null) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200"
@@ -119,7 +119,7 @@ export default function CookingModePage() {
     setCompletedSteps(prev => toggleInSet(prev, id));
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-4">
         <Link
           to={exitTo}

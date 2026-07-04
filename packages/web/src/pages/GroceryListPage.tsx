@@ -6,6 +6,7 @@ import { useWeek } from '../context/WeekContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem } from '../api/grocery';
 import { formatWeekRange } from '../utils/date';
 import LoadingSpinner from '../components/LoadingSpinner';
+import Select from '../components/Select';
 import type { GroceryList, GroceryItem } from '@meal-planner/shared';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -138,7 +139,7 @@ export default function GroceryListPage() {
     }
 
     return (
-        <div className="max-w-2xl mx-auto px-4 py-6">
+        <div className="max-w-7xl mx-auto px-4 py-6">
             <div className="flex items-center justify-between mb-4">
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🛒 Grocery List</h1>
                 <Link
@@ -272,16 +273,16 @@ export default function GroceryListPage() {
                                 />
                             </div>
                             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                                <select
+                                <Select
                                     value={newItemCategory}
                                     onChange={e => setNewItemCategory(e.target.value)}
                                     aria-label="New item category"
-                                    className="w-full sm:w-auto px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    className="w-full sm:w-auto"
                                 >
                                     {groceryCategoryOptions.map(cat => (
                                         <option key={cat} value={cat}>{CATEGORY_EMOJIS[cat] || '📦'} {cat}</option>
                                     ))}
-                                </select>
+                                </Select>
                                 <button
                                     type="submit"
                                     className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"

@@ -1,5 +1,6 @@
 import { useId, useState, useEffect, useCallback } from 'react';
 import Modal from './Modal';
+import Select from './Select';
 import {
   createTemplate,
   updateTemplate,
@@ -256,14 +257,14 @@ export default function TemplateFormModal({
                         <label htmlFor={selectId} className="sr-only">
                           Add a meal to {label}
                         </label>
-                        <select
+                        <Select
+                          selectSize="sm"
                           id={selectId}
                           value=""
                           onChange={e => {
                             addEntry(day, e.target.value);
                             e.target.value = '';
                           }}
-                          className="text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                         >
                           <option value="">+ Add a meal…</option>
                           {meals.map(m => (
@@ -271,7 +272,7 @@ export default function TemplateFormModal({
                               {m.name}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
                     </div>
                     {dayEntries.length > 0 && (

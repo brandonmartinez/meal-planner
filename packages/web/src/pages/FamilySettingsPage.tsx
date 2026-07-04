@@ -28,6 +28,7 @@ import { AGENT_SCOPES, AGENT_SCOPE_METADATA } from '@meal-planner/shared';
 import { useAuth } from '../context/AuthContext.js';
 import { useFamily } from '../hooks/useFamily';
 import LoadingSpinner from '../components/LoadingSpinner';
+import Select from '../components/Select';
 
 export default function FamilySettingsPage() {
   const { familyId, hasFamilies } = useFamily();
@@ -242,7 +243,7 @@ export default function FamilySettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
+    <div className="max-w-7xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-6">{family.name} — Settings</h1>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -256,16 +257,16 @@ export default function FamilySettingsPage() {
             for connected MagicMirror² displays.
           </p>
           <form onSubmit={handleSaveTimezone} className="flex gap-2 items-center">
-            <select
+            <Select
               aria-label="Family timezone"
               value={tzDraft}
               onChange={(e) => { setTzDraft(e.target.value); setTzSaved(false); }}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+              className="flex-1"
             >
               {tzOptions.map((tz) => (
                 <option key={tz} value={tz}>{tz}</option>
               ))}
-            </select>
+            </Select>
             <button
               type="submit"
               disabled={tzSaving || tzDraft === family.timezone}
