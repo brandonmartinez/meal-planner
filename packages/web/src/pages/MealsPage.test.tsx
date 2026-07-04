@@ -1,9 +1,27 @@
+import { vi } from 'vitest';
 import { http, HttpResponse, delay } from 'msw';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { server } from '../../tests/msw/server';
-import { renderWithProviders, screen, fireEvent, waitFor } from '../test-utils/render';
+import { renderWithProviders, render, screen, fireEvent, waitFor } from '../test-utils/render';
+import { AuthProvider } from '../context/AuthContext';
+import { ThemeProvider } from '../context/ThemeContext';
+import { ToastProvider } from '../context/ToastContext';
+import { WeekProvider } from '../context/WeekContext';
 import MealsPage from './MealsPage';
 
 const FAMILY_ID = 'fam-1';
+
+// Family resolution has its own tests; mock it so navigation assertions stay
+// deterministic and don't race against auth loading.
+vi.mock('../hooks/useFamily', () => ({
+  useFamily: () => ({
+    familyId: FAMILY_ID,
+    family: { id: FAMILY_ID, name: 'Smiths', timezone: 'UTC' },
+    families: [{ id: FAMILY_ID, name: 'Smiths', timezone: 'UTC' }],
+    switchFamily: vi.fn(),
+    hasFamilies: true,
+  }),
+}));
 
 function authMeWithFamily() {
   return http.get('/api/auth/me', () =>
@@ -880,5 +898,125 @@ describe('MealsPage collections', () => {
         new URL(urls[urls.length - 1]).searchParams.getAll('collections'),
       ).toEqual([]),
     );
+  });
+});
+
+describe('MealsPage modal navigation', () => {
+  function fullMeal(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'm-1',
+      name: 'Tacos',
+      description: 'A delicious taco recipe',
+      placeholderKind: null,
+      difficulty: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      servings: null,
+      sourceUrl: null,
+      notes: null,
+      familyId: FAMILY_ID,
+      imageUrl: null,
+      favorite: false,
+      rating: null,
+      tags: [],
+      collections: [],
+      ingredients: [],
+      ...overrides,
+    };
+  }
+
+  function renderAtPath(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <AuthProvider>
+          <ThemeProvider>
+            <ToastProvider>
+              <WeekProvider>
+                <Routes>
+                  <Route path="/meals" element={<MealsPage />} />
+                  <Route path="/meals/:mealId" element={<MealsPage />} />
+                </Routes>
+              </WeekProvider>
+            </ToastProvider>
+          </ThemeProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it('card view title click opens modal', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(fullMeal()),
+      ),
+    );
+
+    renderAtPath('/meals');
+    expect(await screen.findByRole('link', { name: 'Tacos' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Tacos' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('table view title click opens modal', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(fullMeal()),
+      ),
+    );
+
+    renderAtPath('/meals');
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Tacos' }));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('deep-link /meals/:id opens modal on load', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(fullMeal()),
+      ),
+    );
+
+    renderAtPath('/meals/m-1');
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('modal close navigates to /meals', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(fullMeal()),
+      ),
+    );
+
+    renderAtPath('/meals/m-1');
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
