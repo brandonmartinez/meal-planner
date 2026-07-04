@@ -44,3 +44,7 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 ## 2026-07-03T03:07:00-0400 — Wave 4 shipped
 
 - Shipped #117 planning templates UI; PR #147 squash `ed355be` merged. Added `/templates` management and WeekPlan apply flow with `existingMode:error` first, 409 confirmation, skip/replace choices, and parent-gated destructive actions.
+
+📌 Team update (2026-07-03T17:14:44Z): Merged UI wave (PR #157 unapprove toggle + photo stamp, PR #159 responsive toolbar, PR #160 photo stamp label fix + 5 additional design decisions: password manager suppression, collections redesign, meal form polish, repeat-week modal, template modal pagination) — Linus
+
+📌 Team update (2026-07-03T17:36:35-0400): PR #161 DayCard stamp hotfix Round 2 merged to main (f5e2662). Fixed invisible-stamp regression from #160 by using `size-16 sm:size-20` shorthand (both dimensions definite 64px/80px, no wrapper, no absolute positioning). Tests assert size-16, object-cover, no absolute. Web lint 0, tests 527/527. — logged by Scribe

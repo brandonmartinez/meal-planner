@@ -47,3 +47,5 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 ## 2026-07-03T03:07:00-0400 — Wave 4 shipped
 
 - Shipped #115 category/collection week-filling; PR #149 squash `eafed5e` merged. `fillWeek()` creates unapproved suggestions, reuses random-plan filters, supports error/skip/replace, and adds REST/agent/MCP parity without schema changes.
+
+📌 Team update (2026-07-03T17:14:44Z): Merged PR #158 (remove meal taxonomy categories #107, fold into tags + full parity removal) + PR #152 collection-side meal membership endpoint + 2 additional design decisions (collections-membership coordination) — Livingston

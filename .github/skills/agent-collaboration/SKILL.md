@@ -29,6 +29,13 @@ Format:
 **Why:** {rationale}
 ```
 
+### Issue Capture (substantial work)
+Every substantial change MUST have a GitHub issue **before** work starts. "Substantial" = more than a few lines of code, or touching multiple files. Trivial one-liners (typo, single-value tweak) are exempt.
+
+- The coordinator opens the issue up front, applies the right labels (`type:feature`/`type:bug`/`type:chore`, plus the owning `squad:{name}` label), and passes the issue number into the spawn prompt.
+- Agents reference the issue in the branch name (`squad/{issue}-{slug}`), commits, and PR body (`Closes #N`) so the issue auto-closes on merge.
+- If you discover mid-task that scope has grown beyond a trivial fix and no issue exists, flag it to the coordinator so one gets created before the PR opens.
+
 ### Cross-Agent Communication
 If you need another team member's input, say so in your response. The coordinator will bring them in. Don't try to do work outside your domain.
 
@@ -40,3 +47,4 @@ If you have reviewer authority and reject work: the original author is locked ou
 - Don't write directly to `.squad/decisions.md` — always use the inbox drop-box
 - Don't modify other agents' history.md files — that's Scribe's job
 - Don't assume CWD is the repo root — always use TEAM ROOT
+- Don't start substantial work (multi-file or more than a few lines) without a GitHub issue — capture it first
