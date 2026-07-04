@@ -10,7 +10,6 @@ import FamilySettingsPage from './pages/FamilySettingsPage';
 import CreateFamilyPage from './pages/CreateFamilyPage';
 import JoinFamilyPage from './pages/JoinFamilyPage';
 import MealsPage from './pages/MealsPage';
-import MealDetailPage from './pages/MealDetailPage';
 import CookingModePage from './pages/CookingModePage';
 import MealFormPage from './pages/MealFormPage';
 import CollectionsPage from './pages/CollectionsPage';
@@ -121,7 +120,7 @@ function AppRoutes() {
       />
       <Route
         path="/meals/:mealId"
-        element={<ProtectedRoute><Layout><MealDetailPage /></Layout></ProtectedRoute>}
+        element={<ProtectedRoute><Layout><MealsPage /></Layout></ProtectedRoute>}
       />
       <Route
         path="/meals/:mealId/cook"

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { listMeals, deleteMeal, exportMeals } from '../api/meals';
 import { listCollections } from '../api/collections';
 import type { RecipeCollection } from '../api/collections';
@@ -16,6 +16,7 @@ import RecentBadge from '../components/RecentBadge';
 import LastCookedBadge from '../components/LastCookedBadge';
 import { MealThumbnail } from '../components/MealThumbnail';
 import MealTagList from '../components/MealTagList';
+import MealDetailModal from '../components/MealDetailModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { MealListItemDTO, Difficulty } from '@meal-planner/shared';
 import { MEAL_PLACEHOLDERS, MEAL_DIFFICULTIES } from '@meal-planner/shared';
@@ -40,6 +41,7 @@ export default function MealsPage() {
   const { familyId, hasFamilies } = useFamily();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { mealId: modalMealId } = useParams<{ mealId?: string }>();
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
@@ -433,7 +435,16 @@ export default function MealsPage() {
                     </span>
                   )}
                   <h3 className="min-w-0 flex-1 text-base font-semibold leading-snug line-clamp-2 min-h-[2.75rem]">
-                    {meal.name}
+                    {isPlaceholder ? (
+                      meal.name
+                    ) : (
+                      <Link
+                        to={`/meals/${meal.id}`}
+                        className="hover:underline focus:outline-none"
+                      >
+                        {meal.name}
+                      </Link>
+                    )}
                   </h3>
                 </div>
 
@@ -540,9 +551,18 @@ export default function MealsPage() {
                         className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                       >
                         <td className="py-2.5 pr-4">
-                          <span className="font-medium text-gray-900 dark:text-gray-100">
-                            {meal.name}
-                          </span>
+                          {isPlaceholder ? (
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {meal.name}
+                            </span>
+                          ) : (
+                            <Link
+                              to={`/meals/${meal.id}`}
+                              className="font-medium text-gray-900 dark:text-gray-100 hover:underline focus:outline-none"
+                            >
+                              {meal.name}
+                            </Link>
+                          )}
                         </td>
                         <td className="py-2.5 pr-4">
                           <MealTagList tags={meal.tags} />
@@ -609,6 +629,14 @@ export default function MealsPage() {
             </div>
           )}
         </>
+      )}
+
+      {modalMealId != null && familyId != null && (
+        <MealDetailModal
+          familyId={familyId}
+          mealId={modalMealId}
+          onClose={() => navigate('/meals')}
+        />
       )}
     </div>
   );
