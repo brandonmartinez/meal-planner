@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { http, HttpResponse, delay } from 'msw';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { server } from '../../tests/msw/server';
@@ -9,6 +10,18 @@ import { WeekProvider } from '../context/WeekContext';
 import MealsPage from './MealsPage';
 
 const FAMILY_ID = 'fam-1';
+
+// Family resolution has its own tests; mock it so navigation assertions stay
+// deterministic and don't race against auth loading.
+vi.mock('../hooks/useFamily', () => ({
+  useFamily: () => ({
+    familyId: FAMILY_ID,
+    family: { id: FAMILY_ID, name: 'Smiths', timezone: 'UTC' },
+    families: [{ id: FAMILY_ID, name: 'Smiths', timezone: 'UTC' }],
+    switchFamily: vi.fn(),
+    hasFamilies: true,
+  }),
+}));
 
 function authMeWithFamily() {
   return http.get('/api/auth/me', () =>
