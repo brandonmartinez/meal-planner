@@ -8,6 +8,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useTaxonomy } from '../hooks/useTaxonomy';
 import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
+import Select from './Select';
 import RecentBadge from './RecentBadge';
 import LastCookedBadge from './LastCookedBadge';
 import DifficultyBadge from './DifficultyBadge';
@@ -203,11 +204,12 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
             >
               Collection
             </label>
-            <select
+            <Select
               id="picker-collection-filter"
+              selectSize="sm"
               value={collectionFilter}
               onChange={e => setCollectionFilter(e.target.value)}
-              className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-2 py-1 text-xs"
+              className="flex-1 text-xs"
             >
               <option value="">All collections</option>
               {collectionOptions.map(c => (
@@ -215,7 +217,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
       </div>

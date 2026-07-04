@@ -52,7 +52,7 @@ export default function MealDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <LoadingSpinner message="Loading recipe..." />
       </div>
     );
@@ -60,7 +60,7 @@ export default function MealDetailPage() {
 
   if (error || !meal) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div
           role="alert"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"
@@ -79,7 +79,7 @@ export default function MealDetailPage() {
   if (meal.placeholderKind !== null) {
     const meta = MEAL_PLACEHOLDERS[meal.placeholderKind];
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-4">
           <BackLink />
         </div>
@@ -103,7 +103,7 @@ export default function MealDetailPage() {
   const ingredients = meal.ingredients ?? [];
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-4">
         <BackLink />
       </div>

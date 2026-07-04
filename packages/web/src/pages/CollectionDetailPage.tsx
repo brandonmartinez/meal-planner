@@ -71,7 +71,7 @@ export default function CollectionDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <LoadingSpinner message="Loading collection…" />
       </div>
     );
@@ -79,7 +79,7 @@ export default function CollectionDetailPage() {
 
   if (notFound) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <EmptyState
           icon="📚"
           title="Collection not found"
@@ -92,7 +92,7 @@ export default function CollectionDetailPage() {
 
   if (error || !collection) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div
           role="alert"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"
@@ -107,7 +107,7 @@ export default function CollectionDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-4">
         <BackLink />
       </div>

@@ -8,6 +8,7 @@ import { MEAL_DIFFICULTIES } from '@meal-planner/shared';
 import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import type { Difficulty } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
+import Select from '../components/Select';
 import TokenField from '../components/TokenField';
 import Combobox from '../components/Combobox';
 import StarRating from '../components/StarRating';
@@ -177,7 +178,7 @@ export default function MealFormPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
+    <div className="max-w-7xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
       <h1 className="text-2xl font-bold mb-6">{isEdit ? 'Edit Meal' : 'New Meal'}</h1>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -213,11 +214,11 @@ export default function MealFormPage() {
         <div className="flex flex-wrap gap-6 items-end">
           <div>
             <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Difficulty</label>
-            <select
+            <Select
               id="difficulty"
               value={difficulty}
               onChange={e => setDifficulty(e.target.value as Difficulty | '')}
-              className="w-full sm:w-48 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded"
+              className="w-full sm:w-48"
             >
               <option value="">None</option>
               {MEAL_DIFFICULTIES.map(level => (
@@ -225,7 +226,7 @@ export default function MealFormPage() {
                   {level.charAt(0) + level.slice(1).toLowerCase()}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="pb-1">
@@ -384,11 +385,12 @@ export default function MealFormPage() {
                   aria-label={`Unit for ${rowLabel}`}
                   className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
                 />
-                <select
+                <Select
+                  selectSize="sm"
                   value={ing.category}
                   onChange={e => handleIngredientChange(index, 'category', e.target.value)}
                   aria-label={`Category for ${rowLabel}`}
-                  className="w-32 h-[1.875rem] px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded text-sm"
+                  className="w-32"
                 >
                   <option value="">Category</option>
                   {(ing.category &&
@@ -398,7 +400,7 @@ export default function MealFormPage() {
                   ).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
-                </select>
+                </Select>
                 <button
                   type="button"
                   onClick={() => removeIngredient(index)}
