@@ -27,7 +27,7 @@ export const imageUrlSchema = z
   });
 
 export const listMealsQuerySchema = z.object({
-  /** Case-insensitive substring search on meal name (ILIKE, pg_trgm-accelerated). */
+  /** Case-insensitive substring search across meal name, description, tag names, and collection names. */
   search: z.string().optional(),
 
   /** Filter to specific difficulty levels; multiple values are OR'd. */

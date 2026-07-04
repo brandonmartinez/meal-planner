@@ -108,16 +108,87 @@ describe("meals service", () => {
       expect(result.hasMore).toBe(true);
     });
 
-    it("applies a case-insensitive contains filter on name when search is given", async () => {
+    it("uses an OR clause covering name, description, tag name, and collection name when search is given", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", { search: "pizza" });
       const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
-        where: { name?: unknown };
+        where: { OR?: unknown[] };
       };
-      expect(arg.where.name).toEqual({
-        contains: "pizza",
-        mode: "insensitive",
+      expect(arg.where.OR).toEqual([
+        { name: { contains: "pizza", mode: "insensitive" } },
+        { description: { contains: "pizza", mode: "insensitive" } },
+        {
+          tags: {
+            some: {
+              tag: { name: { contains: "pizza", mode: "insensitive" } },
+            },
+          },
+        },
+        {
+          collections: {
+            some: {
+              recipeCollection: {
+                name: { contains: "pizza", mode: "insensitive" },
+              },
+            },
+          },
+        },
+      ]);
+    });
+
+    it("search: matches via tag name (OR arm present in query)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "italian" });
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: Array<{ tags?: unknown }> };
+      };
+      const tagArm = arg.where.OR?.find((c) => "tags" in c);
+      expect(tagArm).toEqual({
+        tags: {
+          some: {
+            tag: { name: { contains: "italian", mode: "insensitive" } },
+          },
+        },
       });
+    });
+
+    it("search: matches via collection name (OR arm present in query)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "weeknight" });
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: Array<{ collections?: unknown }> };
+      };
+      const collArm = arg.where.OR?.find((c) => "collections" in c);
+      expect(collArm).toEqual({
+        collections: {
+          some: {
+            recipeCollection: {
+              name: { contains: "weeknight", mode: "insensitive" },
+            },
+          },
+        },
+      });
+    });
+
+    it("search: matches via description (OR arm present in query)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "hearty" });
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: Array<{ description?: unknown }> };
+      };
+      const descArm = arg.where.OR?.find((c) => "description" in c);
+      expect(descArm).toEqual({
+        description: { contains: "hearty", mode: "insensitive" },
+      });
+    });
+
+    it("search: no OR clause when search is absent (name-only regression guard)", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1");
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: unknown };
+      };
+      expect(arg.where).not.toHaveProperty("OR");
     });
 
     it("flags a meal scheduled this week as recent with its lastScheduledOn", async () => {
