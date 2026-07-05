@@ -121,7 +121,8 @@ imagesRouter.post(
         byteSize: asset.byteSize,
         createdAt: asset.createdAt,
       });
-    } catch {
+    } catch (err) {
+      console.error("[images] upload failed", err);
       res.status(500).json({ error: "Failed to upload image" });
     }
   },
@@ -158,7 +159,8 @@ imagesRouter.get(
       res.setHeader("Content-Type", asset.contentType);
       res.setHeader("Content-Length", String(bytes.length));
       res.send(bytes);
-    } catch {
+    } catch (err) {
+      console.error("[images] fetch failed", err);
       res.status(500).json({ error: "Failed to fetch image" });
     }
   },
@@ -185,7 +187,8 @@ imagesRouter.delete(
       await prisma.imageAsset.delete({ where: { id: asset.id } });
       await imageStorage.delete(familyId, asset.id, asset.extension);
       res.status(204).end();
-    } catch {
+    } catch (err) {
+      console.error("[images] delete failed", err);
       res.status(500).json({ error: "Failed to delete image" });
     }
   },
