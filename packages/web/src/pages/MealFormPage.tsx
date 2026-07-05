@@ -21,7 +21,13 @@ interface IngredientRow {
   category: string;
 }
 
+interface InstructionRow {
+  text: string;
+  timerMinutes: string;
+}
+
 const emptyIngredient = (): IngredientRow => ({ name: '', quantity: '', unit: '', category: '' });
+const emptyInstruction = (): InstructionRow => ({ text: '', timerMinutes: '' });
 
 export default function MealFormPage() {
   const { mealId } = useParams<{ mealId?: string }>();
@@ -39,6 +45,7 @@ export default function MealFormPage() {
   const sourceUrlId = useId();
   const notesId = useId();
   const favoriteId = useId();
+  const instructionFieldIdPrefix = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -52,6 +59,7 @@ export default function MealFormPage() {
   const [favorite, setFavorite] = useState(false);
   const [rating, setRating] = useState('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
+  const [instructions, setInstructions] = useState<InstructionRow[]>([emptyInstruction()]);
   const [tags, setTags] = useState<string[]>([]);
   const [collections, setCollections] = useState<string[]>([]);
   const [collectionSuggestions, setCollectionSuggestions] = useState<string[]>([]);
@@ -82,6 +90,15 @@ export default function MealFormPage() {
         setRating(meal.rating != null ? String(meal.rating) : '');
         setTags(meal.tags?.map(t => t.name) ?? []);
         setCollections(meal.collections?.map(c => c.name) ?? []);
+        setInstructions(
+          meal.instructions?.length
+            ? meal.instructions.map(step => ({
+                text: step.text,
+                timerMinutes:
+                  step.timerMinutes != null ? String(step.timerMinutes) : '',
+              }))
+            : [emptyInstruction()],
+        );
         if (meal.ingredients?.length) {
           setIngredients(
             meal.ingredients.map(i => ({
@@ -115,6 +132,23 @@ export default function MealFormPage() {
     setIngredients(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleInstructionChange = (
+    index: number,
+    field: keyof InstructionRow,
+    value: string,
+  ) => {
+    setInstructions(prev =>
+      prev.map((step, i) => (i === index ? { ...step, [field]: value } : step)),
+    );
+  };
+
+  const addInstruction = () =>
+    setInstructions(prev => [...prev, emptyInstruction()]);
+
+  const removeInstruction = (index: number) => {
+    setInstructions(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!familyId || !name.trim()) return;
@@ -137,6 +171,13 @@ export default function MealFormPage() {
       return Number.isFinite(n) ? n : null;
     };
 
+    const validInstructions = instructions
+      .filter(step => step.text.trim())
+      .map(step => ({
+        text: step.text.trim(),
+        timerMinutes: toNum(step.timerMinutes),
+      }));
+
     const data = {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -150,6 +191,11 @@ export default function MealFormPage() {
       favorite,
       rating: toNum(rating),
       ingredients: validIngredients.length ? validIngredients : undefined,
+      instructions: isEdit
+        ? validInstructions
+        : validInstructions.length
+          ? validInstructions
+          : undefined,
       // Always send explicit arrays so removals persist on update (server
       // treats the arrays as the full desired set; resolve-or-create by name).
       tags,
@@ -410,6 +456,67 @@ export default function MealFormPage() {
                   ✕
                 </button>
               </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Steps</label>
+            <button
+              type="button"
+              onClick={addInstruction}
+              className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60"
+            >
+              + Add Step
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {instructions.map((step, index) => {
+              const rowLabel = step.text.trim() || `step ${index + 1}`;
+              const textId = `${instructionFieldIdPrefix}-step-text-${index}`;
+              const timerId = `${instructionFieldIdPrefix}-step-timer-${index}`;
+              return (
+                <div key={textId} className="flex flex-wrap gap-2 items-center">
+                  <label htmlFor={textId} className="sr-only">
+                    Step {index + 1} text
+                  </label>
+                  <input
+                    id={textId}
+                    type="text"
+                    value={step.text}
+                    onChange={e => handleInstructionChange(index, 'text', e.target.value)}
+                    placeholder="Describe this step"
+                    aria-label={`Step ${index + 1} text`}
+                    className="flex-1 min-w-48 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
+                  />
+                  <label htmlFor={timerId} className="sr-only">
+                    Timer for {rowLabel}
+                  </label>
+                  <input
+                    id={timerId}
+                    type="number"
+                    min={0}
+                    value={step.timerMinutes}
+                    onChange={e =>
+                      handleInstructionChange(index, 'timerMinutes', e.target.value)
+                    }
+                    placeholder="Timer"
+                    aria-label={`Timer for ${rowLabel}`}
+                    className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm"
+                  />
+                  <span className="text-sm text-gray-500 dark:text-gray-400">min</span>
+                  <button
+                    type="button"
+                    onClick={() => removeInstruction(index)}
+                    className="ml-auto text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-base px-3 py-1"
+                    aria-label={`Remove ${rowLabel}`}
+                  >
+                    ✕
+                  </button>
+                </div>
               );
             })}
           </div>

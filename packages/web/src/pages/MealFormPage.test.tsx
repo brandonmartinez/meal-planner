@@ -235,6 +235,129 @@ describe('MealFormPage core metadata', () => {
   });
 });
 
+describe('MealFormPage instructions', () => {
+  it('renders the steps section with an editable first row', async () => {
+    renderForm('/meals/new');
+
+    expect(screen.getByText('Steps')).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'Step 1 text' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('spinbutton', { name: 'Timer for step 1' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove step 1' }),
+    ).toBeInTheDocument();
+  });
+
+  it('loads existing steps and timers when editing a meal', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Lasagna',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          familyId: FAMILY_ID,
+          ingredients: [],
+          instructions: [
+            { id: 'step-1', mealId: 'm-1', position: 0, text: 'Boil noodles', timerMinutes: 12 },
+            { id: 'step-2', mealId: 'm-1', position: 1, text: 'Assemble layers', timerMinutes: null },
+          ],
+        }),
+      ),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    const firstStep = await screen.findByRole<HTMLInputElement>('textbox', {
+      name: 'Step 1 text',
+    });
+    await waitFor(() => expect(firstStep.value).toBe('Boil noodles'));
+    expect(
+      screen.getByRole<HTMLInputElement>('spinbutton', {
+        name: 'Timer for Boil noodles',
+      }).value,
+    ).toBe('12');
+    expect(
+      screen.getByRole<HTMLInputElement>('textbox', { name: 'Step 2 text' }).value,
+    ).toBe('Assemble layers');
+  });
+
+  it('submits instructions with timers when creating a meal', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Tacos');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Step 1 text' }),
+      'Warm the tortillas',
+    );
+    await userEvent.type(
+      screen.getByRole('spinbutton', { name: 'Timer for Warm the tortillas' }),
+      '2',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /\+ add step/i }));
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Step 2 text' }),
+      'Assemble the tacos',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body.instructions).toEqual([
+      { text: 'Warm the tortillas', timerMinutes: 2 },
+      { text: 'Assemble the tacos', timerMinutes: null },
+    ]);
+  });
+
+  it('sends an empty instructions array when all steps are removed on update', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Lasagna',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          familyId: FAMILY_ID,
+          ingredients: [],
+          instructions: [
+            { id: 'step-1', mealId: 'm-1', position: 0, text: 'Bake until bubbly', timerMinutes: 35 },
+          ],
+        }),
+      ),
+      http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove Bake until bubbly' }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove Bake until bubbly' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+    expect(body.instructions).toEqual([]);
+  });
+});
+
 describe('MealFormPage favorite and rating', () => {
   it('sends favorite=true and a rating when creating a meal', async () => {
     let body: Record<string, unknown> = {};
