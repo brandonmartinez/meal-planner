@@ -522,3 +522,21 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **By:** Linus
 **What:** Meal title clicks in the library (card + table) now open the shared `MealDetailModal` (same component WeekPlanPage uses) instead of navigating to a standalone page. `/meals/:mealId` is now a bookmarkable deep-link that renders MealsPage with the modal open (two sibling routes `/meals` and `/meals/:mealId` share MealsPage). Standalone `MealDetailPage.tsx` (+ test) fully deleted/retired. Cooking-mode exit restores the modal with zero code changes because CookingModePage already exits to `/meals/${meal.id}`.
 **Why:** Brandon wanted title clicks to open the same view-modal as the weekly planner, the dedicated detail page to not exist, and cooking-mode exit to return to the last history location with the modal preserved. Product decision (Brandon): keep `/meals/:id` as a bookmarkable deep-link that opens the modal over the library.
+
+### 2026-07-05: Select truly standardized — appearance-none + custom chevron (#174)
+
+**By:** Linus
+**What:** `Select.tsx` now sets `appearance-none` on the inner `<select>` (removes native OS arrow in webkit + moz) and renders one absolutely-positioned `<svg stroke="currentColor">` chevron (`text-gray-500 dark:text-gray-400`, `pointer-events-none`), matching the #162 edit-meal dropdown. Stripped fighting overrides from ~5 usages (Navigation `rounded-md`×2, MealPicker `text-xs`, ImportMealsDialog `text-sm`); aligned MealsPage search input `px-4`→`px-3`. 554/554 web tests, lint clean.
+**Why:** #174 — the earlier #168 work migrated all native selects to the component but never truly standardized appearance (native arrows remained, callers diverged on bg/padding so heights/backgrounds didn't line up). Brandon: "they still look inconsistent everywhere."
+
+### 2026-07-05: MagicMirror module — full-width week view with images (MMM-meal-planner#3)
+
+**By:** Linus (in the separate brandonmartinez/MMM-meal-planner repo, PR #4)
+**What:** Added a `layout` config option to the MMM-meal-planner MagicMirror² module. New `layout: "week"` (default) renders a full-width CSS-grid strip of 7 day-cells, each with the meal image (`object-fit:cover`, 4/3, lazy), day label with `today` emphasis, meal name, and optional 2-line-clamped description. Placeholder meals / null `imageUrl` / empty days fall back to the server `icon` (or 🍽) on a dimmed tile. `layout: "list"` preserves the original vertical list verbatim. Consumes existing `/api/display/meals` fields (`imageUrl`, `description`, `icon`, `placeholderKind`) — NO meal-planner backend change. All text via `textContent`/`escapeHtml`; `img.src` set as DOM property (never interpolated).
+**Why:** Brandon wanted the mirror to leverage the new meal images + descriptions as a rich full-width visual across the 7 rolling days, instead of the plain vertical text list.
+
+### 2026-07-05: Vendor MMM-meal-planner as a git submodule (#178)
+
+**By:** Squad (Coordinator)
+**What:** Added `brandonmartinez/MMM-meal-planner` as a git submodule at `integrations/magic-mirror` (PR #179), pinned to the week-view commit `035119d`. Only `.gitmodules` + the gitlink are checked in; module source stays in its own repo. Non-recursive clones and CI are unaffected. Update later via `git submodule update --remote integrations/magic-mirror && git commit`.
+**Why:** Brandon wanted the module associated with the meal-planner domain "without it necessarily being fully checked into the repo … a git ref of some sort," so the two stay discoverable together while the module keeps its own repo, issues, and release cadence. Chosen over subtree (checks files in), package.json git-dep (wrong install model), and staying fully separate.
