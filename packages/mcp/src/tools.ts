@@ -309,6 +309,15 @@ export function createToolHandlers(
       const { collectionId, ...rest } = args;
       return run(() => client.updateCollection(collectionId, rest));
     },
+
+    upload_meal_image: (args: {
+      mealId: string;
+      imageData: string;
+      contentType: string;
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.uploadMealImage(args.mealId, args.imageData, args.contentType),
+      ),
   };
 }
 
@@ -335,6 +344,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   unapprove_suggestion: "meal_plan:approve",
   create_meal: "meal:write",
   update_meal: "meal:write",
+  upload_meal_image: "meal:image",
   get_current_grocery_list: "meal_plan:read",
 };
 
@@ -1041,5 +1051,45 @@ export function registerTools(
       inputSchema: {},
     },
     () => handlers.get_current_grocery_list(),
+  );
+
+  server.registerTool(
+    "upload_meal_image",
+    {
+      title: "Upload meal image",
+      description:
+        "Upload a binary image FILE for a meal in the family's catalog " +
+        "(distinct from setting an external imageUrl on create_meal/" +
+        "update_meal). Provide the image as base64-encoded bytes plus its " +
+        "content type. Accepted types: image/png, image/jpeg, image/webp, " +
+        "image/gif. Maximum size 5 MiB (measured on the decoded bytes). The " +
+        "server authoritatively validates the real image type from the file's " +
+        "magic bytes and ignores the declared contentType for that security " +
+        "decision, so a mismatched or spoofed contentType is rejected. " +
+        "Placeholder meals (e.g. Free Day, Leftovers) cannot have images. " +
+        "Requires the meal:image scope.",
+      inputSchema: {
+        mealId: z
+          .string()
+          .min(1)
+          .describe("The id of the meal to attach the image to."),
+        imageData: z
+          .string()
+          .min(1)
+          .describe(
+            "The image file contents as a standard base64-encoded string " +
+              "(no data: URI prefix). Decoded size must not exceed 5 MiB.",
+          ),
+        contentType: z
+          .string()
+          .min(1)
+          .describe(
+            "The declared MIME type of the image (e.g. image/png, " +
+              "image/jpeg, image/webp, image/gif). Informational only — the " +
+              "server verifies the true type from the file's magic bytes.",
+          ),
+      },
+    },
+    (args) => handlers.upload_meal_image(args),
   );
 }

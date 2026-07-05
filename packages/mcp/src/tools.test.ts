@@ -23,6 +23,7 @@ function stubClient() {
     unapproveSuggestion: vi.fn(),
     createMeal: vi.fn(),
     updateMeal: vi.fn(),
+    uploadMealImage: vi.fn(),
     getCurrentGroceryList: vi.fn(),
     listCollections: vi.fn(),
     createCollection: vi.fn(),
@@ -815,6 +816,61 @@ describe("createToolHandlers", () => {
 
     expect(client.fillWeek).toHaveBeenCalledWith(FAMILY, "2026-07-06", {});
   });
+
+  it("upload_meal_image forwards mealId, base64 data, and contentType", async () => {
+    const client = stubClient();
+    client.uploadMealImage.mockResolvedValue({
+      id: "asset-1",
+      mealId: "meal-1",
+      contentType: "image/png",
+      byteSize: 10,
+      createdAt: "2026-07-05T00:00:00.000Z",
+    });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.upload_meal_image({
+      mealId: "meal-1",
+      imageData: "iVBORw0KGgo=",
+      contentType: "image/png",
+    });
+
+    expect(client.uploadMealImage).toHaveBeenCalledWith(
+      "meal-1",
+      "iVBORw0KGgo=",
+      "image/png",
+    );
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual({
+      id: "asset-1",
+      mealId: "meal-1",
+      contentType: "image/png",
+      byteSize: 10,
+      createdAt: "2026-07-05T00:00:00.000Z",
+    });
+  });
+
+  it("upload_meal_image surfaces an API error as an error result", async () => {
+    const client = stubClient();
+    client.uploadMealImage.mockRejectedValue(
+      new ApiError(413, "Image exceeds the maximum allowed size."),
+    );
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.upload_meal_image({
+      mealId: "meal-1",
+      imageData: "iVBORw0KGgo=",
+      contentType: "image/png",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("maximum allowed size");
+  });
 });
 
 describe("registerTools", () => {
@@ -846,6 +902,7 @@ describe("registerTools", () => {
       "create_meal",
       "update_meal",
       "get_current_grocery_list",
+      "upload_meal_image",
     ]);
     // Each registration provides a config with an inputSchema and a handler.
     for (const call of registerTool.mock.calls) {
@@ -1045,6 +1102,33 @@ describe("registerTools", () => {
       (listCall?.[1] as { inputSchema: Record<string, unknown> }).inputSchema,
     ).toEqual({});
   });
+
+  it("registers upload_meal_image with its schema, magic-byte note, and scope (#180, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const uploadCall = registerTool.mock.calls.find(
+      (c) => c[0] === "upload_meal_image",
+    );
+    expect(uploadCall).toBeDefined();
+    const description = (uploadCall?.[1] as { description: string }).description;
+    // The description must advertise accepted types, the size limit, that the
+    // server authoritatively sniffs magic bytes, and the required scope.
+    expect(description).toContain("image/png");
+    expect(description).toContain("5 MiB");
+    expect(description).toContain("magic bytes");
+    expect(description).toContain("meal:image");
+    // The input schema exposes the three declared args.
+    const schema = (
+      uploadCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(schema).toHaveProperty("mealId");
+    expect(schema).toHaveProperty("imageData");
+    expect(schema).toHaveProperty("contentType");
+  });
 });
 
 describe("TOOL_SCOPES", () => {
@@ -1069,6 +1153,7 @@ describe("TOOL_SCOPES", () => {
       create_collection: "meal:write",
       update_collection: "meal:write",
       get_current_grocery_list: "meal_plan:read",
+      upload_meal_image: "meal:image",
     });
   });
 });

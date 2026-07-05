@@ -1,10 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prismaMock } from "../../tests/helpers/prisma.js";
-import { buildReq, buildRes } from "../../tests/helpers/express.js";
+import { buildReq, buildRes, buildNext } from "../../tests/helpers/express.js";
+import { getRouteHandler } from "../../tests/helpers/router.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
+vi.mock("../services/imageStorage.js", () => ({
+  imageStorage: {
+    put: vi.fn(),
+    get: vi.fn(),
+    delete: vi.fn(),
+  },
+  sniffImageMime: vi.fn(),
+  ALLOWED_IMAGE_TYPES: {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  },
+  MAX_IMAGE_BYTES: 5 * 1024 * 1024,
+}));
 
 const { agentRouter } = await import("./agent.js");
+const { imageStorage, sniffImageMime } = await import(
+  "../services/imageStorage.js"
+);
 
 type Handler = (req: any, res: any, next: (err?: unknown) => void) => unknown;
 
@@ -1273,5 +1292,213 @@ describe("agent routes (end-to-end middleware chain)", () => {
     await runStack(handlers, req, res);
 
     expect(res.statusCode).toBe(422);
+  });
+});
+
+describe("agent image upload (POST /meals/:mealId/image, scope meal:image)", () => {
+  // A valid PNG magic-byte prefix + a couple of payload bytes.
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+
+  const imageHandler = () =>
+    getRouteHandler(agentRouter, "post", "/meals/:mealId/image");
+
+  /** A req whose agent is pre-populated (auth + rawImageBody are bypassed). */
+  function handlerReq(mealId: string, body: unknown) {
+    return buildReq({
+      params: { mealId },
+      body,
+      agent: {
+        id: "cred-1",
+        familyId: "fam-1",
+        createdBy: "parent-1",
+        scopes: ["meal:image"],
+      },
+    } as never);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (sniffImageMime as ReturnType<typeof vi.fn>).mockReturnValue("image/png");
+  });
+
+  it("happy path: sniffs the bytes, persists the asset, stores the file, audits allowed (201)", async () => {
+    prismaMock.meal.findUnique.mockResolvedValue({
+      id: "meal-1",
+      familyId: "fam-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.imageAsset.create.mockResolvedValue({
+      id: "asset-1",
+      mealId: "meal-1",
+      contentType: "image/png",
+      byteSize: PNG.length,
+      createdAt: new Date("2026-07-05T00:00:00Z"),
+    } as never);
+
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", PNG), res, buildNext());
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body).toMatchObject({
+      id: "asset-1",
+      mealId: "meal-1",
+      contentType: "image/png",
+      byteSize: PNG.length,
+    });
+    // The stored contentType/extension come from the SNIFF, not any client hint.
+    expect(prismaMock.imageAsset.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        familyId: "fam-1",
+        mealId: "meal-1",
+        contentType: "image/png",
+        extension: "png",
+        byteSize: PNG.length,
+        createdBy: "parent-1",
+      }),
+    });
+    expect(imageStorage.put).toHaveBeenCalledWith(
+      "fam-1",
+      "asset-1",
+      "png",
+      PNG,
+    );
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:image",
+        outcome: "allowed",
+        targetType: "imageAsset",
+        targetIds: ["asset-1", "meal-1"],
+      }),
+    });
+  });
+
+  it("empty body: rejects before any DB work (400)", async () => {
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", Buffer.alloc(0)), res, buildNext());
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("oversize: a payload larger than MAX_IMAGE_BYTES is rejected (413)", async () => {
+    const huge = Buffer.alloc(5 * 1024 * 1024 + 1, 1);
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", huge), res, buildNext());
+
+    expect(res.statusCode).toBe(413);
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("bad magic bytes: an unrecognized payload is rejected on the sniff (400)", async () => {
+    (sniffImageMime as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+    const res = buildRes();
+    const bogus = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+    await imageHandler()(handlerReq("meal-1", bogus), res, buildNext());
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("cross-family: a meal owned by another family is a 404 (no leak), audited denied", async () => {
+    prismaMock.meal.findUnique.mockResolvedValue({
+      id: "meal-1",
+      familyId: "fam-OTHER",
+      placeholderKind: null,
+    } as never);
+
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", PNG), res, buildNext());
+
+    expect(res.statusCode).toBe(404);
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+    expect(imageStorage.put).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:image",
+        outcome: "denied",
+        reason: "not_found",
+      }),
+    });
+  });
+
+  it("missing meal: a nonexistent meal is a 404, audited denied", async () => {
+    prismaMock.meal.findUnique.mockResolvedValue(null as never);
+
+    const res = buildRes();
+    await imageHandler()(handlerReq("nope", PNG), res, buildNext());
+
+    expect(res.statusCode).toBe(404);
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("placeholder meal: cannot receive an image (400), audited denied", async () => {
+    prismaMock.meal.findUnique.mockResolvedValue({
+      id: "meal-1",
+      familyId: "fam-1",
+      placeholderKind: "LEFTOVERS",
+    } as never);
+
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", PNG), res, buildNext());
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+    expect(imageStorage.put).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "meal:image",
+        outcome: "denied",
+        reason: "placeholder",
+      }),
+    });
+  });
+
+  it("file-write failure: rolls the ImageAsset row back and 500s", async () => {
+    prismaMock.meal.findUnique.mockResolvedValue({
+      id: "meal-1",
+      familyId: "fam-1",
+      placeholderKind: null,
+    } as never);
+    prismaMock.imageAsset.create.mockResolvedValue({
+      id: "asset-1",
+      mealId: "meal-1",
+      contentType: "image/png",
+      byteSize: PNG.length,
+      createdAt: new Date(),
+    } as never);
+    (imageStorage.put as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("disk full"),
+    );
+    prismaMock.imageAsset.delete.mockResolvedValue({} as never);
+
+    const res = buildRes();
+    await imageHandler()(handlerReq("meal-1", PNG), res, buildNext());
+
+    expect(res.statusCode).toBe(500);
+    expect(prismaMock.imageAsset.delete).toHaveBeenCalledWith({
+      where: { id: "asset-1" },
+    });
+  });
+
+  it("wrong scope: a credential without meal:image is denied by requireScope (403, no upload)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals/:mealId/image");
+    const req = agentReq({ mealId: "meal-1" }, {});
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(prismaMock.imageAsset.create).not.toHaveBeenCalled();
+    expect(imageStorage.put).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "missing_scope",
+      }),
+    });
   });
 });

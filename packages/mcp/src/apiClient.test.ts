@@ -526,4 +526,74 @@ describe("MealPlannerApiClient", () => {
       ApiTransportError,
     );
   });
+
+  describe("uploadMealImage (meal:image)", () => {
+    // Base64 for a short PNG magic-byte sequence.
+    const PNG_B64 = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
+    ]).toString("base64");
+
+    it("POSTs decoded bytes as application/octet-stream to the meal image endpoint", async () => {
+      const { client, fetchFn } = makeClient(
+        jsonResponse(
+          {
+            id: "asset-1",
+            mealId: "meal-1",
+            contentType: "image/png",
+            byteSize: 10,
+            createdAt: "2026-07-05T00:00:00.000Z",
+          },
+          201,
+        ),
+      );
+
+      const result = await client.uploadMealImage(
+        "meal-1",
+        PNG_B64,
+        "image/png",
+      );
+
+      const { url, init } = lastCall(fetchFn);
+      expect(init.method).toBe("POST");
+      expect(url.pathname).toBe("/api/agent/meals/meal-1/image");
+      const headers = init.headers as Record<string, string>;
+      expect(headers["content-type"]).toBe("application/octet-stream");
+      // The declared type rides along only as an informational header.
+      expect(headers["x-image-content-type"]).toBe("image/png");
+      expect(headers["x-agent-key"]).toBe(AGENT_KEY);
+      // The body is the DECODED bytes, not the base64 string.
+      const sentBytes = new Uint8Array(init.body as ArrayBuffer);
+      expect(Array.from(sentBytes)).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
+      ]);
+      expect(result).toMatchObject({ id: "asset-1", mealId: "meal-1" });
+    });
+
+    it("never places the agent key in the URL", async () => {
+      const { client, fetchFn } = makeClient(
+        jsonResponse({ id: "asset-1" }, 201),
+      );
+      await client.uploadMealImage("meal-1", PNG_B64, "image/png");
+      const { url } = lastCall(fetchFn);
+      expect(url.toString()).not.toContain(AGENT_KEY);
+    });
+
+    it("percent-encodes the meal id in the path", async () => {
+      const { client, fetchFn } = makeClient(
+        jsonResponse({ id: "asset-1" }, 201),
+      );
+      await client.uploadMealImage("a/b", PNG_B64, "image/png");
+      const { url } = lastCall(fetchFn);
+      expect(url.pathname).toBe("/api/agent/meals/a%2Fb/image");
+    });
+
+    it("maps a non-ok response to an ApiError", async () => {
+      const { client } = makeClient(
+        jsonResponse({ error: "Image exceeds maximum size" }, 413),
+      );
+      await expect(
+        client.uploadMealImage("meal-1", PNG_B64, "image/png"),
+      ).rejects.toBeInstanceOf(ApiError);
+    });
+  });
 });
