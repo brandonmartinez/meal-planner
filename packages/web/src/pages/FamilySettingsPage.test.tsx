@@ -523,6 +523,48 @@ describe('FamilySettingsPage', () => {
     expect(createdBody?.scopes).toEqual(['meal_plan:read', 'meal:write']);
   });
 
+  it('auto-surfaces the meal:image scope checkbox and sends it when selected (#180)', async () => {
+    let createdBody: { name?: unknown; scopes?: unknown } | undefined;
+    server.use(
+      ...parentBase(),
+      http.get('/api/families/:id/agent-credentials', () => HttpResponse.json([])),
+      http.post('/api/families/:id/agent-credentials', async ({ request }) => {
+        createdBody = (await request.json()) as typeof createdBody;
+        return HttpResponse.json(
+          {
+            id: 'cred-new',
+            name: 'Image Uploader',
+            scopes: ['meal_plan:read', 'meal:image'],
+            key: 'agent-raw-key-xyz',
+            expiresAt: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderWithProviders(<FamilySettingsPage />);
+
+    await userEvent.type(
+      await screen.findByPlaceholderText(/credential name/i),
+      'Image Uploader',
+    );
+
+    // The new binary-upload scope surfaces as a grantable checkbox purely from
+    // the shared scope metadata — no bespoke UI wiring for #180.
+    const imageCheckbox = screen.getByRole('checkbox', {
+      name: 'Upload meal images',
+    });
+    expect(imageCheckbox).toBeInTheDocument();
+    await userEvent.click(imageCheckbox);
+
+    await userEvent.click(screen.getByRole('button', { name: /create credential/i }));
+
+    await waitFor(() => expect(createdBody?.name).toBe('Image Uploader'));
+    expect(createdBody?.scopes).toEqual(['meal_plan:read', 'meal:image']);
+  });
+
   it('copies the freshly revealed agent key and confirms', async () => {
     server.use(
       ...parentBase(),

@@ -84,6 +84,7 @@ export const AGENT_SCOPES = [
   "meal_plan:schedule",
   "meal_plan:approve",
   "meal:write",
+  "meal:image",
 ] as const;
 
 export type AgentScope = (typeof AGENT_SCOPES)[number];
@@ -117,6 +118,11 @@ export const AGENT_SCOPE_METADATA: Record<AgentScope, AgentScopeMetadata> = {
   "meal:write": {
     label: "Create & edit meals",
     description: "Create new meals and edit existing meals in the catalog.",
+  },
+  "meal:image": {
+    label: "Upload meal images",
+    description:
+      "Upload binary image files (PNG, JPEG, WebP, GIF) for meals in the catalog.",
   },
 };
 

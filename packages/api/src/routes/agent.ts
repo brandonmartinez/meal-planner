@@ -1,9 +1,10 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction, raw } from "express";
 import { z } from "zod";
 import { Difficulty } from "@prisma/client";
 import {
   MEAL_DIFFICULTIES,
 } from "@meal-planner/shared";
+import prisma from "../config/database.js";
 import { authenticateAgent, requireScope } from "../middleware/agentAuth.js";
 import {
   AGENT_SCOPES,
@@ -17,6 +18,12 @@ import * as collectionService from "../services/recipeCollections.js";
 import * as templateService from "../services/planningTemplates.js";
 import * as groceryService from "../services/grocery.js";
 import * as groceryCategoryService from "../services/groceryCategories.js";
+import {
+  imageStorage,
+  sniffImageMime,
+  ALLOWED_IMAGE_TYPES,
+  MAX_IMAGE_BYTES,
+} from "../services/imageStorage.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
 
 /**
@@ -109,6 +116,34 @@ const fillWeekSchema = z.object({
 
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || "";
+}
+
+/**
+ * Route-scoped raw-body parser for a single binary image upload on the agent
+ * surface. Mirrors the browser `routes/images.ts` parser exactly: we do NOT add
+ * a multipart library (a single raw body with an explicit byte limit is a much
+ * smaller attack surface), and the global `express.json()` in index.ts only
+ * consumes `application/json`, so the octet-stream image body the MCP client
+ * sends reaches this parser untouched (base64 is decoded to raw bytes by the
+ * client — never inflated JSON that the 100kb global limit would reject).
+ *
+ * Express's raw() calls next(err) with a PayloadTooLargeError when the limit is
+ * exceeded; there is no global error handler, so we translate that (and any
+ * other body error) into a clean JSON response here.
+ */
+function rawImageBody(req: Request, res: Response, next: NextFunction): void {
+  raw({ type: () => true, limit: MAX_IMAGE_BYTES })(req, res, (err?: unknown) => {
+    if (err) {
+      const e = err as { type?: string; status?: number };
+      if (e.type === "entity.too.large" || e.status === 413) {
+        res.status(413).json({ error: "Image exceeds maximum size" });
+        return;
+      }
+      res.status(400).json({ error: "Invalid request body" });
+      return;
+    }
+    next();
+  });
 }
 
 // --- Family-from-key routes (no `:familyId` segment) ----------------------
@@ -291,6 +326,127 @@ agentRouter.patch(
         return;
       }
       res.status(500).json({ error: "Failed to update meal" });
+    }
+  },
+);
+
+// POST /api/agent/meals/:mealId/image — scope: meal:image
+// Upload a binary image FOR a meal in the family resolved from the key. The MCP
+// client base64-decodes the caller's image to raw bytes and POSTs them as
+// application/octet-stream, so `rawImageBody` (not express.json) parses the
+// body. Mirrors the browser routes/images.ts security posture exactly:
+//   - trust magic-byte sniffing over any client-declared content type
+//     (the informational `x-image-content-type` header is NEVER trusted);
+//   - reject an empty/oversize/unrecognized payload before any DB work;
+//   - cross-family isolation: a meal from another family is a 404 (no leak);
+//   - a placeholder meal cannot receive an image (400);
+//   - roll the ImageAsset row back if the on-disk write fails;
+//   - the asset is served back only by opaque id (via the browser GET route).
+// Every decision is audited with the concrete meal id (denials) or meal+asset
+// ids (success).
+agentRouter.post(
+  "/meals/:mealId/image",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.IMAGE),
+  rawImageBody,
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const mealId = paramStr(req.params.mealId);
+    try {
+      const body = req.body as Buffer;
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        res.status(400).json({ error: "Empty image body" });
+        return;
+      }
+      if (body.length > MAX_IMAGE_BYTES) {
+        res.status(413).json({ error: "Image exceeds maximum size" });
+        return;
+      }
+
+      // Trust the bytes, not the client's declared content type: sniff the
+      // magic bytes and derive both the stored contentType and the on-disk
+      // extension from the fixed allowlist. A mismatched or unknown payload is
+      // rejected. The declared `x-image-content-type` header is informational
+      // only and never consulted for a security decision.
+      const sniffed = sniffImageMime(body);
+      if (!sniffed) {
+        res.status(400).json({ error: "Unsupported or invalid image format" });
+        return;
+      }
+      const extension = ALLOWED_IMAGE_TYPES[sniffed];
+
+      // The meal must exist inside THIS family (cross-family isolation) and must
+      // not be a placeholder (mirrors the meals-service guard).
+      const meal = await prisma.meal.findUnique({ where: { id: mealId } });
+      if (!meal || meal.familyId !== agent.familyId) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.IMAGE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [mealId],
+          reason: "not_found",
+        });
+        res.status(404).json({ error: "Meal not found" });
+        return;
+      }
+      if (meal.placeholderKind !== null) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.IMAGE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [mealId],
+          reason: "placeholder",
+        });
+        res
+          .status(400)
+          .json({ error: "Cannot attach image to placeholder meal" });
+        return;
+      }
+
+      const asset = await prisma.imageAsset.create({
+        data: {
+          familyId: agent.familyId,
+          mealId,
+          contentType: sniffed,
+          extension,
+          byteSize: body.length,
+          createdBy: agent.createdBy,
+        },
+      });
+
+      try {
+        await imageStorage.put(agent.familyId, asset.id, extension, body);
+      } catch (err) {
+        // Roll the row back if the file write fails so we never leave a
+        // dangling DB record pointing at bytes that were never written.
+        await prisma.imageAsset
+          .delete({ where: { id: asset.id } })
+          .catch(() => {});
+        throw err;
+      }
+
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId: agent.familyId,
+        action: AGENT_SCOPES.IMAGE,
+        outcome: "allowed",
+        targetType: "imageAsset",
+        targetIds: [asset.id, mealId],
+      });
+
+      res.status(201).json({
+        id: asset.id,
+        mealId: asset.mealId,
+        contentType: asset.contentType,
+        byteSize: asset.byteSize,
+        createdAt: asset.createdAt,
+      });
+    } catch {
+      res.status(500).json({ error: "Failed to upload image" });
     }
   },
 );

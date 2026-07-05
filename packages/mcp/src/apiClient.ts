@@ -67,6 +67,23 @@ export interface CreateMealInput {
   }[];
 }
 
+/** The 201 response returned when a binary meal image is uploaded on the agent
+ *  surface (`meal:image` scope). The image itself is served back only by opaque
+ *  id via the browser GET route; this shape carries no raw bytes. */
+export interface UploadMealImageResult {
+  /** Opaque image asset id. */
+  id: string;
+  /** The meal the image is associated with. */
+  mealId: string | null;
+  /** The authoritative content type as sniffed from the magic bytes by the API
+   *  (NOT the caller-declared type). */
+  contentType: string;
+  /** Stored byte size of the decoded image. */
+  byteSize: number;
+  /** ISO timestamp the asset row was created. */
+  createdAt: string;
+}
+
 /** Partial edit of an existing meal. Every field is optional; `difficulty` may
  *  be `null` to clear it. At least one field must be provided. */
 export interface UpdateMealInput {
@@ -349,6 +366,77 @@ export class MealPlannerApiClient {
       `/api/agent/meals/${encodeURIComponent(mealId)}`,
       { body: input },
     );
+  }
+
+  /**
+   * Upload a binary image FOR a meal (agent surface; `meal:image` scope).
+   *
+   * MCP tool calls carry JSON, so the caller supplies the image as
+   * base64-encoded bytes plus a declared content type. This method decodes the
+   * base64 to raw bytes and POSTs them as `application/octet-stream` — NOT as a
+   * JSON body — so a multi-megabyte image is never inflated into JSON and
+   * rejected by the API's global 100kb json limit. The declared content type
+   * rides along in the informational `x-image-content-type` header only; the
+   * API authoritatively sniffs the magic bytes and ignores that header for its
+   * security decision.
+   *
+   * `imageData` MUST be standard base64. The raw agent key is sent only in the
+   * `x-agent-key` header and never placed in the URL or any log/error output.
+   */
+  async uploadMealImage(
+    mealId: string,
+    imageData: string,
+    contentType: string,
+  ): Promise<UploadMealImageResult> {
+    const bytes = Buffer.from(imageData, "base64");
+    const url = new URL(
+      `${this.baseUrl}/api/agent/meals/${encodeURIComponent(mealId)}/image`,
+    );
+
+    const headers: Record<string, string> = {
+      [AGENT_KEY_HEADER]: this.agentKey,
+      accept: "application/json",
+      "content-type": "application/octet-stream",
+      // Informational only — the API trusts magic-byte sniffing, not this.
+      "x-image-content-type": contentType,
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let response: Response;
+    try {
+      response = await this.fetchFn(url, {
+        method: "POST",
+        headers,
+        body: new Uint8Array(bytes),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      // Never surface the URL/headers (which carry the key) — just the reason.
+      const reason =
+        err instanceof Error && err.name === "AbortError"
+          ? `Request timed out after ${this.timeoutMs}ms`
+          : err instanceof Error
+            ? err.message
+            : "Network request failed";
+      throw new ApiTransportError(reason);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      throw await this.toApiError(response);
+    }
+
+    try {
+      return (await response.json()) as UploadMealImageResult;
+    } catch {
+      throw new ApiError(
+        response.status,
+        "API returned a non-JSON response body",
+      );
+    }
   }
 
   // --- Collection write (family-from-key; meal:write scope) -----------------
