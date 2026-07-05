@@ -91,6 +91,7 @@ export async function createMeal(
     favorite?: boolean;
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     collections?: string[];
   },
@@ -117,6 +118,7 @@ export async function updateMeal(
     favorite?: boolean;
     rating?: number | null;
     ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+    instructions?: { text: string; timerMinutes?: number | null }[];
     tags?: string[];
     collections?: string[];
   },
