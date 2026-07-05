@@ -212,7 +212,6 @@ export default function ImportMealsDialog({ familyId, onClose, onImported }: Pro
                             id={modeId}
                             value={mode}
                             onChange={e => setMode(e.target.value as 'skip' | 'replace')}
-                            className="text-sm"
                         >
                             <option value="skip">Skip (keep existing meal)</option>
                             <option value="replace">Replace (overwrite description and ingredients)</option>
