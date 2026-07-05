@@ -474,7 +474,6 @@ Non-destructive by default. The UI never sends a destructive `replace` without e
 **What:** Removed the meal **taxonomy category** feature (#107) entirely across the stack in one atomic, buildable PR against `main`. Existing data is preserved: each meal's category names are folded into its tags by a raw-SQL data migration that runs BEFORE the DROP TABLEs. Migration: (1) Insert a `Tag` for every `Category` missing one (same `familyId`+`nameNormalized`), via `gen_random_uuid()::text` with `WHERE NOT EXISTS` dedup. (2) Insert a `MealTag` `(mealId, tagId)` for every `MealCategory` (JOIN on `familyId`+`nameNormalized`), `ON CONFLICT ("mealId","tagId") DO NOTHING`. (3) `DROP TABLE "MealCategory"`, then `DROP TABLE "Category"`. Parity: meal-category create/update/list-filter/random/fill and the category-taxonomy CRUD were removed in lockstep across REST (routes/meals.ts, routes/weekPlan.ts), the agent route (routes/agent.ts), MCP (apiClient.ts + tools.ts, Zod raw shape), and web — keeping REST/MCP/agent in parity. Export CSV drops the `categories` column; import folds a legacy `categories` column into tags for backward-compat. **KEEP boundary:** ❌ REMOVED — meal taxonomy: `Category` model, `MealCategory` join, `Meal.categories` + `Family.categories` relations. ✅ KEPT (untouched) — grocery aisle categories: `GroceryCategory` (#119), `MealIngredient.category`, `GroceryItem.category`, `INGREDIENT_CATEGORIES`, `list_grocery_categories`, the grocery-categories route/hooks.
 **Why:** Brandon decided meal taxonomy categories overlap too much with tags and add no value. `Category ≅ Tag` and `MealCategory ≅ MealTag` are structurally identical, so the fold is a straight per-family copy with no data loss.
 
-
 ### 2026-07-03: Fix DayCard stamp zero-width regression (aspect-square-from-stretch)
 
 **By:** Linus
@@ -540,3 +539,21 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **By:** Squad (Coordinator)
 **What:** Added `brandonmartinez/MMM-meal-planner` as a git submodule at `integrations/magic-mirror` (PR #179), pinned to the week-view commit `035119d`. Only `.gitmodules` + the gitlink are checked in; module source stays in its own repo. Non-recursive clones and CI are unaffected. Update later via `git submodule update --remote integrations/magic-mirror && git commit`.
 **Why:** Brandon wanted the module associated with the meal-planner domain "without it necessarily being fully checked into the repo … a git ref of some sort," so the two stay discoverable together while the module keeps its own repo, issues, and release cadence. Chosen over subtree (checks files in), package.json git-dep (wrong install model), and staying fully separate.
+
+### 2026-07-05T12:57:39-0400: MCP meal image upload uses base64 bytes + `meal:image` scope (#180)
+
+**By:** brandonmartinez (via Copilot coordinator)
+**What:** MCP meal image upload will pass base64-encoded bytes in the tool call plus a declared `contentType`. The API validates with magic-byte sniffing (`sniffImageMime`) over the client-declared type, validates decoded size before persisting, and stores via the existing image pipeline. A new additive `meal:image` scope, distinct from `meal:write`, gates the agent upload route.
+**Why:** API + web binary upload infrastructure already exists from #104, but MCP only had the `imageUrl` scalar path from #103. Parity §2a pre-authorized a dedicated image scope; base64 keeps MCP transport simple while server-side sniffing and size validation keep trust boundaries on the API. Tracked in #180 and dispatched to Livingston.
+
+### 2026-07-05T21:05:00Z: Production deploys via the cluster GitOps repo, not meal-planner's k8s/
+
+**By:** Scribe — on behalf of brandonmartinez (incident #181 post-mortem)
+**What:** Production for meal-planner deploys via the separate `raspberry-pi-kubernetes-cluster` GitOps repo (ArgoCD-managed), NOT via the `k8s/` folder inside this repo. Infra changes that need to reach the production cluster — PVCs, Deployments, environment variables, security contexts, etc. — belong in `raspberry-pi-kubernetes-cluster`, not here. Meal-planner's `k8s/` folder never reaches prod; it is development/documentation reference only.
+**Why:** During the #181 incident (prod 500 on meal-image upload), Basher initially authored a fix in this repo's `k8s/` folder (PR #182). That PR was CLOSED when the wrong-repo pivot was discovered. The real fix (issue #104 in `raspberry-pi-kubernetes-cluster`) is being handled by that repo's own Squad (Dallas, GitOps engineer). This decision prevents the same confusion in future: any prod infra ticket arising from meal-planner issues must be filed in `raspberry-pi-kubernetes-cluster`, not here.
+
+### 2026-07-05T21:05:00Z: Durable meal-image storage in prod — Longhorn RWX PVC + fsGroup:1000
+
+**By:** Scribe — on behalf of brandonmartinez (incident #181 post-mortem)
+**What:** The correct production image-storage fix uses: a Longhorn ReadWriteMany (RWX) PVC shared across all HPA replicas (2–3), `IMAGE_STORAGE_ROOT=/data/images` env var, and `fsGroup: 1000` in the pod security context so the `node` user (uid/gid 1000) can write to the mounted volume. This fix lives in the `raspberry-pi-kubernetes-cluster` GitOps repo as issue #104.
+**Why:** The prod deployment uses a Horizontal Pod Autoscaler (2–3 replicas). A ReadWriteOnce (RWO) PVC (like k3s `local-path`) can only bind to one node/pod at a time — using RWO with multiple replicas would either make uploads fail on non-binding pods or require dropping the HPA to `replicas: 1`. Longhorn RWX allows all replicas to share one durable volume, preserving the existing autoscaling policy. Basher's inbox entry `basher-image-storage-k8s.md` documented a single-replica RWO approach in the wrong repo (PR #182, CLOSED) — that entry is superseded by this one.
