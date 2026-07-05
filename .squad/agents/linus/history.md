@@ -44,3 +44,9 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 ## 2026-07-03T03:07:00-0400 — Wave 4 shipped
 
 - Shipped #117 planning templates UI; PR #147 squash `ed355be` merged. Added `/templates` management and WeekPlan apply flow with `existingMode:error` first, 409 confirmation, skip/replace choices, and parent-gated destructive actions.
+
+📌 Team update (2026-07-03T17:14:44Z): Merged UI wave (PR #157 unapprove toggle + photo stamp, PR #159 responsive toolbar, PR #160 photo stamp label fix + 5 additional design decisions: password manager suppression, collections redesign, meal form polish, repeat-week modal, template modal pagination) — Linus
+
+📌 Team update (2026-07-03T17:36:35-0400): PR #161 DayCard stamp hotfix Round 2 merged to main (f5e2662). Fixed invisible-stamp regression from #160 by using `size-16 sm:size-20` shorthand (both dimensions definite 64px/80px, no wrapper, no absolute positioning). Tests assert size-16, object-cover, no absolute. Web lint 0, tests 527/527. — logged by Scribe
+
+📌 Team update (2026-07-04T10:57:00-04:00): Meal Library UI epic #168 shipped across 4 merged PRs. Linus delivered: PR #169 standardized Select control + page-width foundations (shared component, 12 replacements, 9 pages normalized to max-w-7xl); PR #170 Meal Library density + filtering (card/table toggle with persistence, TagMultiSelect, hide-built-ins); PR #173 meal detail modal navigation (title clicks open MealDetailModal, `/meals/:id` deep-link preserves modal on cooking-mode exit). Decision records reconciled by Scribe.

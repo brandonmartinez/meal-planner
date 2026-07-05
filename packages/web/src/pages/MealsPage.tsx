@@ -62,6 +62,10 @@ export default function MealsPage() {
     return saved === 'table' ? 'table' : 'card';
   });
   const [hideBuiltins, setHideBuiltins] = useState(false);
+  // Collapse the filter controls down to just the search bar (mobile only).
+  // Defaults to collapsed so mobile opens to a clean search-only view; the
+  // `sm:block` in the wrapper keeps everything expanded on desktop regardless.
+  const [filtersCollapsed, setFiltersCollapsed] = useState(true);
 
   // Debounce the raw search input so fast typing does not spam the list API.
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -248,13 +252,13 @@ export default function MealsPage() {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+            className="hidden sm:inline-block px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
           >
             {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+            className="hidden sm:inline-block px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-100 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
           >
             Import CSV
           </button>
@@ -280,16 +284,43 @@ export default function MealsPage() {
           when the family has taxonomy so empty families stay
           clutter-free. Multi-select is OR-within-facet; facets AND together. */}
       <div className="mb-6 space-y-3">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search meals..."
-          aria-label="Search meals"
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
-        />
+        <div className="flex items-stretch gap-2">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search meals..."
+            aria-label="Search meals"
+            className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded"
+          />
+          <button
+            type="button"
+            onClick={() => setFiltersCollapsed(prev => !prev)}
+            aria-expanded={!filtersCollapsed}
+            aria-controls="meal-filters"
+            aria-label={filtersCollapsed ? 'Show filters' : 'Hide filters'}
+            className="sm:hidden shrink-0 flex items-center justify-center rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <svg
+              className={`h-5 w-5 transition-transform ${filtersCollapsed ? '' : 'rotate-180'}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div
+          id="meal-filters"
+          className={`space-y-3 ${filtersCollapsed ? 'hidden sm:block' : ''}`}
+        >
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <div
             role="group"
             aria-label="Filter by difficulty"
@@ -362,16 +393,6 @@ export default function MealsPage() {
               </Select>
             </div>
           )}
-
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Clear filters
-            </button>
-          )}
         </div>
 
         {tagOptions.length > 0 && (
@@ -385,15 +406,28 @@ export default function MealsPage() {
           </div>
         )}
 
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-fit">
-          <input
-            type="checkbox"
-            checked={hideBuiltins}
-            onChange={e => setHideBuiltins(e.target.checked)}
-            className="rounded border-gray-300 dark:border-gray-600"
-          />
-          Hide built-ins
-        </label>
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-fit">
+            <input
+              type="checkbox"
+              checked={hideBuiltins}
+              onChange={e => setHideBuiltins(e.target.checked)}
+              className="rounded border-gray-300 dark:border-gray-600"
+            />
+            Hide built-ins
+          </label>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        </div>
       </div>
 
       {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
@@ -536,10 +570,9 @@ export default function MealsPage() {
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     <th className="pb-2 pr-4 font-semibold">Name</th>
-                    <th className="pb-2 pr-4 font-semibold">Tags</th>
-                    <th className="pb-2 pr-4 font-semibold">Difficulty</th>
-                    <th className="pb-2 pr-4 font-semibold">Built-in</th>
-                    <th className="pb-2 font-semibold sr-only">Actions</th>
+                    <th className="hidden sm:table-cell pb-2 pr-4 font-semibold">Tags</th>
+                    <th className="pb-2 pr-4 text-center font-semibold">Difficulty</th>
+                    <th className="pb-2 text-right font-semibold sr-only">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -548,7 +581,14 @@ export default function MealsPage() {
                     return (
                       <tr
                         key={meal.id}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                        onClick={
+                          isPlaceholder
+                            ? undefined
+                            : () => navigate(`/meals/${meal.id}`)
+                        }
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                          isPlaceholder ? '' : 'cursor-pointer'
+                        }`}
                       >
                         <td className="py-2.5 pr-4">
                           {isPlaceholder ? (
@@ -564,24 +604,20 @@ export default function MealsPage() {
                             </Link>
                           )}
                         </td>
-                        <td className="py-2.5 pr-4">
-                          <MealTagList tags={meal.tags} />
+                        <td className="hidden sm:table-cell py-2.5 pr-4">
+                          <MealTagList tags={meal.tags} builtIn={isPlaceholder} />
                         </td>
-                        <td className="py-2.5 pr-4">
+                        <td className="py-2.5 pr-4 text-center">
                           {!isPlaceholder && (
                             <DifficultyBadge difficulty={meal.difficulty} />
                           )}
                         </td>
-                        <td className="py-2.5 pr-4">
-                          {isPlaceholder && (
-                            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                              Built-in
-                            </span>
-                          )}
-                        </td>
                         <td className="py-2.5">
                           {!isPlaceholder && (
-                            <div className="flex gap-2">
+                            <div
+                              className="flex justify-end gap-2"
+                              onClick={e => e.stopPropagation()}
+                            >
                               <Link
                                 to={`/meals/${meal.id}`}
                                 aria-label={`View ${meal.name}`}

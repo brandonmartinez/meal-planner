@@ -747,6 +747,41 @@ describe('MealsPage view toggle', () => {
   });
 });
 
+describe('MealsPage filter collapse toggle', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('defaults to collapsed and toggles the filters open/closed', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Tacos' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+    expect(await screen.findByText('Tacos')).toBeInTheDocument();
+
+    // Defaults to collapsed on mobile: the toggle offers to "Show filters".
+    const toggle = screen.getByRole('button', { name: 'Show filters' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'meal-filters');
+
+    fireEvent.click(toggle);
+
+    const expanded = screen.getByRole('button', { name: 'Hide filters' });
+    expect(expanded).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(expanded);
+
+    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+});
+
 describe('MealsPage hide built-ins', () => {
   it('shows built-in meals by default', async () => {
     server.use(

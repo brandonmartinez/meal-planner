@@ -2,6 +2,8 @@ import type { Tag } from '../api/taxonomy';
 
 interface MealTagListProps {
   tags?: Tag[];
+  /** Render a leading "built-in" pseudo-tag (always visible, never capped). */
+  builtIn?: boolean;
   /** Max pills to render before collapsing the rest into a `+N` chip. */
   max?: number;
   /** Reserve a min-height so cards stay aligned even when a meal has none. */
@@ -18,6 +20,7 @@ type Pill = { key: string; label: string };
  */
 export default function MealTagList({
   tags,
+  builtIn = false,
   max = 3,
   reserveHeight = false,
   className = '',
@@ -28,7 +31,7 @@ export default function MealTagList({
 
   const reserve = reserveHeight ? 'min-h-[1.5rem]' : '';
 
-  if (pills.length === 0) {
+  if (pills.length === 0 && !builtIn) {
     // Still reserve the row when asked, so sibling cards line up.
     return reserveHeight ? <div className={`${reserve} ${className}`} /> : null;
   }
@@ -41,6 +44,13 @@ export default function MealTagList({
       className={`flex flex-wrap items-center gap-1 ${reserve} ${className}`}
       aria-label="Tags"
     >
+      {builtIn && (
+        <span
+          className="inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+        >
+          built-in
+        </span>
+      )}
       {visible.map(pill => (
         <span
           key={pill.key}
