@@ -120,7 +120,7 @@ export default function Navigation() {
                                                 selectSize="sm"
                                                 value={familyId ?? ''}
                                                 onChange={e => handleSwitchFamily(e.target.value)}
-                                                className="w-full rounded-md"
+                                                className="w-full"
                                                 aria-label="Select family"
                                             >
                                                 {families.map(f => (
@@ -205,7 +205,7 @@ export default function Navigation() {
                                 selectSize="sm"
                                 value={familyId ?? ''}
                                 onChange={e => switchFamily(e.target.value)}
-                                className="w-full rounded-md"
+                            className="w-full"
                             >
                                 {families.map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>

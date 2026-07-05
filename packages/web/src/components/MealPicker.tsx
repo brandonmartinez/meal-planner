@@ -209,7 +209,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
               selectSize="sm"
               value={collectionFilter}
               onChange={e => setCollectionFilter(e.target.value)}
-              className="flex-1 text-xs"
+              className="flex-1"
             >
               <option value="">All collections</option>
               {collectionOptions.map(c => (
