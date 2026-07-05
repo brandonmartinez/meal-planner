@@ -139,9 +139,20 @@ scripts/dc-exec.sh pnpm db:migrate:dev  # create + apply a new migration
 ## Backups & image-volume consistency
 
 The database and the uploaded-image volume are a **matched pair** — backing up
-one without the other yields broken recipe images. A durable image PVC is **not
-yet wired** into these manifests (deferred #93). See
-[`docs/ops/backup-and-restore.md`](../docs/ops/backup-and-restore.md) for the
-backup/restore procedure, a commented example PVC + volumeMount, the
-`images:cleanup` orphan-reconciliation command (#106), and the object-storage
-migration path.
+one without the other yields broken recipe images.
+
+Uploaded images are persisted on a durable `ReadWriteOnce` PVC
+(`meal-planner-images`, see [`image-pvc.yaml`](./image-pvc.yaml), issue #181).
+The Deployment mounts it at **`/data/images`** and sets `IMAGE_STORAGE_ROOT` to
+that path; pod `securityContext.fsGroup: 1000` gives the unprivileged `node`
+user write access to the otherwise root-owned volume.
+
+**Single replica (by design):** the Deployment runs `replicas: 1`. This cluster
+is k3s, whose default `local-path` storage class is node-local and RWO-only, so
+a second replica could not share the same image volume. One replica keeps every
+read and write on the same durable store. To restore multiple image-serving
+replicas, switch the PVC to a `ReadWriteMany` storage class (e.g. NFS/Longhorn
+RWX) or migrate to the object-storage backend — both described in
+[`docs/ops/backup-and-restore.md`](../docs/ops/backup-and-restore.md), which
+also covers the backup/restore procedure and the `images:cleanup`
+orphan-reconciliation command (#106).

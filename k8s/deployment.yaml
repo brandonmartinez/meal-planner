@@ -5,7 +5,15 @@ metadata:
   labels:
     app: meal-planner
 spec:
-  replicas: 2
+  # Pinned to a SINGLE replica because uploaded images live on a ReadWriteOnce
+  # PVC (see image-pvc.yaml, issue #181). This cluster is k3s, whose default
+  # `local-path` storage class is node-local and RWO-only — a second replica on
+  # another node could not mount the same volume, and would serve/write a
+  # divergent, non-shared image set. One replica keeps every read and write on
+  # the same durable backing store. Restoring multiple replicas requires a
+  # ReadWriteMany class (NFS/Longhorn RWX) or the object-storage backend in
+  # docs/ops/backup-and-restore.md.
+  replicas: 1
   selector:
     matchLabels:
       app: meal-planner
@@ -14,6 +22,15 @@ spec:
       labels:
         app: meal-planner
     spec:
+      # The prod image runs as the unprivileged `node` user (uid/gid 1000; see
+      # Dockerfile `USER node`). A freshly provisioned PVC is root-owned, so
+      # without this the `node` user cannot mkdir/write under the image mount and
+      # uploads fail with EACCES. fsGroup makes the kubelet chown the volume to
+      # gid 1000 and setgid it, giving `node` write access. OnRootMismatch skips
+      # the recursive re-chown on every start once ownership is already correct.
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: meal-planner
           # Immutable pin. The tag is overridden at deploy time by the Kustomize
@@ -60,6 +77,13 @@ spec:
               value: "https://meals.themartinez.cloud"
             - name: GOOGLE_CALLBACK_URL
               value: "https://meals.themartinez.cloud/api/auth/google/callback"
+            # Durable, writable root for uploaded image assets (issue #181).
+            # Points at the mounted meal-planner-images PVC below. Not a secret
+            # (see config/index.ts imageStorage note), so it uses an inline
+            # value like the other non-secret config above rather than a
+            # secretKeyRef. Must match the volumeMount mountPath.
+            - name: IMAGE_STORAGE_ROOT
+              value: "/data/images"
           readinessProbe:
             httpGet:
               path: /api/health
@@ -79,3 +103,12 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+          # Mount the durable image PVC at the path IMAGE_STORAGE_ROOT points to.
+          volumeMounts:
+            - name: images
+              mountPath: /data/images
+      # Back the image mount with the meal-planner-images PVC (image-pvc.yaml).
+      volumes:
+        - name: images
+          persistentVolumeClaim:
+            claimName: meal-planner-images

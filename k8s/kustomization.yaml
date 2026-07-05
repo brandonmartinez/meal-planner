@@ -11,6 +11,9 @@ resources:
   # single `images[].newTag` pin below repins the Job's image too, since it uses
   # the same image name as the Deployment — no second images[] entry needed.
   - migrate-job.yaml
+  # Durable PVC for uploaded meal-image assets (issue #181). Mounted by the
+  # Deployment at IMAGE_STORAGE_ROOT (/data/images).
+  - image-pvc.yaml
 
 # Immutable image pin.
 #

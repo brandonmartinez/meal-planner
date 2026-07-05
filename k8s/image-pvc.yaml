@@ -1,0 +1,34 @@
+# Durable storage for uploaded meal-image assets (issue #181, deferred scope of
+# #93). The API writes files to {IMAGE_STORAGE_ROOT}/{familyId}/{assetId}.{ext}
+# (see packages/api/src/services/imageStorage.ts). Without a persistent volume
+# those bytes land on the pod's ephemeral filesystem — lost on every restart —
+# and, because the prod image runs as the unprivileged `node` user over a
+# root-owned WORKDIR, the mkdir under /app even fails with EACCES, 500-ing the
+# upload. This PVC gives the Deployment a durable, writable backing store; the
+# matching volumeMount, IMAGE_STORAGE_ROOT env, and fsGroup live in
+# deployment.yaml.
+#
+# ACCESS MODE — ReadWriteOnce. This cluster is k3s, whose default storage class
+# is the built-in `local-path` provisioner: node-local, ReadWriteOnce only, with
+# no ReadWriteMany option. A RWO PVC cannot be shared by pods across nodes, so
+# the Deployment is pinned to `replicas: 1` (see deployment.yaml). Restoring
+# multiple image-serving replicas requires either a ReadWriteMany storage class
+# (e.g. NFS/Longhorn RWX) or the object-storage backend outlined in
+# docs/ops/backup-and-restore.md — both out of scope for this manifest-only fix.
+#
+# STORAGE CLASS — intentionally unset so the claim binds to the cluster default
+# (local-path on k3s). Do not hardcode a class name that may not exist on the
+# cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: meal-planner-images
+  labels:
+    app: meal-planner
+    component: images
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
