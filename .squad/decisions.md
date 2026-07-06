@@ -519,3 +519,38 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **By:** Frank (Security)
 **What:** Verdict: 🟡 YELLOW — mergeable with a defense-in-depth follow-up recommended. PR #187 preserves the important XSS/scheme boundary (`javascript:`, `data:`, `vbscript:`, `file:`, `ftp:`, and protocol-relative `//host` are rejected by both branches) and `imageUrl` remains storage + display only. The only non-clean finding is that the asset-path regex is shape-based rather than UUID/URL-component-based, so percent-encoded traversal-ish inputs like `/api/families/%2e%2e/images/x`, encoded slash in the asset segment like `/api/families/x/images/y%2fextra`, internal newlines, and backslashes can be stored and later rendered even though they are not produced by the web uploader.
 **Why:** The residual issue is low severity because the value is never fetched server-side; the web and MagicMirror render it as an `<img src>`/DOM property; the display endpoint only serializes it; the image GET route does a DB lookup by `assetId` and family before `imageStorage.get`; and `FilesystemImageStorage` enforces UUID family/asset IDs plus root containment before any filesystem path. For a tighter future boundary, change `ASSET_PATH_RE` to require exact UUID segments (matching `ImageAsset.id` and `Family.id`) and exclude `%`, `\\`, and control characters implicitly, e.g. `/^\/api\/families\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/images\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`.
+
+### 2026-07-06: UUID-constrained imageUrlSchema hardening — asset-path regex (#188, PR #195)
+
+**By:** Livingston (Backend Dev)
+**What:** Hardened `imageUrlSchema` in `packages/api/src/schemas/meals.ts` — replaced the loose `ASSET_PATH_RE = /^\/api\/families\/[^/?#]+\/images\/[^/?#]+$/` with a UUID-constrained pattern built from a `UUID_RE` string constant (RFC-4122 hex/hyphen segments), matching `/api/families/{uuid}/images/{uuid}` exactly, case-insensitive. Dropped the redundant `!value.includes('..')` guard (UUID char class structurally excludes dots). `ASSET_PATH_RE` is also exported and reused by `display.ts` (follow-up #196).
+**Why:** Frank's #187 security review issued a YELLOW defense-in-depth recommendation to constrain the same-origin asset path to exact UUID segments so arbitrary path shapes (percent-encoded traversal, encoded slashes, internal newlines, backslashes) cannot pass validation.
+**How:** `new RegExp` composed from `UUID_RE` constant; updated three doc-comment blocks; `ASSET_PATH_RE` exported for reuse by the display route (#196). PR #195 squash-merged to main at c4c0b42f.
+
+### 2026-07-06: Remove pin-deploy-image CI job (#189, PR #194)
+
+**By:** Basher (Backend/Infra)
+**What:** Removed the entire `pin-deploy-image` job (31 lines) from `.github/workflows/ci.yml`. CI pipeline is now `test → build-and-push → release`.
+**Why:** The job committed a `[skip ci]` image-pin change to main, but branch protection requires the `test` status check — the push was always rejected (GH006). Production deploys from the separate GitOps repo (`raspberry-pi-kubernetes-cluster`), so the job was redundant and never actually reached prod.
+**How:** Deleted the job block from ci.yml. `k8s/kustomization.yaml` is left in place for local/dev kustomize use. No behavior change in the functional CI stages.
+
+### 2026-07-06: Display image route for MagicMirror API-key access (#196, PR #197)
+
+**By:** Livingston (Backend Dev)
+**What:** New display-tier route `GET /api/display/images/:assetId` guarded by `authenticateApiKey`. Meals payload rewrites uploaded `imageUrl` values to this path via `rewriteDisplayImageUrl()`. `familyId` is sourced from `req.familyId` (no path param); cross-family asset requests return 404. ETag = sha256(familyId|assetId|extension); `If-None-Match` → 304 before storage fetch. `ASSET_PATH_RE` (hardened UUID regex, exported from meals.ts per #188/#195) detects uploaded paths; external https URLs pass through unchanged.
+**Why:** MagicMirror uses API-key auth only; uploaded image URLs were JWT-gated relative paths, making uploaded meal photos unreachable on the mirror display.
+**How:** Route added to `packages/api/src/routes/display.ts`; `rewriteDisplayImageUrl()` helper rewrites same-origin paths; conflict with #195 resolved (kept hardened UUID regex + export, dropped redundant `..` guard, test fixtures updated to RFC-4122 UUIDs). Follow-up #198: Vary header + storage-error logging. PR #197 squash-merged at a1640db0.
+
+### 2026-07-06: MagicMirror server-side image proxy + thumbnailHeight config (MMM-meal-planner #5, PR #6)
+
+**By:** Linus (Frontend)
+**What:** Added a server-side image proxy in the MMM-meal-planner `node_helper` that converts relative `/api/display/images/{id}` URLs to base64 data URIs before forwarding to the MagicMirror frontend. Added `thumbnailHeight` config (default `6rem`) driving image-container height via a `--mmp-thumb-height` CSS custom property. Clarified `days` semantics in README (today + next days−1).
+**Why:** A plain `<img src="/api/…">` on the MagicMirror display fails — it resolves to the mirror's own origin and cannot send the required `X-API-Key`. Server-side proxying in `node_helper` solves the auth problem while keeping the API key off the browser/DOM entirely.
+**How:** Relative-URL detection (`imageUrl.startsWith('/')`); axios arraybuffer fetch with `X-API-Key`; base64 data-URI encode; module-level Map cache keyed by relative URL storing `{dataUri, etag}` with `If-None-Match` conditional GET (304 → reuse cached, no re-encode); per-image errors isolated so one bad asset never drops the payload. PR #6 merged in `brandonmartinez/MMM-meal-planner`.
+
+### 2026-07-06: Display image route hardening — Vary header + storage error logging (#198, PR #200)
+
+**By:** Livingston (Backend Dev)
+**What:** Hardened the #196 display image route in `packages/api/src/routes/display.ts` — added `Vary: x-api-key` on both the 200 and 304 response paths; added `console.error('[display] image storage failed', { assetId: asset.id }, err)` in the storage-read catch block before the 404 return.
+**Why:** The route varies its response by API key but did not advertise `Vary`, risking cross-family cache bleed on shared caches. Storage failures returned a silent 404 with no operator signal.
+**How:** `res.setHeader('Vary', 'x-api-key')` before both `res.status(304).end()` and `res.send(bytes)`; no Vary on 404 paths (not cacheable); API key is never included in log args. 25/25 tests pass — assert Vary on 200+304 and `console.error` spy on storage-error test. PR #200 squash-merged to main at a111ee26.
