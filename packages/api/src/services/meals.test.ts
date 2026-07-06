@@ -2084,6 +2084,49 @@ describe("meal core metadata route validation", () => {
         }),
       ).toThrow();
     });
+
+    it("accepts a same-origin uploaded-asset imageUrl path (#186)", () => {
+      const assetPath =
+        "/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b/images/abcd1234-5678-4abc-9def-0123456789ab";
+      const parsed = createMealSchema.parse({ name: "Tacos", imageUrl: assetPath });
+      expect(parsed.imageUrl).toBe(assetPath);
+    });
+
+    it("rejects a path-traversal imageUrl (#186)", () => {
+      expect(() =>
+        createMealSchema.parse({
+          name: "Tacos",
+          imageUrl: "/api/families/../images/x",
+        }),
+      ).toThrow();
+      expect(() =>
+        createMealSchema.parse({
+          name: "Tacos",
+          imageUrl: "/api/families/../../etc/passwd",
+        }),
+      ).toThrow();
+    });
+
+    it("rejects a protocol-relative imageUrl (#186)", () => {
+      expect(() =>
+        createMealSchema.parse({
+          name: "Tacos",
+          imageUrl: "//evil.com/api/families/x/images/y",
+        }),
+      ).toThrow();
+    });
+
+    it("rejects an unrelated same-origin path as imageUrl (#186)", () => {
+      expect(() =>
+        createMealSchema.parse({
+          name: "Tacos",
+          imageUrl: "/api/families/x/images/y/extra",
+        }),
+      ).toThrow();
+      expect(() =>
+        createMealSchema.parse({ name: "Tacos", imageUrl: "/etc/passwd" }),
+      ).toThrow();
+    });
   });
 
   describe("updateMealSchema", () => {
@@ -2141,6 +2184,26 @@ describe("meal core metadata route validation", () => {
       expect(() =>
         updateMealSchema.parse({ imageUrl: "ftp://example.com/x.png" }),
       ).toThrow();
+    });
+
+    it("accepts a same-origin uploaded-asset imageUrl path (#186)", () => {
+      const assetPath =
+        "/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b/images/abcd1234-5678-4abc-9def-0123456789ab";
+      const parsed = updateMealSchema.parse({ imageUrl: assetPath });
+      expect(parsed.imageUrl).toBe(assetPath);
+    });
+
+    it("rejects traversal / protocol-relative / bad-scheme imageUrl values (#186)", () => {
+      for (const bad of [
+        "/api/families/../images/x",
+        "/api/families/../../etc/passwd",
+        "//evil.com/api/families/x/images/y",
+        "/api/families/x/images/y/extra",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///etc/passwd",
+      ]) {
+        expect(() => updateMealSchema.parse({ imageUrl: bad })).toThrow();
+      }
     });
   });
 });

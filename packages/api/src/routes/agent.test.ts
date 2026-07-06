@@ -356,6 +356,58 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(prismaMock.meal.create).not.toHaveBeenCalled();
   });
 
+  it("write: POST meals forwards a same-origin uploaded-asset imageUrl path (#186)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const assetPath =
+      "/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b/images/abcd1234-5678-4abc-9def-0123456789ab";
+    const handlers = findStack("/meals");
+    const req = agentReq({}, { name: "Tacos", imageUrl: assetPath });
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    const createArg = prismaMock.meal.create.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(createArg.data).toMatchObject({ imageUrl: assetPath });
+  });
+
+  it("write: POST meals 400s on a path-traversal imageUrl (#186)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      { name: "Tacos", imageUrl: "/api/families/../images/x" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+  });
+
+  it("write: POST meals 400s on a protocol-relative imageUrl (#186)", async () => {
+    mockCredential(["meal:write"]);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      { name: "Tacos", imageUrl: "//evil.com/api/families/x/images/y" },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+  });
+
   it("write: PATCH meals forwards metadata and null-clearing to the service", async () => {
     mockCredential(["meal:write"]);
     prismaMock.$transaction.mockImplementation(
