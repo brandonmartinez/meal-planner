@@ -171,9 +171,10 @@ export default function WeekPlanPage() {
                 {!isPastWeek && (
                     <Link
                         to="/grocery"
-                        className="px-4 py-2 bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/60 text-sm font-medium"
+                        className="inline-flex items-stretch overflow-hidden rounded w-full sm:w-auto bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900/60"
                     >
-                        🛒 Grocery List
+                        <span className="flex items-center justify-center px-3 border-r border-green-200 dark:border-green-800 bg-green-200/60 dark:bg-green-900/60">🛒</span>
+                        <span className="flex items-center px-4 py-2">Grocery List</span>
                     </Link>
                 )}
 
@@ -186,16 +187,18 @@ export default function WeekPlanPage() {
                         <button
                             type="button"
                             onClick={() => setShowRepeat(true)}
-                            className="px-4 py-2 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/60 text-sm font-medium"
+                            className="inline-flex items-stretch overflow-hidden rounded flex-1 sm:flex-none bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/60"
                         >
-                            🔁 Repeat a previous week
+                            <span className="flex items-center justify-center px-3 border-r border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60">🔁</span>
+                            <span className="flex items-center justify-center px-4 py-2">Repeat a previous week</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => setShowApply(true)}
-                            className="px-4 py-2 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/60 text-sm font-medium"
+                            className="inline-flex items-stretch overflow-hidden rounded flex-1 sm:flex-none bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 text-sm font-medium hover:bg-indigo-200 dark:hover:bg-indigo-900/60"
                         >
-                            🗓️ Apply a template
+                            <span className="flex items-center justify-center px-3 border-r border-indigo-200 dark:border-indigo-800 bg-indigo-200/60 dark:bg-indigo-900/60">🗓️</span>
+                            <span className="flex items-center justify-center px-4 py-2">Apply a template</span>
                         </button>
                     </div>
                 )}
