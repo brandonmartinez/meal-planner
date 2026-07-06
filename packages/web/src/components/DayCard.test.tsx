@@ -295,9 +295,11 @@ describe('DayCard', () => {
         expect(stamp).toBeInTheDocument();
         // object-cover prevents distortion
         expect(stamp).toHaveClass('object-cover');
-        // Definite square (size-16) — both w+h are fixed px, NOT derived from stretch height.
-        // Catches any regression back to absolute/inset-0 or aspect-square-from-stretch (zero-width bug).
-        expect(stamp).toHaveClass('size-16');
+        // Fixed width (w-16) with self-stretch height fills the full chip height (no gap under image).
+        // Width stays a fixed px value — NOT derived from stretch — preserving the zero-width guard:
+        // catches any regression back to absolute/inset-0 or aspect-square-from-stretch.
+        expect(stamp).toHaveClass('w-16');
+        expect(stamp).toHaveClass('self-stretch');
         expect(stamp).not.toHaveClass('absolute');
     });
 
