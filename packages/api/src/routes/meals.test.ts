@@ -885,6 +885,37 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     expect(mealService.updateMeal).not.toHaveBeenCalled();
   });
 
+  it("forwards a same-origin uploaded-asset imageUrl path through to the service (#186)", async () => {
+    vi.mocked(mealService.updateMeal).mockResolvedValue({
+      id: MEAL_ID,
+    } as never);
+    const assetPath =
+      "/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b/images/abcd1234-5678-4abc-9def-0123456789ab";
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { imageUrl: assetPath } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(mealService.updateMeal).toHaveBeenCalledWith(
+      MEAL_ID,
+      FAMILY_ID,
+      expect.objectContaining({ imageUrl: assetPath }),
+    );
+  });
+
+  it("400s on a path-traversal imageUrl (#186)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({ params, body: { imageUrl: "/api/families/../images/x" } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
   it("400s on Zod failure (empty name)", async () => {
     const res = buildFullRes();
     await handler(req({ params, body: { name: "" } }), res, buildNext());

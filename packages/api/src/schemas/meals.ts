@@ -12,18 +12,53 @@ import { Difficulty } from "@prisma/client";
  * param is active; unfiltered pagination includes them.
  */
 /**
- * External recipe image URL. Display-only; rendered in an <img> on web + Magic
- * Mirror. We store the string but never fetch it server-side. Validation mirrors
- * sourceUrl (.url()) and additionally enforces an http(s) scheme allowlist so we
- * never persist javascript:/file:/data: values. Shared by the REST meals route,
- * the agent route, and the CSV import schema. #103.
+ * Same-origin read path for an uploaded image asset, e.g.
+ * `/api/families/{familyId}/images/{assetId}`. Produced by the web upload flow
+ * (`imageAssetUrl` in packages/web/src/api/images.ts) and stored verbatim in
+ * `Meal.imageUrl`. Anchored to exactly one familyId segment and one assetId
+ * segment — no extra path segments, query strings, or fragments. #186.
+ */
+const ASSET_PATH_RE = /^\/api\/families\/[^/?#]+\/images\/[^/?#]+$/;
+
+/**
+ * Accept an absolute http(s) URL. Uses the WHATWG URL parser and enforces an
+ * http(s) scheme allowlist, so `javascript:`, `data:`, `file:`, `ftp:`, and
+ * protocol-relative (`//host/...`) values are all rejected.
+ */
+function isAbsoluteHttpUrl(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "http:" || parsed.protocol === "https:";
+}
+
+/**
+ * Accept a same-origin uploaded-asset read path. Strictly anchored to the
+ * `/api/families/{familyId}/images/{assetId}` shape and additionally rejects any
+ * `..` traversal segment (the `[^/?#]+` class alone would match a bare `..`).
+ */
+function isAssetPath(value: string): boolean {
+  return ASSET_PATH_RE.test(value) && !value.includes("..");
+}
+
+/**
+ * Recipe image reference. Display-only; rendered in an <img> on web + Magic
+ * Mirror. We store the string but never fetch it server-side. Accepts EITHER an
+ * absolute http(s) URL (external image, #103) OR a same-origin uploaded-asset
+ * read path (`/api/families/{familyId}/images/{assetId}`, #186). Both branches
+ * reject `javascript:`/`data:`/`file:`/`ftp:`, protocol-relative `//host/...`,
+ * and `..` path traversal. Shared by the REST meals route, the agent route, and
+ * the CSV import schema — loosening it keeps all three surfaces in parity.
  */
 export const imageUrlSchema = z
   .string()
   .trim()
-  .url()
-  .refine((u) => /^https?:\/\//i.test(u), {
-    message: "imageUrl must use http or https",
+  .refine((u) => isAbsoluteHttpUrl(u) || isAssetPath(u), {
+    message:
+      "imageUrl must be an http(s) URL or an uploaded image asset path (/api/families/{familyId}/images/{assetId})",
   });
 
 export const listMealsQuerySchema = z.object({
