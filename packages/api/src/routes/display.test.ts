@@ -458,6 +458,7 @@ describe("GET /api/display/images/:assetId", () => {
     expect(headers["Content-Length"]).toBe(String(PNG_BYTES.length));
     expect(headers["ETag"]).toMatch(/^"[0-9a-f]{64}"$/);
     expect(headers["Cache-Control"]).toBe("private, max-age=3600");
+    expect(headers["Vary"]).toBe("x-api-key");
   });
 
   it("304 — returns 304 with no body when If-None-Match matches ETag", async () => {
@@ -479,6 +480,10 @@ describe("GET /api/display/images/:assetId", () => {
     await imageHandler(req2, res2 as never, buildNext());
     expect(res2.statusCode).toBe(304);
     expect(res2.send).not.toHaveBeenCalled();
+    const headers304 = Object.fromEntries(
+      (res2.setHeader as ReturnType<typeof vi.fn>).mock.calls as [string, string][],
+    );
+    expect(headers304["Vary"]).toBe("x-api-key");
   });
 
   it("404 — when asset belongs to a different family", async () => {
@@ -505,10 +510,18 @@ describe("GET /api/display/images/:assetId", () => {
     prismaMock.imageAsset.findUnique.mockResolvedValue(fakeAsset() as never);
     vi.mocked(imageStorage.get).mockRejectedValue(new Error("ENOENT"));
 
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
     const req = buildImageReq(ASSET_ID);
     const res = buildFullRes();
     await imageHandler(req, res as never, buildNext());
     expect(res.statusCode).toBe(404);
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    // Verify the API key is NOT logged — only assetId and the error.
+    const logArgs = consoleSpy.mock.calls[0];
+    expect(JSON.stringify(logArgs)).not.toContain("x-api-key");
+
+    consoleSpy.mockRestore();
   });
 
   it("401 — authenticateApiKey is registered as the auth middleware", () => {
