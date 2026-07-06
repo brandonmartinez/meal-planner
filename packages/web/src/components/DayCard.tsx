@@ -46,14 +46,17 @@ export default function DayCard({ day, isParent, currentUserId, onAddMeal, onApp
   return (
     <div
       ref={setNodeRef}
-      className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col min-h-48 overflow-hidden transition-shadow ${droppableClass}`}
+      className={`bg-white dark:bg-gray-800 flex flex-col min-h-48 transition-shadow sm:rounded-lg sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-700 sm:overflow-hidden ${droppableClass}`}
     >
-      <div className="bg-gray-100 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-700 px-4 py-3 text-center">
+      {/* On mobile the header bleeds to the viewport edges (-mx-4 cancels the
+          page container's px-4) so the card boundary visually disappears and
+          chips get more room. Desktop keeps the normal rounded/clipped header. */}
+      <div className="-mx-4 sm:mx-0 bg-gray-100 dark:bg-gray-900/60 border-y sm:border-y-0 sm:border-b border-gray-200 dark:border-gray-700 px-4 py-3 text-center">
         <div className="font-semibold text-base text-gray-900 dark:text-gray-100">{getDayName(day.date)}</div>
         <div className="text-sm text-gray-500 dark:text-gray-400">{formatDayDate(day.date)}</div>
       </div>
 
-      <div className="flex-1 p-4 space-y-2">
+      <div className="flex-1 p-2 sm:p-4 space-y-2">
         {suggestions.length === 0 && (
           <p className="text-sm text-gray-400 dark:text-gray-500 text-center italic">No suggestions</p>
         )}
@@ -70,12 +73,14 @@ export default function DayCard({ day, isParent, currentUserId, onAddMeal, onApp
         ))}
       </div>
 
-      <button
-        onClick={onAddMeal}
-        className="w-full px-4 py-3 text-center text-sm font-medium border-t border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
-      >
-        + Add Meal
-      </button>
+      <div className="p-2 sm:p-0 sm:border-t sm:border-gray-200 sm:dark:border-gray-700">
+        <button
+          onClick={onAddMeal}
+          className="inline-flex sm:flex w-auto sm:w-full items-center justify-center px-3 py-1.5 sm:px-4 sm:py-3 text-sm font-medium rounded sm:rounded-none border border-blue-200 dark:border-blue-800 sm:border-0 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+        >
+          + Add Meal
+        </button>
+      </div>
     </div>
   );
 }
@@ -97,6 +102,7 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
   const placeholderEmoji = isPlaceholder ? MEAL_PLACEHOLDERS[placeholderKind].emoji : null;
   const canRemove = isParent || suggestion.userId === currentUserId;
   const canDrag = !suggestion.approved && (isParent || suggestion.userId === currentUserId);
+  const hasControls = isParent || canRemove;
   // Real (non-placeholder) meals can open the detail modal; placeholders have no recipe.
   const mealId = suggestion.meal?.id ?? suggestion.mealId;
   const canOpenDetail = !isPlaceholder && !!suggestion.meal && !!familyId;
@@ -151,72 +157,72 @@ export function SuggestionChip({ suggestion, isParent, currentUserId, onApprove,
             <img
               src={imageUrl!}
               alt={mealName}
-              className="shrink-0 size-16 sm:size-20 object-cover block"
+              className="shrink-0 w-16 sm:w-20 self-stretch object-cover block"
             />
           )}
           <div className="flex-1 min-w-0 px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              {canOpenDetail ? (
-                <button
-                  type="button"
-                  onClick={() => setShowDetail(true)}
-                  aria-label={`View details for ${mealName}`}
-                  className="font-medium truncate flex items-center gap-1 flex-1 min-w-0 text-left cursor-pointer rounded hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-                >
-                  {mealBody}
-                </button>
-              ) : (
-                <span className="font-medium truncate flex items-center gap-1 flex-1 min-w-0">
-                  {mealBody}
-                </span>
-              )}
-              <div
-                className="flex items-center gap-1 shrink-0"
-                onPointerDown={e => e.stopPropagation()}
-                onKeyDown={e => e.stopPropagation()}
-                onClick={e => e.stopPropagation()}
+            {canOpenDetail ? (
+              <button
+                type="button"
+                onClick={() => setShowDetail(true)}
+                aria-label={`View details for ${mealName}`}
+                className="font-medium truncate flex items-center gap-1 w-full min-w-0 text-left cursor-pointer rounded hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
-                {isParent && !suggestion.approved && (
-                  <button
-                    type="button"
-                    onClick={() => onApprove(suggestion.id)}
-                    className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-800 dark:hover:text-green-200"
-                    title="Approve"
-                    aria-label="Approve suggestion"
-                  >
-                    ✓
-                  </button>
-                )}
-                {isParent && suggestion.approved && (
-                  <button
-                    type="button"
-                    onClick={() => onUnapprove(suggestion.id)}
-                    className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 hover:text-amber-700 dark:hover:text-amber-300"
-                    title="Un-approve"
-                    aria-label="Un-approve suggestion"
-                  >
-                    ↺
-                  </button>
-                )}
-                {canRemove && (
-                  <button
-                    type="button"
-                    onClick={() => onRemove(suggestion.id)}
-                    className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-red-400 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-300"
-                    title="Remove"
-                    aria-label="Remove suggestion"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
+                {mealBody}
+              </button>
+            ) : (
+              <span className="font-medium truncate flex items-center gap-1 w-full min-w-0">
+                {mealBody}
+              </span>
+            )}
             {suggestion.suggestedBy && (
               <div className="text-gray-400 dark:text-gray-500 text-xs truncate mt-0.5">
                 by {suggestion.suggestedBy.name}
               </div>
             )}
           </div>
+          {hasControls && (
+            <div
+              className="flex flex-col items-center justify-center shrink-0 gap-1 px-1 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40"
+              onPointerDown={e => e.stopPropagation()}
+              onKeyDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
+            >
+              {isParent && !suggestion.approved && (
+                <button
+                  type="button"
+                  onClick={() => onApprove(suggestion.id)}
+                  className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 hover:text-green-800 dark:hover:text-green-200"
+                  title="Approve"
+                  aria-label="Approve suggestion"
+                >
+                  ✓
+                </button>
+              )}
+              {isParent && suggestion.approved && (
+                <button
+                  type="button"
+                  onClick={() => onUnapprove(suggestion.id)}
+                  className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-green-600 dark:text-green-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 hover:text-amber-700 dark:hover:text-amber-300"
+                  title="Un-approve"
+                  aria-label="Un-approve suggestion"
+                >
+                  ↺
+                </button>
+              )}
+              {canRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(suggestion.id)}
+                  className="inline-flex items-center justify-center min-w-9 min-h-9 p-1 rounded text-base text-red-400 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-red-600 dark:hover:text-red-300"
+                  title="Remove"
+                  aria-label="Remove suggestion"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {showDetail && familyId && (
