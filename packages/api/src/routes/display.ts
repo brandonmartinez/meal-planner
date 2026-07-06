@@ -240,6 +240,7 @@ displayRouter.get(
 
     const ifNoneMatch = req.headers["if-none-match"];
     if (ifNoneMatch && ifNoneMatch === etag) {
+      res.setHeader("Vary", "x-api-key");
       res.status(304).end();
       return;
     }
@@ -247,7 +248,8 @@ displayRouter.get(
     let bytes: Buffer;
     try {
       bytes = await imageStorage.get(familyId, asset.id, asset.extension);
-    } catch {
+    } catch (err) {
+      console.error("[display] image storage failed", { assetId: asset.id }, err);
       res.status(404).json({ error: "Image not found" });
       return;
     }
@@ -256,6 +258,7 @@ displayRouter.get(
     res.setHeader("Content-Length", String(bytes.length));
     res.setHeader("ETag", etag);
     res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Vary", "x-api-key");
     res.send(bytes);
   },
 );
