@@ -16,6 +16,8 @@ import {
   type MealPlaceholderKind,
 } from "@meal-planner/shared";
 import { sendDisplayError } from "../utils/displayError.js";
+import { imageStorage } from "../services/imageStorage.js";
+import { ASSET_PATH_RE } from "../schemas/meals.js";
 
 export const displayRouter = Router();
 
@@ -34,10 +36,28 @@ const querySchema = z
     { message: "from and to must be provided together" },
   );
 
+function paramStr(val: string | string[] | undefined): string {
+  return Array.isArray(val) ? val[0] : val || "";
+}
+
 function iconFor(kind: string | null): string | null {
   if (!kind) return null;
   const meta = MEAL_PLACEHOLDERS[kind as MealPlaceholderKind];
   return meta ? meta.emoji : null;
+}
+
+/**
+ * Rewrite a stored imageUrl for the display surface.
+ * Uploaded asset paths (/api/families/{familyId}/images/{assetId}) are
+ * rewritten to the API-key-accessible route (/api/display/images/{assetId}).
+ * Absolute https:// URLs are returned unchanged.
+ */
+function rewriteDisplayImageUrl(imageUrl: string | null): string | null {
+  if (!imageUrl) return null;
+  if (!ASSET_PATH_RE.test(imageUrl)) return imageUrl;
+  // Safe: ASSET_PATH_RE guarantees the last segment is the assetId.
+  const assetId = imageUrl.split("/").pop()!;
+  return `/api/display/images/${assetId}`;
 }
 
 // GET /api/display/meals
@@ -159,7 +179,7 @@ displayRouter.get(
           description: m.description,
           placeholderKind: m.placeholderKind as MealPlaceholderKind | null,
           icon: iconFor(m.placeholderKind),
-          imageUrl: m.imageUrl,
+          imageUrl: rewriteDisplayImageUrl(m.imageUrl),
         })),
       })),
     };
@@ -188,5 +208,54 @@ displayRouter.get(
     }
 
     res.json(responseBody);
+  },
+);
+
+// GET /api/display/images/:assetId
+// Serves uploaded meal images to the Magic Mirror display surface.
+// Guarded by API key; derives family from the key (no familyId in the path).
+displayRouter.get(
+  "/images/:assetId",
+  authenticateApiKey,
+  async (req: Request, res: Response) => {
+    const familyId = req.familyId!;
+    const assetId = paramStr(req.params["assetId"]);
+
+    const asset = await prisma.imageAsset
+      .findUnique({
+        where: { id: assetId },
+        select: { id: true, familyId: true, extension: true, contentType: true },
+      })
+      .catch(() => null);
+
+    if (!asset || asset.familyId !== familyId) {
+      res.status(404).json({ error: "Image not found" });
+      return;
+    }
+
+    // ETag: deterministic hash of stable, immutable asset fields.
+    const etagSeed = [familyId, asset.id, asset.extension].join("|");
+    const etag =
+      '"' + crypto.createHash("sha256").update(etagSeed).digest("hex") + '"';
+
+    const ifNoneMatch = req.headers["if-none-match"];
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = await imageStorage.get(familyId, asset.id, asset.extension);
+    } catch {
+      res.status(404).json({ error: "Image not found" });
+      return;
+    }
+
+    res.setHeader("Content-Type", asset.contentType);
+    res.setHeader("Content-Length", String(bytes.length));
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(bytes);
   },
 );

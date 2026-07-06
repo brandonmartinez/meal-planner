@@ -18,7 +18,7 @@ import { Difficulty } from "@prisma/client";
  * `Meal.imageUrl`. Anchored to exactly one familyId segment and one assetId
  * segment — no extra path segments, query strings, or fragments. #186.
  */
-const ASSET_PATH_RE = /^\/api\/families\/[^/?#]+\/images\/[^/?#]+$/;
+export const ASSET_PATH_RE = /^\/api\/families\/[^/?#]+\/images\/[^/?#]+$/;
 
 /**
  * Accept an absolute http(s) URL. Uses the WHATWG URL parser and enforces an
