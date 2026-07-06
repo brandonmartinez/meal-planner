@@ -209,9 +209,9 @@ export default function MealsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 text-gray-900 dark:text-gray-100">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-bold">Meal Library</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
           {/* View toggle */}
           <div
             role="group"
@@ -447,6 +447,11 @@ export default function MealsPage() {
             {displayedMeals.map(meal => {
             const isPlaceholder = meal.placeholderKind !== null;
             const meta = isPlaceholder ? MEAL_PLACEHOLDERS[meal.placeholderKind!] : null;
+            const hasBadges =
+              meal.recentlyScheduled ||
+              meal.timesCooked > 0 ||
+              meal.difficulty !== null;
+            const hasTags = (meal.tags?.length ?? 0) > 0;
             return (
               <div
                 key={meal.id}
@@ -482,34 +487,32 @@ export default function MealsPage() {
                   </h3>
                 </div>
 
-                {/* Zone 2 — badges (reserved row keeps cards aligned) */}
-                <div className="mt-2 flex min-h-[1.5rem] flex-wrap items-center gap-1.5">
-                  {isPlaceholder ? (
-                    <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                      Built-in
-                    </span>
-                  ) : (
-                    <>
-                      <RecentBadge
-                        recentlyScheduled={meal.recentlyScheduled}
-                        lastScheduledOn={meal.lastScheduledOn}
-                      />
-                      <LastCookedBadge
-                        timesCooked={meal.timesCooked}
-                        lastCookedOn={meal.lastCookedOn}
-                      />
-                      <DifficultyBadge difficulty={meal.difficulty} />
-                    </>
-                  )}
-                </div>
+                {/* Zone 2 — badges (only reserve space when a badge renders) */}
+                {(isPlaceholder || hasBadges) && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {isPlaceholder ? (
+                      <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                        Built-in
+                      </span>
+                    ) : (
+                      <>
+                        <RecentBadge
+                          recentlyScheduled={meal.recentlyScheduled}
+                          lastScheduledOn={meal.lastScheduledOn}
+                        />
+                        <LastCookedBadge
+                          timesCooked={meal.timesCooked}
+                          lastCookedOn={meal.lastCookedOn}
+                        />
+                        <DifficultyBadge difficulty={meal.difficulty} />
+                      </>
+                    )}
+                  </div>
+                )}
 
-                {/* Zone 2.5 — tags (compact, reserved height) */}
-                {!isPlaceholder && (
-                  <MealTagList
-                    tags={meal.tags}
-                    reserveHeight
-                    className="mt-2"
-                  />
+                {/* Zone 2.5 — tags (only rendered when the meal has tags) */}
+                {!isPlaceholder && hasTags && (
+                  <MealTagList tags={meal.tags} className="mt-2" />
                 )}
 
                 {/* Zone 3 — description (reserved 2-line height) */}

@@ -150,6 +150,48 @@ describe('MealsPage difficulty', () => {
   });
 });
 
+describe('MealsPage card layout (issue #191)', () => {
+  it('collapses empty badge and tag zones so the description follows the title directly', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(mealsEnvelope([meal({ id: 'm-1', name: 'Carnitas' })])),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    const card = (await screen.findByText('Carnitas')).closest('div.rounded-lg');
+    expect(card).not.toBeNull();
+    // With no badges and no tags, the element immediately after the title zone
+    // is the description paragraph — the reserved badge/tag spacers collapse.
+    const titleZone = card!.querySelector('.items-start');
+    expect(titleZone).not.toBeNull();
+    expect(titleZone!.nextElementSibling?.tagName).toBe('P');
+    expect(titleZone!.nextElementSibling).toHaveTextContent('No description');
+  });
+
+  it('keeps the badge zone when a meal has a difficulty badge', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get(`/api/families/${FAMILY_ID}/meals`, () =>
+        HttpResponse.json(
+          mealsEnvelope([meal({ id: 'm-2', name: 'Tacos', difficulty: 'HARD' })]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<MealsPage />);
+
+    const card = (await screen.findByText('Tacos')).closest('div.rounded-lg');
+    expect(card).not.toBeNull();
+    const titleZone = card!.querySelector('.items-start');
+    // A rendered badge keeps the badge row between the title and description.
+    expect(titleZone!.nextElementSibling?.tagName).toBe('DIV');
+    expect(card!.querySelector('[aria-label="Difficulty: Hard"]')).not.toBeNull();
+  });
+});
+
 describe('MealsPage export', () => {
   it('downloads a CSV of all meals when Export CSV is clicked', async () => {
     let capturedBlob: Blob | undefined;
