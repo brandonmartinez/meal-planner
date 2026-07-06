@@ -916,6 +916,86 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     expect(mealService.updateMeal).not.toHaveBeenCalled();
   });
 
+  it("400s on a non-UUID familyId segment in asset path (#188)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          imageUrl: `/api/families/fam1/images/abcd1234-5678-4abc-9def-0123456789ab`,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a percent-encoded traversal in asset path (%2e%2e) (#188)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          imageUrl: `/api/families/%2e%2e/images/abcd1234-5678-4abc-9def-0123456789ab`,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a percent-encoded slash (%2f) inside an asset path segment (#188)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          imageUrl: `/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b%2f../images/abcd1234-5678-4abc-9def-0123456789ab`,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on internal whitespace in an asset path segment (#188)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          imageUrl: `/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b /images/abcd1234-5678-4abc-9def-0123456789ab`,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
+  it("400s on a backslash in an asset path segment (#188)", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          imageUrl: `/api/families/8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b\\evil/images/abcd1234-5678-4abc-9def-0123456789ab`,
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(mealService.updateMeal).not.toHaveBeenCalled();
+  });
+
   it("400s on Zod failure (empty name)", async () => {
     const res = buildFullRes();
     await handler(req({ params, body: { name: "" } }), res, buildNext());
