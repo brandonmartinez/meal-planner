@@ -31,7 +31,7 @@ export const ASSET_PATH_RE = new RegExp(
  * http(s) scheme allowlist, so `javascript:`, `data:`, `file:`, `ftp:`, and
  * protocol-relative (`//host/...`) values are all rejected.
  */
-function isAbsoluteHttpUrl(value: string): boolean {
+export function isAbsoluteHttpUrl(value: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(value);
