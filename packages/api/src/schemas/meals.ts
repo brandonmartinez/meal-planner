@@ -15,10 +15,16 @@ import { Difficulty } from "@prisma/client";
  * Same-origin read path for an uploaded image asset, e.g.
  * `/api/families/{familyId}/images/{assetId}`. Produced by the web upload flow
  * (`imageAssetUrl` in packages/web/src/api/images.ts) and stored verbatim in
- * `Meal.imageUrl`. Anchored to exactly one familyId segment and one assetId
- * segment — no extra path segments, query strings, or fragments. #186.
+ * `Meal.imageUrl`. Both path segments are constrained to an exact RFC-4122 UUID
+ * (case-insensitive hex with the standard 8-4-4-4-12 grouping) — no extra path
+ * segments, query strings, fragments, dots, whitespace, or backslashes can appear
+ * inside a UUID segment. Anchored to the full string (^...$). #186 #188.
  */
-export const ASSET_PATH_RE = /^\/api\/families\/[^/?#]+\/images\/[^/?#]+$/;
+const UUID_RE =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+export const ASSET_PATH_RE = new RegExp(
+  `^\\/api\\/families\\/${UUID_RE}\\/images\\/${UUID_RE}$`,
+);
 
 /**
  * Accept an absolute http(s) URL. Uses the WHATWG URL parser and enforces an
@@ -37,28 +43,32 @@ function isAbsoluteHttpUrl(value: string): boolean {
 
 /**
  * Accept a same-origin uploaded-asset read path. Strictly anchored to the
- * `/api/families/{familyId}/images/{assetId}` shape and additionally rejects any
- * `..` traversal segment (the `[^/?#]+` class alone would match a bare `..`).
+ * `/api/families/{familyId}/images/{assetId}` shape where both `familyId` and
+ * `assetId` must be RFC-4122 UUIDs. The UUID character class (hex digits and
+ * hyphens in the 8-4-4-4-12 grouping) cannot contain dots, percent signs,
+ * whitespace, or backslashes, so encoded traversal (%2e%2e, %2f), plain `..`,
+ * and internal whitespace/backslashes are all structurally rejected.
  */
 function isAssetPath(value: string): boolean {
-  return ASSET_PATH_RE.test(value) && !value.includes("..");
+  return ASSET_PATH_RE.test(value);
 }
 
 /**
  * Recipe image reference. Display-only; rendered in an <img> on web + Magic
  * Mirror. We store the string but never fetch it server-side. Accepts EITHER an
  * absolute http(s) URL (external image, #103) OR a same-origin uploaded-asset
- * read path (`/api/families/{familyId}/images/{assetId}`, #186). Both branches
- * reject `javascript:`/`data:`/`file:`/`ftp:`, protocol-relative `//host/...`,
- * and `..` path traversal. Shared by the REST meals route, the agent route, and
- * the CSV import schema — loosening it keeps all three surfaces in parity.
+ * read path (`/api/families/{familyId}/images/{assetId}`, #186). Both path
+ * segments of the asset path must be RFC-4122 UUIDs, which structurally excludes
+ * percent-encoded traversal (%2e%2e, %2f), plain `..`, internal whitespace, and
+ * backslashes. Shared by the REST meals route, the agent route, and the CSV import
+ * schema — loosening it keeps all three surfaces in parity. #188.
  */
 export const imageUrlSchema = z
   .string()
   .trim()
   .refine((u) => isAbsoluteHttpUrl(u) || isAssetPath(u), {
     message:
-      "imageUrl must be an http(s) URL or an uploaded image asset path (/api/families/{familyId}/images/{assetId})",
+      "imageUrl must be an http(s) URL or an uploaded image asset path (/api/families/{uuid}/images/{uuid})",
   });
 
 export const listMealsQuerySchema = z.object({

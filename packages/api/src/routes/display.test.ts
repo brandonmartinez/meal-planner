@@ -38,10 +38,10 @@ const imageHandler = getRouteHandler(
   "/images/:assetId",
 ) as RouteHandler;
 
-const FAMILY_ID = "fam-1";
+const FAMILY_ID = "11111111-1111-1111-1111-111111111111";
 const FAMILY_NAME = "Martinez";
-const FAMILY_B = "fam-other";
-const ASSET_ID = "asset-abc-123";
+const FAMILY_B = "22222222-2222-2222-2222-222222222222";
+const ASSET_ID = "33333333-3333-3333-3333-333333333333";
 const PNG_BYTES = Buffer.from("fake-png-data");
 
 function buildAuthedReq(
