@@ -17,7 +17,7 @@ import {
 } from "@meal-planner/shared";
 import { sendDisplayError } from "../utils/displayError.js";
 import { imageStorage } from "../services/imageStorage.js";
-import { ASSET_PATH_RE } from "../schemas/meals.js";
+import { ASSET_PATH_RE, isAbsoluteHttpUrl } from "../schemas/meals.js";
 
 export const displayRouter = Router();
 
@@ -48,16 +48,45 @@ function iconFor(kind: string | null): string | null {
 
 /**
  * Rewrite a stored imageUrl for the display surface.
- * Uploaded asset paths (/api/families/{familyId}/images/{assetId}) are
- * rewritten to the API-key-accessible route (/api/display/images/{assetId}).
- * Absolute https:// URLs are returned unchanged.
+ *
+ * Uploaded asset references are rewritten to the API-key-accessible display
+ * route (`/api/display/images/{assetId}`), in BOTH stored forms:
+ *   - relative: `/api/families/{familyId}/images/{assetId}`
+ *   - absolute: `https://{host}/api/families/{familyId}/images/{assetId}`
+ *
+ * The absolute form matters because the JWT-protected `/api/families/.../images/...`
+ * route 401s for the Magic Mirror (which authenticates by API key, not JWT), and
+ * the browser surfaces that 401 as a CORS error. We match on path SHAPE (via the
+ * WHATWG `URL` parser + `ASSET_PATH_RE` against `pathname`) so the rewrite is
+ * robust to staging/prod host differences, and carry only the `assetId` forward —
+ * family scoping is enforced by the API key on the display route. #201
+ *
+ * Genuine external/third-party image URLs (whose path does not match the asset
+ * shape) pass through unchanged; `null` stays `null`.
  */
 function rewriteDisplayImageUrl(imageUrl: string | null): string | null {
   if (!imageUrl) return null;
-  if (!ASSET_PATH_RE.test(imageUrl)) return imageUrl;
+
+  // Relative uploaded-asset path — rewrite to the API-key display route.
   // Safe: ASSET_PATH_RE guarantees the last segment is the assetId.
-  const assetId = imageUrl.split("/").pop()!;
-  return `/api/display/images/${assetId}`;
+  if (ASSET_PATH_RE.test(imageUrl)) {
+    const assetId = imageUrl.split("/").pop()!;
+    return `/api/display/images/${assetId}`;
+  }
+
+  // Absolute http(s) URL whose PATH matches the uploaded-asset shape — rewrite
+  // by assetId regardless of host. isAbsoluteHttpUrl already parsed it safely,
+  // so `new URL()` here cannot throw.
+  if (isAbsoluteHttpUrl(imageUrl)) {
+    const { pathname } = new URL(imageUrl);
+    if (ASSET_PATH_RE.test(pathname)) {
+      const assetId = pathname.split("/").pop()!;
+      return `/api/display/images/${assetId}`;
+    }
+  }
+
+  // Genuine external URL (or anything else) — pass through unchanged.
+  return imageUrl;
 }
 
 // GET /api/display/meals

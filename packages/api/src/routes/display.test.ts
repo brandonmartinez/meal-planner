@@ -410,6 +410,39 @@ describe("GET /api/display/meals — imageUrl rewriting", () => {
     expect(body.meals[0].meals[0].imageUrl).toBe(`/api/display/images/${ASSET_ID}`);
   });
 
+  it("rewrites an ABSOLUTE uploaded asset URL to /api/display/images/{assetId} (#201)", async () => {
+    // A meal's stored imageUrl can be the absolute JWT-protected asset URL.
+    // The Magic Mirror can't send a JWT, so this must be rewritten to the
+    // API-key display route the same as the relative form.
+    const absoluteAssetUrl = `https://meals.themartinez.cloud/api/families/${FAMILY_ID}/images/${ASSET_ID}`;
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: absoluteAssetUrl })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBe(`/api/display/images/${ASSET_ID}`);
+  });
+
+  it("rewrites an absolute asset URL regardless of host (staging/prod parity, #201)", async () => {
+    // Match is on path SHAPE, not host — a different (e.g. staging) host still
+    // rewrites so the display surface never emits a JWT-protected URL.
+    const stagingAssetUrl = `https://staging.example.net/api/families/${FAMILY_ID}/images/${ASSET_ID}`;
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: stagingAssetUrl })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBe(`/api/display/images/${ASSET_ID}`);
+  });
+
   it("leaves an absolute https:// imageUrl unchanged", async () => {
     const absoluteUrl = "https://example.com/some/image.jpg";
     prismaMock.dayPlan.findMany.mockResolvedValue([
@@ -422,6 +455,22 @@ describe("GET /api/display/meals — imageUrl rewriting", () => {
 
     const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
     expect(body.meals[0].meals[0].imageUrl).toBe(absoluteUrl);
+  });
+
+  it("leaves an absolute URL on the app host but a NON-asset path unchanged (#201)", async () => {
+    // Same host as the asset route, but the path is not the asset shape — this
+    // is a genuine external/other reference and must pass through untouched.
+    const nonAssetUrl = "https://meals.themartinez.cloud/static/logo.png";
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: nonAssetUrl })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBe(nonAssetUrl);
   });
 
   it("leaves a null imageUrl as null", async () => {
