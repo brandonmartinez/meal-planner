@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { prismaMock } from "../../tests/helpers/prisma.js";
 import { buildReq, buildRes, buildNext } from "../../tests/helpers/express.js";
+import { getRouteHandler, buildFullRes } from "../../tests/helpers/router.js";
+import { authenticateApiKey } from "../middleware/auth.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
+vi.mock("../services/imageStorage.js", () => ({
+  imageStorage: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },
+}));
 
 // Import after the mock so the route's transitive deps see the mocked prisma.
 const { displayRouter } = await import("./display.js");
+const { imageStorage } = await import("../services/imageStorage.js");
 
 // The route is a single GET /meals handler — pull it out of the router stack
 // so we can call it directly with a mocked req/res.
@@ -26,8 +32,17 @@ if (!layer?.route) throw new Error("display route not found");
 // Last middleware in the route stack is the actual handler (after auth).
 const mealsHandler: RouteHandler = layer.route.stack[layer.route.stack.length - 1].handle;
 
-const FAMILY_ID = "fam-1";
+const imageHandler = getRouteHandler(
+  displayRouter as never,
+  "get",
+  "/images/:assetId",
+) as RouteHandler;
+
+const FAMILY_ID = "11111111-1111-1111-1111-111111111111";
 const FAMILY_NAME = "Martinez";
+const FAMILY_B = "22222222-2222-2222-2222-222222222222";
+const ASSET_ID = "33333333-3333-3333-3333-333333333333";
+const PNG_BYTES = Buffer.from("fake-png-data");
 
 function buildAuthedReq(
   query: Record<string, string> = {},
@@ -39,6 +54,15 @@ function buildAuthedReq(
   return req;
 }
 
+function buildImageReq(
+  assetId: string,
+  extra: Record<string, unknown> = {},
+) {
+  const req = buildReq({ params: { assetId }, ...extra });
+  (req as unknown as { familyId: string }).familyId = FAMILY_ID;
+  return req;
+}
+
 function buildResWithHeaders() {
   const res = buildRes();
   res.setHeader = vi.fn(() => res) as unknown as typeof res.setHeader;
@@ -46,12 +70,6 @@ function buildResWithHeaders() {
   return res;
 }
 
-function readHeaders(res: ReturnType<typeof buildResWithHeaders>) {
-  const setHeader = res.setHeader as unknown as {
-    mock: { calls: [string, string][] };
-  };
-  return Object.fromEntries(setHeader.mock.calls);
-}
 
 function mockFamily(timezone = "America/Chicago") {
   prismaMock.family.findUnique.mockResolvedValue({
@@ -112,9 +130,20 @@ function placeholderMeal(kind: string, over: Partial<FakeMeal> = {}): FakeMeal {
   };
 }
 
+function fakeAsset(over: Partial<{ id: string; familyId: string; extension: string; contentType: string }> = {}) {
+  return {
+    id: ASSET_ID,
+    familyId: FAMILY_ID,
+    extension: "png",
+    contentType: "image/png",
+    ...over,
+  };
+}
+
 beforeEach(() => {
   mockFamily();
   prismaMock.dayPlan.findMany.mockResolvedValue([] as never);
+  vi.mocked(imageStorage.get).mockReset();
 });
 
 describe("GET /api/display/meals — envelope + family", () => {
@@ -360,5 +389,142 @@ describe("GET /api/display/meals — ETag conditional", () => {
     )["ETag"];
 
     expect(etag1).not.toBe(etag2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// imageUrl rewriting — uploaded images must be rewritten to display route
+// ---------------------------------------------------------------------------
+describe("GET /api/display/meals — imageUrl rewriting", () => {
+  it("rewrites an uploaded (relative) imageUrl to /api/display/images/{assetId}", async () => {
+    const uploadedUrl = `/api/families/${FAMILY_ID}/images/${ASSET_ID}`;
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: uploadedUrl })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBe(`/api/display/images/${ASSET_ID}`);
+  });
+
+  it("leaves an absolute https:// imageUrl unchanged", async () => {
+    const absoluteUrl = "https://example.com/some/image.jpg";
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: absoluteUrl })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBe(absoluteUrl);
+  });
+
+  it("leaves a null imageUrl as null", async () => {
+    prismaMock.dayPlan.findMany.mockResolvedValue([
+      fakeDayPlan("2026-05-04", [regularMeal({ imageUrl: null })]),
+    ] as never);
+
+    const req = buildAuthedReq({ from: "2026-05-04", to: "2026-05-04" });
+    const res = buildResWithHeaders();
+    await mealsHandler(req, res, buildNext());
+
+    const body = res.body as { meals: { meals: { imageUrl: string | null }[] }[] };
+    expect(body.meals[0].meals[0].imageUrl).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/display/images/:assetId
+// ---------------------------------------------------------------------------
+describe("GET /api/display/images/:assetId", () => {
+  it("200 — returns image bytes with correct headers", async () => {
+    prismaMock.imageAsset.findUnique.mockResolvedValue(fakeAsset() as never);
+    vi.mocked(imageStorage.get).mockResolvedValue(PNG_BYTES);
+
+    const req = buildImageReq(ASSET_ID);
+    const res = buildFullRes();
+    await imageHandler(req, res as never, buildNext());
+
+    expect(res.send).toHaveBeenCalledWith(PNG_BYTES);
+    const headers = Object.fromEntries(
+      (res.setHeader as ReturnType<typeof vi.fn>).mock.calls as [string, string][],
+    );
+    expect(headers["Content-Type"]).toBe("image/png");
+    expect(headers["Content-Length"]).toBe(String(PNG_BYTES.length));
+    expect(headers["ETag"]).toMatch(/^"[0-9a-f]{64}"$/);
+    expect(headers["Cache-Control"]).toBe("private, max-age=3600");
+  });
+
+  it("304 — returns 304 with no body when If-None-Match matches ETag", async () => {
+    prismaMock.imageAsset.findUnique.mockResolvedValue(fakeAsset() as never);
+    vi.mocked(imageStorage.get).mockResolvedValue(PNG_BYTES);
+
+    // First request — get the ETag.
+    const req1 = buildImageReq(ASSET_ID);
+    const res1 = buildFullRes();
+    await imageHandler(req1, res1 as never, buildNext());
+    const etag = (
+      (res1.setHeader as ReturnType<typeof vi.fn>).mock.calls as [string, string][]
+    ).find(([name]) => name === "ETag")?.[1];
+    expect(etag).toBeDefined();
+
+    // Second request — conditional GET.
+    const req2 = buildImageReq(ASSET_ID, { headers: { "if-none-match": etag } });
+    const res2 = buildFullRes();
+    await imageHandler(req2, res2 as never, buildNext());
+    expect(res2.statusCode).toBe(304);
+    expect(res2.send).not.toHaveBeenCalled();
+  });
+
+  it("404 — when asset belongs to a different family", async () => {
+    prismaMock.imageAsset.findUnique.mockResolvedValue(
+      fakeAsset({ familyId: FAMILY_B }) as never,
+    );
+
+    const req = buildImageReq(ASSET_ID);
+    const res = buildFullRes();
+    await imageHandler(req, res as never, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("404 — when asset does not exist in the database", async () => {
+    prismaMock.imageAsset.findUnique.mockResolvedValue(null);
+
+    const req = buildImageReq(ASSET_ID);
+    const res = buildFullRes();
+    await imageHandler(req, res as never, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("404 — when imageStorage.get throws (file missing on disk)", async () => {
+    prismaMock.imageAsset.findUnique.mockResolvedValue(fakeAsset() as never);
+    vi.mocked(imageStorage.get).mockRejectedValue(new Error("ENOENT"));
+
+    const req = buildImageReq(ASSET_ID);
+    const res = buildFullRes();
+    await imageHandler(req, res as never, buildNext());
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("401 — authenticateApiKey is registered as the auth middleware", () => {
+    interface RouteLayer {
+      route?: {
+        stack: { handle: unknown }[];
+        methods: Record<string, boolean>;
+        path: string;
+      };
+    }
+    const routerStack = (displayRouter as unknown as { stack: RouteLayer[] }).stack;
+    const imageRoute = routerStack.find(
+      (l) => l.route?.path === "/images/:assetId" && l.route.methods.get,
+    );
+    expect(imageRoute).toBeDefined();
+    const middlewares = imageRoute!.route!.stack.slice(0, -1).map((s) => s.handle);
+    expect(middlewares).toContain(authenticateApiKey);
   });
 });
