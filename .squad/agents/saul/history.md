@@ -17,3 +17,5 @@
 - Shipped #119 family-configurable grocery categories; PR #148 squash `edfbda3` merged as Wave 4 migration keystone. Migration `20260703023913_add_grocery_categories` is additive and keeps ingredient category storage as raw strings with a family advisory registry.
 
 📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #204 grocery source-day tracking. Add `sourceDays Int[]`, generation support, badge UI, migration, tests, and PR. — logged by Scribe
+
+📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #204 grocery source-day annotations; PR #210 merged (`4d03e87`). Added `GroceryItem.sourceDays`, generation union/sort semantics, shared type parity, and inline day annotations. — logged by Scribe

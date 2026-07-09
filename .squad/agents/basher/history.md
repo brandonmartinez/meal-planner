@@ -39,3 +39,5 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 📌 Team update (2026-07-06T14:09:24-04:00): Cleaned up the CI pipeline — removed `pin-deploy-image` job (31 lines) from `.github/workflows/ci.yml`. The job had been committing a `[skip ci]` image-pin to main, but branch protection requires the `test` check so the push was always rejected (GH006); production deploys via the GitOps repo anyway, making the job doubly redundant. Pipeline is now `test → build-and-push → release`. PR #194 merged. Issue #189 closed. — logged by Scribe
 
 📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #207 full WebSockets realtime. Build server backbone, room-per-family, handshake auth, events, client wiring, tests, and PR. — logged by Scribe
+
+📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #207 WebSocket realtime backbone; PR #212 merged (`6ed535e`). Added socket.io server/client wiring, room-per-family delivery, typed events, CSP/proxy support, and collaborative grocery/week-plan updates. — logged by Scribe

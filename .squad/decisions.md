@@ -508,3 +508,28 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **What:** Keep meal-picker modal work frontend-only. Existing server search already matches name, description, tags, and ingredients. UX changes: placeholder text becomes `Search meals by name or tags…`; difficulty pills become a dropdown; tags/collections move into collapsible advanced filters; result descriptions expand from one line to 2–3 lines.
 **Why:** The backend search contract is sufficient; the family feedback is about modal usability and should avoid unnecessary API/schema churn.
 **Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09: Meal-picker modal search/filter UX (#208, PR #209)
+**By:** Linus
+**What:** Frontend-only MealPicker.tsx: search placeholder → "Search meals by name or tags…"; difficulty pills → Select dropdown (Any/Easy/Medium/Hard, single-select); advanced tag+collection facets collapsible, collapsed by default behind "Show more filters"; description line-clamp-1 → line-clamp-2. MealTagList max=2 kept intentionally.
+**Why:** Family feedback — tag list overwhelmed recipe visibility; needed name/tag search, less clutter, more description context.
+
+### 2026-07-09: Grocery item source-day annotations (#204, PR #210)
+**By:** Saul
+**What:** `GroceryItem.sourceDays Int[] @default([])` (0=Mon..6=Sun, matches PlanningTemplateEntry.dayOfWeek). Hand-authored additive migration via `prisma migrate diff --script` (no migrate dev). generateGroceryList() derives weekday per suggestion from dayPlan.date `(getUTCDay()+6)%7`, unions+dedupes+sorts Mon→Sun; cleared on MANUAL promotion. Web: inline `· Mon, Thu` annotation next to item name (annotation, not regrouping). shared: `sourceDays?: number[]`.
+**Why:** Family feedback — days of week attached to grocery item titles.
+
+### 2026-07-09: Grocery regenerate — preserve checked, date-range, remove-past-days (#206, PR #211)
+**By:** Livingston
+**What:** (1) Preserve checked items on regen — checked orphans promoted to MANUAL instead of deleted; only unchecked+unedited orphans pruned. (2) Short-order date-range generate — optional {startDate,endDate} on generateGroceryList(), Zod-validated at route boundary, clamps to MealSuggestion.dayPlan.date, skips orphan pruning; default full-week path unchanged. (3) Separate manual `removePastDays()` service + `POST /:familyId/grocery/:listId/remove-past-days` route + distinct frontend button (never folded into regenerate). Auth: authenticateJWT→requireMembership. Final merge (HEAD 1a2f297) reconciled with #204 sourceDays + #212 realtime emits; wired emitGroceryChanged into remove-past-days route.
+**Why:** Family feedback — regenerate should remove past days (opt-in), support short-order date-range shopping, and never clear already-checked items.
+
+### 2026-07-09: WebSocket realtime backbone (#207, PR #212)
+**By:** Basher
+**What:** Full bidirectional realtime via socket.io. Server: app.listen → http.createServer + socket.io; isolated JWT(cookie/Bearer)+API-key handshake in realtime/auth.ts (single trust boundary); room-per-family (`family:<id>`, joined server-side only); 13 typed emit sites; CSP connect-src += ws:/wss:. Shared: typed event contracts. Web: SocketProvider/useSocket/useRealtimeEvent, same-origin httpOnly-cookie socket, wired into grocery + week-plan pages; vite /socket.io ws proxy. No schema change. Traefik native WS passthrough (infra unchanged).
+**Why:** Family feedback — changes should propagate live across collaborative views.
+
+### 2026-07-09: Socket auth review (#207 / PR #212)
+**By:** Frank
+**What:** 🟡 YELLOW overall. The handshake rejects missing/invalid credentials and server-side room assignment prevents IDOR, but two non-blocking hardening gaps remain: add explicit WebSocket Origin enforcement (`allowRequest`) and add lifecycle/expiry handling for long-lived JWT sockets. Optional hardening: add socket handshake rate limiting.
+**Why:** `packages/api/src/realtime/index.ts:31-33` sets Socket.IO CORS to `config.clientUrl`, but Socket.IO CORS is not a complete WebSocket Origin gate; direct WebSocket upgrades should be rejected server-side by checking `req.headers.origin`. `packages/api/src/realtime/auth.ts:93` verifies JWTs only during the handshake and `packages/api/src/realtime/index.ts:51-57` keeps the connection in rooms without revalidation, so an expired/logout-stale socket may keep receiving family events until disconnect. No cross-family data leak or write path was found.
