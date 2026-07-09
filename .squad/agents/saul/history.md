@@ -19,3 +19,15 @@
 📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #204 grocery source-day tracking. Add `sourceDays Int[]`, generation support, badge UI, migration, tests, and PR. — logged by Scribe
 
 📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #204 grocery source-day annotations; PR #210 merged (`4d03e87`). Added `GroceryItem.sourceDays`, generation union/sort semantics, shared type parity, and inline day annotations. — logged by Scribe
+
+---
+
+## 2026-07-09: Pantry Staples Implementation (#205, PR #214)
+
+**Task:** Implement family-managed pantry staples list with read-time grocery separation per Epic #203 v0.6.0 Wave 2.
+
+**Work:** New `PantryStaple` Prisma model with normalized-name matching (same `normalizeIngredientName` as grocery deduplication). Family-scoped CRUD service with PARENT-only mutations. Read-time derivation via `annotatePantryStaples()` sets `isPantryStaple` flag on grocery items whose normalized name matches a family staple — nothing persisted on `GroceryItem`, guaranteeing staples never pruned. Web: PARENT-only staples management in Family Settings; collapsible "Pantry Staples" section (collapsed by default) in grocery list. Hand-authored additive-only migration via `prisma migrate diff --script`.
+
+**Outcome:** PR #214 merged to origin/main (squash 62b97a2). Full build/test green, lint clean. Decision record in `.squad/decisions.md`, orchestration log in `.squad/orchestration-log/2026-07-09T02-50-00Z-saul.md`.
+
+**Team Notes:** Read-time derivation kept pantry separation orthogonal to #204 sourceDays and #206 preserve-checked orphan logic — zero merge conflicts. `onDelete: Cascade` chosen (vs sibling models' `Restrict`) because staples have no meaning without their family. No MCP parity required (pantry staples are family settings/grocery, not recipe/meal agent surface).

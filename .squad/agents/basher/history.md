@@ -41,3 +41,15 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #207 full WebSockets realtime. Build server backbone, room-per-family, handshake auth, events, client wiring, tests, and PR. — logged by Scribe
 
 📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #207 WebSocket realtime backbone; PR #212 merged (`6ed535e`). Added socket.io server/client wiring, room-per-family delivery, typed events, CSP/proxy support, and collaborative grocery/week-plan updates. — logged by Scribe
+
+---
+
+## 2026-07-09: WebSocket Auth Hardening (#213, PR #215)
+
+**Task:** Address three non-blocking hardening advisories from Frank's #207 socket-auth review per Epic #203 v0.6.0 Wave 3.
+
+**Work:** Three runtime hardening items, no schema/migration. (1) Explicit WS Origin gate — new `realtime/handshake.ts` (`parseAllowedOrigins`/`isOriginAllowed`) + middleware in `realtime/index.ts`, reusing `config.clientUrl`, comma-split multi-origin, trailing-slash normalized, null-Origin allowed for legitimate non-browser clients. (2) JWT expiry disconnect — `auth.ts` surfaces `tokenExp` (epoch ms), `index.ts` schedules timer for user-JWT sockets only (API-key sockets never scheduled), timer unref'd and clamped to 32-bit max. (3) IP-keyed handshake throttle — fixed-window mirroring `middleware/rateLimit.ts`, env-configurable `WS_HANDSHAKE_LIMIT=60` / `WS_HANDSHAKE_WINDOW_MS=60000`. Middleware order: throttle → origin → auth.
+
+**Outcome:** PR #215 merged to origin/main (squash ac09cf5, current HEAD). 1715 tests passed (api 1011 incl. new handshake.test.ts 20 + index.test.ts 6 + auth.test.ts +2; web 579, mcp 121, shared 4). Lint 0 errors. Decision record in `.squad/decisions.md`, orchestration log in `.squad/orchestration-log/2026-07-09T02-50-00Z-basher.md`.
+
+**Team Notes:** Closed all three Frank advisories from #213. Origin gate added because Socket.IO CORS is not a complete WS Origin gate. Expiry disconnect closes connect-time-only JWT check for long-lived sockets. Null-Origin allowed to preserve legitimate non-browser socket clients (e.g., MCP server connections). Zero API contract changes — all hardening is internal to handshake/lifecycle.
