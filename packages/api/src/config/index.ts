@@ -124,6 +124,17 @@ export const config = {
   imageStorage: {
     root: process.env.IMAGE_STORAGE_ROOT || `${process.cwd()}/.data/images`,
   },
+  // Real-time (socket.io) hardening knobs (#213). Dev-safe defaults so the app
+  // boots with zero setup; tune per environment via env vars. These mirror the
+  // HTTP rate-limit posture (middleware/rateLimit.ts) for the WS handshake.
+  realtime: {
+    // Per-IP handshake budget: at most `handshakeLimit` new socket connections
+    // from a single client IP within `handshakeWindowMs`. Blunts connection
+    // floods without hindering normal reconnects. Set the limit to 0 to disable
+    // the throttle entirely (e.g. in a test harness).
+    handshakeLimit: parseInt(process.env.WS_HANDSHAKE_LIMIT || "60", 10),
+    handshakeWindowMs: parseInt(process.env.WS_HANDSHAKE_WINDOW_MS || "60000", 10),
+  },
 } as const;
 
 /**
