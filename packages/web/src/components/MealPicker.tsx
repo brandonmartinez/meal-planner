@@ -32,14 +32,16 @@ const DIFFICULTY_LABELS: Record<Difficulty, string> = {
 export default function MealPicker({ familyId, onSelect, onClose }: MealPickerProps) {
   const [meals, setMeals] = useState<MealListItemDTO[]>([]);
   const [search, setSearch] = useState('');
-  const [difficulty, setDifficulty] = useState<Difficulty[]>([]);
+  const [difficulty, setDifficulty] = useState<Difficulty | ''>('');
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [collectionFilter, setCollectionFilter] = useState('');
   const [collectionOptions, setCollectionOptions] = useState<RecipeCollection[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const headingId = useId();
+  const filtersId = useId();
 
   const { tags: tagOptions } = useTaxonomy(familyId);
 
@@ -50,7 +52,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     try {
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
-        difficulty: difficulty.length ? difficulty : undefined,
+        difficulty: difficulty ? [difficulty] : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
@@ -82,7 +84,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     try {
       const data = await listMeals(familyId, {
         search: debouncedSearch || undefined,
-        difficulty: difficulty.length ? difficulty : undefined,
+        difficulty: difficulty ? [difficulty] : undefined,
         tags: tagFilter.length ? tagFilter : undefined,
         collections: collectionFilter ? [collectionFilter] : undefined,
         limit: PICKER_PAGE_SIZE,
@@ -95,12 +97,6 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
     } finally {
       setLoadingMore(false);
     }
-  };
-
-  const toggleDifficulty = (value: Difficulty) => {
-    setDifficulty(prev =>
-      prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value],
-    );
   };
 
   const toggleTag = (value: string) => {
@@ -136,88 +132,105 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search meals..."
+          placeholder="Search meals by name or tags…"
           aria-label="Search meals"
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           data-autofocus
         />
-        {/* Difficulty is the most relevant planning filter; kept compact so the
-            picker stays lean. Tag facets (#108) render only when the family has
-            taxonomy so the picker stays uncluttered. */}
-        <div
-          role="group"
-          aria-label="Filter by difficulty"
-          className="flex flex-wrap items-center gap-1.5"
-        >
-          {MEAL_DIFFICULTIES.map(value => {
-            const active = difficulty.includes(value);
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => toggleDifficulty(value)}
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
-                  active
-                    ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-              >
+        {/* Difficulty is the most relevant planning filter, so it stays always
+            visible as a compact dropdown. Tag facets (#108) and the collection
+            filter (#110) live behind a collapsible "more filters" toggle so the
+            picker stays uncluttered and the recipes are easy to scan (#208). */}
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="picker-difficulty-filter"
+            className="text-xs font-medium text-gray-600 dark:text-gray-300"
+          >
+            Difficulty
+          </label>
+          <Select
+            id="picker-difficulty-filter"
+            selectSize="sm"
+            value={difficulty}
+            onChange={e => setDifficulty(e.target.value as Difficulty | '')}
+            className="flex-1"
+          >
+            <option value="">Any difficulty</option>
+            {MEAL_DIFFICULTIES.map(value => (
+              <option key={value} value={value}>
                 {DIFFICULTY_LABELS[value]}
-              </button>
-            );
-          })}
+              </option>
+            ))}
+          </Select>
         </div>
 
-        {tagOptions.length > 0 && (
-          <div
-            role="group"
-            aria-label="Filter by tag"
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {tagOptions.map(tag => {
-              const active = tagFilter.includes(tag.name);
-              return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => toggleTag(tag.name)}
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
-                    active
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {(tagOptions.length > 0 || collectionOptions.length > 0) && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowFilters(v => !v)}
+              aria-expanded={showFilters}
+              aria-controls={filtersId}
+              className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            >
+              Show more filters <span aria-hidden="true">{showFilters ? '▾' : '▸'}</span>
+            </button>
 
-        {collectionOptions.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="picker-collection-filter"
-              className="text-xs font-medium text-gray-600 dark:text-gray-300"
-            >
-              Collection
-            </label>
-            <Select
-              id="picker-collection-filter"
-              selectSize="sm"
-              value={collectionFilter}
-              onChange={e => setCollectionFilter(e.target.value)}
-              className="flex-1"
-            >
-              <option value="">All collections</option>
-              {collectionOptions.map(c => (
-                <option key={c.id} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            {showFilters && (
+              <div id={filtersId} className="mt-3 space-y-3">
+                {tagOptions.length > 0 && (
+                  <div
+                    role="group"
+                    aria-label="Filter by tag"
+                    className="flex flex-wrap items-center gap-1.5"
+                  >
+                    {tagOptions.map(tag => {
+                      const active = tagFilter.includes(tag.name);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => toggleTag(tag.name)}
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors ${
+                            active
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {tag.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {collectionOptions.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor="picker-collection-filter"
+                      className="text-xs font-medium text-gray-600 dark:text-gray-300"
+                    >
+                      Collection
+                    </label>
+                    <Select
+                      id="picker-collection-filter"
+                      selectSize="sm"
+                      value={collectionFilter}
+                      onChange={e => setCollectionFilter(e.target.value)}
+                      className="flex-1"
+                    >
+                      <option value="">All collections</option>
+                      {collectionOptions.map(c => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -282,7 +295,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                       </div>
                     </div>
                     {meal.description && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{meal.description}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{meal.description}</div>
                     )}
                     <MealTagList
                       tags={meal.tags}
