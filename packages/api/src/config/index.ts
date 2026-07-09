@@ -135,6 +135,16 @@ export const config = {
     handshakeLimit: parseInt(process.env.WS_HANDSHAKE_LIMIT || "60", 10),
     handshakeWindowMs: parseInt(process.env.WS_HANDSHAKE_WINDOW_MS || "60000", 10),
   },
+  // Redis connection for the socket.io adapter (#207 multi-replica fan-out).
+  // OPTIONAL: when REDIS_URL is unset the realtime server uses the default
+  // in-memory adapter, so local dev, unit tests, and single-instance deploys
+  // work exactly as before. Set REDIS_URL (e.g.
+  // redis://redis.meal-planner.svc.cluster.local:6379) when running multiple
+  // API replicas so io.to(room).emit() fans out across all pods. Not in
+  // PRODUCTION_REQUIRED_VARS: single-instance production is still valid.
+  redis: {
+    url: process.env.REDIS_URL,
+  },
 } as const;
 
 /**

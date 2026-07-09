@@ -22,7 +22,7 @@ import { imagesRouter } from "./routes/images.js";
 import { displayRouter } from "./routes/display.js";
 import { agentRouter } from "./routes/agent.js";
 import { mcpRouter } from "./routes/mcp.js";
-import { initRealtime } from "./realtime/index.js";
+import { initRealtime, closeRealtime } from "./realtime/index.js";
 import {
   displayLimiter,
   authLimiter,
@@ -144,9 +144,36 @@ if (staticRoot) {
 // Start server. Use an explicit HTTP server so the socket.io real-time server
 // (#207) can attach to the same port and share the HTTP upgrade handshake.
 const server = http.createServer(app);
-initRealtime(server);
-server.listen(config.port, () => {
-  console.log(`API server running on port ${config.port}`);
-});
+
+// initRealtime is async because attaching the Redis adapter (#207 multi-replica
+// fan-out) must connect its pub/sub clients before we accept connections. Await
+// it so the adapter is in place BEFORE server.listen — otherwise early
+// connections could bypass cross-pod fan-out. Without REDIS_URL this resolves
+// immediately and behaviour is unchanged.
+(async () => {
+  await initRealtime(server);
+  server.listen(config.port, () => {
+    console.log(`API server running on port ${config.port}`);
+  });
+})();
+
+// Graceful shutdown: close the realtime layer (socket.io server + Redis
+// clients) then stop accepting HTTP connections. k3s/Kubernetes sends SIGTERM
+// on pod termination; SIGINT covers local Ctrl-C.
+function shutdown(signal: string): void {
+  console.log(`Received ${signal}, shutting down gracefully...`);
+  closeRealtime()
+    .catch((err) => {
+      console.error("Error during realtime shutdown:", err);
+    })
+    .finally(() => {
+      server.close(() => {
+        process.exit(0);
+      });
+    });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 export default app;
