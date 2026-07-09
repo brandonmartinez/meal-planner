@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { WeekProvider } from './context/WeekContext';
+import { SocketProvider } from './context/SocketContext';
 import { useFamily } from './hooks/useFamily';
 import LoginPage from './pages/LoginPage';
 import FamilySettingsPage from './pages/FamilySettingsPage';
@@ -158,12 +159,14 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ToastProvider>
-          <WeekProvider>
-            <AppRoutes />
-            <ToastContainer />
-          </WeekProvider>
-        </ToastProvider>
+        <SocketProvider>
+          <ToastProvider>
+            <WeekProvider>
+              <AppRoutes />
+              <ToastContainer />
+            </WeekProvider>
+          </ToastProvider>
+        </SocketProvider>
       </AuthProvider>
     </ThemeProvider>
   );

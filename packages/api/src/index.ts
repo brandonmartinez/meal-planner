@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import http from "http";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -20,6 +21,7 @@ import { imagesRouter } from "./routes/images.js";
 import { displayRouter } from "./routes/display.js";
 import { agentRouter } from "./routes/agent.js";
 import { mcpRouter } from "./routes/mcp.js";
+import { initRealtime } from "./realtime/index.js";
 import {
   displayLimiter,
   authLimiter,
@@ -59,7 +61,9 @@ app.use(
         // bundle (which uses external JS/CSS files).
         "script-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'"],
-        "connect-src": ["'self'"],
+        // The API also opens a WebSocket (socket.io) connection for real-time
+        // live updates (#207); browsers need ws:/wss: allowed alongside 'self'.
+        "connect-src": ["'self'", "ws:", "wss:"],
         "form-action": ["'self'", "https://accounts.google.com"],
         "frame-ancestors": ["'none'"],
         "object-src": ["'none'"],
@@ -135,8 +139,11 @@ if (staticRoot) {
   });
 }
 
-// Start server
-app.listen(config.port, () => {
+// Start server. Use an explicit HTTP server so the socket.io real-time server
+// (#207) can attach to the same port and share the HTTP upgrade handshake.
+const server = http.createServer(app);
+initRealtime(server);
+server.listen(config.port, () => {
   console.log(`API server running on port ${config.port}`);
 });
 

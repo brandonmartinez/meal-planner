@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { render, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../context/AuthContext';
+import { SocketProvider } from '../context/SocketContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { ToastProvider } from '../context/ToastContext';
 import { WeekProvider } from '../context/WeekContext';
@@ -10,11 +11,13 @@ function AllProviders({ children }: { children: ReactNode }) {
     return (
         <MemoryRouter>
             <AuthProvider>
-                <ThemeProvider>
-                    <ToastProvider>
-                        <WeekProvider>{children}</WeekProvider>
-                    </ToastProvider>
-                </ThemeProvider>
+                <SocketProvider>
+                    <ThemeProvider>
+                        <ToastProvider>
+                            <WeekProvider>{children}</WeekProvider>
+                        </ToastProvider>
+                    </ThemeProvider>
+                </SocketProvider>
             </AuthProvider>
         </MemoryRouter>
     );
