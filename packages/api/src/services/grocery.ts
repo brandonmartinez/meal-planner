@@ -90,19 +90,43 @@ function weekdayOffset(date: Date): number {
   return (date.getUTCDay() + 6) % 7;
 }
 
-export async function generateGroceryList(familyId: string, weekStart: Date) {
+export async function generateGroceryList(
+  familyId: string,
+  weekStart: Date,
+  options?: { startDate?: Date; endDate?: Date },
+) {
   const start = new Date(weekStart);
   start.setUTCHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 6);
   end.setUTCHours(23, 59, 59, 999);
 
-  // Find all approved meal suggestions for the week
+  // Short-order date-range generate (issue #206): narrow which suggestions
+  // contribute without changing the week the list is keyed to. When a range is
+  // active, out-of-range GENERATED items are preserved (orphan pruning below is
+  // skipped) so short-order shopping never wipes the rest of the week's list.
+  const dateRangeActive = !!(options?.startDate || options?.endDate);
+  const queryStart = options?.startDate
+    ? (() => {
+        const s = new Date(options.startDate);
+        s.setUTCHours(0, 0, 0, 0);
+        return s < start ? start : s;
+      })()
+    : start;
+  const queryEnd = options?.endDate
+    ? (() => {
+        const e = new Date(options.endDate);
+        e.setUTCHours(23, 59, 59, 999);
+        return e > end ? end : e;
+      })()
+    : end;
+
+  // Find all approved meal suggestions for the (optionally narrowed) range
   const suggestions = await prisma.mealSuggestion.findMany({
     where: {
       approved: true,
       dayPlan: {
-        date: { gte: start, lte: end },
+        date: { gte: queryStart, lte: queryEnd },
         weekPlan: { familyId },
       },
     },
@@ -243,24 +267,30 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
     }
   }
 
-  // Handle orphaned GENERATED items (no longer in any meal plan)
-  for (const [key, item] of generatedMap.entries()) {
-    if (!computedMap.has(key)) {
-      if (item.edited) {
-        // Promote to MANUAL so user's edits survive
-        ops.push(
-          prisma.groceryItem.update({
-            where: { id: item.id },
-            data: {
-              origin: GrocerySource.MANUAL,
-              sourceMealIds: [],
-              sourceDays: [],
-            },
-          }),
-        );
-      } else {
-        // Unedited orphan — delete it
-        ops.push(prisma.groceryItem.delete({ where: { id: item.id } }));
+  // Handle orphaned GENERATED items (no longer in any meal plan).
+  // Skipped entirely while a short-order date range is active so out-of-range
+  // GENERATED items survive a narrowed generate (issue #206).
+  if (!dateRangeActive) {
+    for (const [key, item] of generatedMap.entries()) {
+      if (!computedMap.has(key)) {
+        if (item.edited || item.checked) {
+          // Promote to MANUAL so the user's edits AND checked-off progress
+          // survive regeneration (issue #206). A checked item is never removed.
+          // Clear sourceDays on MANUAL promotion (issue #204).
+          ops.push(
+            prisma.groceryItem.update({
+              where: { id: item.id },
+              data: {
+                origin: GrocerySource.MANUAL,
+                sourceMealIds: [],
+                sourceDays: [],
+              },
+            }),
+          );
+        } else {
+          // Unedited, unchecked orphan — safe to delete
+          ops.push(prisma.groceryItem.delete({ where: { id: item.id } }));
+        }
       }
     }
   }
@@ -429,5 +459,84 @@ export async function editItemFields(
   return prisma.groceryItem.update({
     where: { id: itemId },
     data: updateData,
+  });
+}
+
+/**
+ * Manually removes GENERATED grocery items whose source meal-days all fall in
+ * the past (issue #206). This is an explicit user action and is NEVER called
+ * automatically on regenerate. Rules:
+ *   - Checked items are always preserved (the user's progress survives).
+ *   - MANUAL items (no source meals) are always preserved.
+ *   - Items whose source meals no longer appear in the week's plan (dates are
+ *     indeterminate) are preserved — when in doubt, keep.
+ *   - Only unchecked items whose known source days are ENTIRELY in the past are
+ *     dropped.
+ * Past-ness is derived from the MealSuggestion → DayPlan.date relationships that
+ * already exist; it does not depend on any per-item day column.
+ */
+export async function removePastDays(familyId: string, listId: string) {
+  const list = await prisma.groceryList.findFirst({
+    where: { id: listId, familyId },
+    include: { items: true },
+  });
+  if (!list) {
+    throw new GroceryError(404, "Grocery list not found");
+  }
+
+  const weekStart = new Date(list.weekStart);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+  weekEnd.setUTCHours(23, 59, 59, 999);
+
+  // Map each meal id to the approved suggestion dates within this list's week.
+  const suggestions = await prisma.mealSuggestion.findMany({
+    where: {
+      approved: true,
+      dayPlan: {
+        date: { gte: weekStart, lte: weekEnd },
+        weekPlan: { familyId },
+      },
+    },
+    include: {
+      dayPlan: { select: { date: true } },
+      meal: { select: { id: true } },
+    },
+  });
+
+  const mealDates = new Map<string, Date[]>();
+  for (const s of suggestions) {
+    const arr = mealDates.get(s.meal.id) ?? [];
+    arr.push(s.dayPlan.date);
+    mealDates.set(s.meal.id, arr);
+  }
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const toDelete: string[] = [];
+  for (const item of list.items) {
+    if (item.checked) continue; // never drop checked progress
+    if (item.sourceMealIds.length === 0) continue; // MANUAL / no provenance
+    const dates = item.sourceMealIds.flatMap((mid) => mealDates.get(mid) ?? []);
+    if (dates.length === 0) continue; // indeterminate — keep when in doubt
+    const allPast = dates.every((d) => new Date(d) < today);
+    if (allPast) {
+      toDelete.push(item.id);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    await prisma.$transaction(
+      toDelete.map((id) => prisma.groceryItem.delete({ where: { id } })),
+    );
+  }
+
+  return prisma.groceryList.findFirst({
+    where: { id: listId, familyId },
+    include: {
+      items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
+    },
   });
 }

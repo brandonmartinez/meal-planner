@@ -3,9 +3,15 @@ import { ApiError, request } from './client';
 
 const BASE = '/api/families';
 
-export async function generateGroceryList(familyId: string, weekStart: string): Promise<GroceryList> {
+export async function generateGroceryList(
+  familyId: string,
+  weekStart: string,
+  range?: { startDate?: string; endDate?: string },
+): Promise<GroceryList> {
+  const hasRange = !!(range?.startDate || range?.endDate);
   return request<GroceryList>(`${BASE}/${familyId}/weeks/${weekStart}/grocery`, {
     method: 'POST',
+    ...(hasRange ? { body: JSON.stringify(range) } : {}),
   });
 }
 
@@ -36,5 +42,11 @@ export async function addCustomItem(familyId: string, listId: string, data: { na
 export async function removeGroceryItem(familyId: string, listId: string, itemId: string): Promise<void> {
   return request<void>(`${BASE}/${familyId}/grocery/${listId}/items/${itemId}`, {
     method: 'DELETE',
+  });
+}
+
+export async function removePastDays(familyId: string, listId: string): Promise<GroceryList> {
+  return request<GroceryList>(`${BASE}/${familyId}/grocery/${listId}/remove-past-days`, {
+    method: 'POST',
   });
 }

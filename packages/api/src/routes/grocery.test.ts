@@ -23,6 +23,7 @@ vi.mock("../services/grocery.js", () => {
     editItemFields: vi.fn(),
     addCustomItem: vi.fn(),
     removeItem: vi.fn(),
+    removePastDays: vi.fn(),
   };
 });
 vi.mock("../services/groceryCategories.js", () => ({
@@ -83,6 +84,74 @@ describe("POST /:familyId/weeks/:weekStart/grocery (generate)", () => {
     );
     expect(res.statusCode).toBe(500);
     expect(res.body).toEqual({ error: "Failed to generate grocery list" });
+  });
+
+  it("passes no options through for a whole-week generate", async () => {
+    vi.mocked(groceryService.generateGroceryList).mockResolvedValue({
+      id: LIST_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({ params: { familyId: FAMILY_ID, weekStart: WEEK } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    expect(groceryService.generateGroceryList).toHaveBeenCalledWith(
+      FAMILY_ID,
+      expect.any(Date),
+      undefined,
+    );
+  });
+
+  it("forwards a date range as start/end Date options", async () => {
+    vi.mocked(groceryService.generateGroceryList).mockResolvedValue({
+      id: LIST_ID,
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, weekStart: WEEK },
+        body: { startDate: "2026-05-05", endDate: "2026-05-07" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(201);
+    const call = vi.mocked(groceryService.generateGroceryList).mock.calls[0];
+    const options = call[2] as { startDate?: Date; endDate?: Date };
+    expect(options.startDate).toBeInstanceOf(Date);
+    expect(options.endDate).toBeInstanceOf(Date);
+    expect(options.startDate?.toISOString()).toBe("2026-05-05T00:00:00.000Z");
+    expect(options.endDate?.toISOString()).toBe("2026-05-07T23:59:59.999Z");
+  });
+
+  it("400s when startDate is after endDate", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, weekStart: WEEK },
+        body: { startDate: "2026-05-07", endDate: "2026-05-05" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(groceryService.generateGroceryList).not.toHaveBeenCalled();
+  });
+
+  it("400s when a date is malformed", async () => {
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID, weekStart: WEEK },
+        body: { startDate: "not-a-date" },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(groceryService.generateGroceryList).not.toHaveBeenCalled();
   });
 });
 
@@ -361,7 +430,49 @@ describe("DELETE /:familyId/grocery/:listId/items/:itemId (remove)", () => {
   });
 });
 
-describe("GET /:familyId/grocery-categories (effective list, #119)", () => {
+describe("POST /:familyId/grocery/:listId/remove-past-days (#206)", () => {
+  const handler = getRouteHandler(
+    groceryRouter,
+    "post",
+    "/:familyId/grocery/:listId/remove-past-days",
+  );
+
+  const params = { familyId: FAMILY_ID, listId: LIST_ID };
+
+  it("200s with the pruned list", async () => {
+    vi.mocked(groceryService.removePastDays).mockResolvedValue({
+      id: LIST_ID,
+      items: [],
+    } as never);
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(200);
+    expect(groceryService.removePastDays).toHaveBeenCalledWith(
+      FAMILY_ID,
+      LIST_ID,
+    );
+  });
+
+  it("maps a GroceryError to its own status code", async () => {
+    vi.mocked(groceryService.removePastDays).mockRejectedValue(
+      new GroceryError(404, "Grocery list not found"),
+    );
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Grocery list not found" });
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(groceryService.removePastDays).mockRejectedValue(new Error("db"));
+    const res = buildFullRes();
+    await handler(req({ params }), res, buildNext());
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "Failed to remove past days" });
+  });
+});
+
+describe("GET /:familyId/grocery-categories (#119)", () => {
   const handler = getRouteHandler(
     groceryRouter,
     "get",
