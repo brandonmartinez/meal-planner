@@ -2,6 +2,19 @@ import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { server } from "./msw/server";
 
+// SocketProvider (issue #207) is part of the shared render tree, and
+// socket.io-client attempts a real network connection under jsdom. Stub it
+// globally with an inert socket so page/component tests don't open sockets.
+// Tests that need to drive real-time events declare their own per-file mock,
+// which overrides this one.
+vi.mock("socket.io-client", () => ({
+  io: () => ({
+    on: vi.fn(),
+    emit: vi.fn(),
+    disconnect: vi.fn(),
+  }),
+}));
+
 function createStorage(): Storage {
   const store = new Map<string, string>();
 

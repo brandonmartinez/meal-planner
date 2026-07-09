@@ -3,11 +3,12 @@ import { Link, Navigate } from 'react-router-dom';
 import { useFamily } from '../hooks/useFamily';
 import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import { useWeek } from '../context/WeekContext';
+import { useRealtimeEvent } from '../context/SocketContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem, removePastDays } from '../api/grocery';
 import { formatWeekRange } from '../utils/date';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Select from '../components/Select';
-import type { GroceryList, GroceryItem } from '@meal-planner/shared';
+import { RealtimeEvent, type GroceryList, type GroceryItem } from '@meal-planner/shared';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     produce: '🥬',
@@ -64,6 +65,11 @@ export default function GroceryListPage() {
     }, [familyId, weekStart]);
 
     useEffect(() => { loadList(); }, [loadList]);
+
+    // Live-update when another family member changes this family's grocery list.
+    useRealtimeEvent(RealtimeEvent.GroceryChanged, (payload) => {
+        if (payload.familyId === familyId) loadList();
+    });
 
     const handleGenerate = async (range?: { startDate?: string; endDate?: string }) => {
         if (!familyId || !weekStart) return;

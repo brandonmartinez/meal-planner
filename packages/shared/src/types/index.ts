@@ -2,6 +2,9 @@
 // models and are re-exported from the package index.
 export * from "./dto.js";
 
+// Real-time (WebSocket) event contracts (issue #207).
+export * from "./realtime.js";
+
 export enum Role {
   PARENT = "PARENT",
   CHILD = "CHILD",
