@@ -24,6 +24,7 @@ model Family {
   recipeCollections RecipeCollection[]
   planningTemplates PlanningTemplate[]
   groceryCategories GroceryCategory[]
+  pantryStaples     PantryStaple[]
 }
 
 model User {
@@ -400,6 +401,30 @@ model PlanningTemplate {
   entries        PlanningTemplateEntry[]
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
+
+  @@unique([familyId, nameNormalized])
+  @@index([familyId])
+}
+
+/// Family-scoped managed pantry staples (issue #205). "Stock kitchen" items
+/// (salt, spices, oil, ...) that a family keeps on hand and does not want mixed
+/// into the active shopping list. A grocery item whose normalized name matches a
+/// staple is auto-separated into a dedicated "Pantry Staples" section rather than
+/// its aisle category — staple items are never deleted or pruned, only segmented.
+/// `nameNormalized` uses the SAME normalization as grocery keys
+/// (`normalizeIngredientName`) so matching against grocery item names is exact,
+/// while `name` preserves display casing for the settings UI. Unlike Tag /
+/// GroceryCategory (Restrict), the Family relation is `onDelete: Cascade`:
+/// staples are pure settings data with no dependents, so deleting a family
+/// cleans them up automatically.
+model PantryStaple {
+  id             String   @id @default(uuid())
+  name           String
+  nameNormalized String
+  family         Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  familyId       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([familyId, nameNormalized])
   @@index([familyId])

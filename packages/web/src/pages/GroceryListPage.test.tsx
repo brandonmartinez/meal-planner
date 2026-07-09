@@ -356,4 +356,60 @@ describe('GroceryListPage accessibility', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Failed to load grocery list');
   });
+
+  // --- Pantry staples auto-separation (issue #205) -----------------------
+  describe('pantry staples section', () => {
+    it('separates isPantryStaple items into a collapsible Pantry Staples group', async () => {
+      server.use(
+        authMeWithFamily(),
+        http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+          HttpResponse.json(
+            listWith([
+              item({ id: 'it-1', name: 'Bananas', category: 'produce' }),
+              item({
+                id: 'it-2',
+                name: 'Salt',
+                category: 'pantry',
+                isPantryStaple: true,
+              }),
+            ]),
+          ),
+        ),
+      );
+
+      renderWithProviders(<GroceryListPage />);
+
+      // Non-staple renders immediately in its aisle group.
+      expect(await screen.findByText('Bananas')).toBeInTheDocument();
+
+      // The Pantry Staples section header exists and is collapsed by default,
+      // so the staple item is hidden until expanded.
+      const toggle = screen.getByRole('button', { name: /pantry staples/i });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('Salt')).not.toBeInTheDocument();
+
+      // Expand → the staple item appears under the Pantry Staples section.
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(await screen.findByText('Salt')).toBeInTheDocument();
+    });
+
+    it('does not render a Pantry Staples section when no items are staples', async () => {
+      server.use(
+        authMeWithFamily(),
+        http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+          HttpResponse.json(
+            listWith([item({ id: 'it-1', name: 'Bananas', category: 'produce' })]),
+          ),
+        ),
+      );
+
+      renderWithProviders(<GroceryListPage />);
+
+      expect(await screen.findByText('Bananas')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /pantry staples/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

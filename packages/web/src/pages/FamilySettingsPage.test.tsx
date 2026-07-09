@@ -727,4 +727,118 @@ describe('FamilySettingsPage accessibility', () => {
     // The agent credential name field is likewise labelled.
     expect(screen.getByRole('textbox', { name: 'Agent credential name' })).toBeInTheDocument();
   });
+
+  // --- Managed pantry staples (issue #205) -------------------------------
+  describe('pantry staples', () => {
+    it('renders the parent-only Pantry Staples section with existing staples', async () => {
+      server.use(
+        authMe('PARENT'),
+        http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+        http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+        http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+        http.get('/api/families/:id/pantry-staples', () =>
+          HttpResponse.json({
+            staples: [{ id: 'st-1', name: 'Salt', familyId: FAMILY_ID }],
+          }),
+        ),
+      );
+
+      renderWithProviders(<FamilySettingsPage />);
+
+      expect(
+        await screen.findByRole('heading', { name: /pantry staples/i }),
+      ).toBeInTheDocument();
+      expect(await screen.findByText('Salt')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Remove Salt' })).toBeInTheDocument();
+    });
+
+    it('hides the Pantry Staples section from child members', async () => {
+      server.use(
+        authMe('CHILD'),
+        http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+        http.get('/api/families/:id/members', () =>
+          HttpResponse.json([
+            member('mem-1', 'Alice', 'CHILD', SELF_ID),
+            member('mem-2', 'Bobby', 'PARENT', 'u-2'),
+          ]),
+        ),
+      );
+
+      renderWithProviders(<FamilySettingsPage />);
+
+      expect(await screen.findByText('Alice')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: /pantry staples/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lets a parent add a pantry staple, POSTing the name', async () => {
+      const posted: unknown[] = [];
+      let listCall = 0;
+      server.use(
+        authMe('PARENT'),
+        http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+        http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+        http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+        http.get('/api/families/:id/pantry-staples', () => {
+          // First load: empty. After a successful create + reload: one staple.
+          listCall += 1;
+          return HttpResponse.json({
+            staples:
+              listCall > 1 ? [{ id: 'st-1', name: 'Olive Oil', familyId: FAMILY_ID }] : [],
+          });
+        }),
+        http.post('/api/families/:id/pantry-staples', async ({ request }) => {
+          posted.push(await request.json());
+          return HttpResponse.json(
+            { id: 'st-1', name: 'Olive Oil', familyId: FAMILY_ID },
+            { status: 201 },
+          );
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderWithProviders(<FamilySettingsPage />);
+
+      const input = await screen.findByRole('textbox', { name: 'Pantry staple name' });
+      await user.type(input, 'Olive Oil');
+      await user.click(screen.getByRole('button', { name: /^add$/i }));
+
+      await waitFor(() => expect(posted).toEqual([{ name: 'Olive Oil' }]));
+      expect(await screen.findByText('Olive Oil')).toBeInTheDocument();
+    });
+
+    it('lets a parent remove a pantry staple, sending a DELETE', async () => {
+      const deletes: string[] = [];
+      let listCall = 0;
+      server.use(
+        authMe('PARENT'),
+        http.get('/api/families/:id', () => HttpResponse.json(familyDto())),
+        http.get('/api/families/:id/members', () => HttpResponse.json(parentMembers())),
+        http.get('/api/families/:id/api-keys', () => HttpResponse.json([])),
+        http.get('/api/families/:id/pantry-staples', () => {
+          listCall += 1;
+          return HttpResponse.json({
+            staples:
+              listCall > 1 ? [] : [{ id: 'st-1', name: 'Salt', familyId: FAMILY_ID }],
+          });
+        }),
+        http.delete('/api/families/:id/pantry-staples/:stapleId', ({ params }) => {
+          deletes.push(params.stapleId as string);
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+
+      const user = userEvent.setup();
+      renderWithProviders(<FamilySettingsPage />);
+
+      const removeBtn = await screen.findByRole('button', { name: 'Remove Salt' });
+      await user.click(removeBtn);
+
+      await waitFor(() => expect(deletes).toEqual(['st-1']));
+      await waitFor(() =>
+        expect(screen.queryByText('Salt')).not.toBeInTheDocument(),
+      );
+    });
+  });
 });

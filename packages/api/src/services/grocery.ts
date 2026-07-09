@@ -6,6 +6,36 @@ import {
   normalizeIngredientName,
   normalizeUnit,
 } from "./ingredientNormalize.js";
+import { getPantryStapleNameSet } from "./pantryStaples.js";
+
+/**
+ * Annotate a grocery list's items with a derived `isPantryStaple` flag (issue
+ * #205). An item is a pantry staple when its normalized name matches one of the
+ * family's managed {@link file://../services/pantryStaples.ts pantry staples}.
+ * The flag is computed at READ time from the current staple set — there is no
+ * persisted column and no item is ever mutated or pruned here — so the client
+ * can group staples into a distinct "Pantry Staples" section instead of their
+ * aisle category. Matching reuses {@link normalizeIngredientName}, the same
+ * normalization behind {@link groceryKey}, so it stays case/whitespace-insensitive
+ * and consistent with grocery merge keys. A `null` list passes through unchanged.
+ */
+async function annotatePantryStaples<
+  I extends { name: string },
+  T extends { items: I[] },
+>(
+  list: T | null,
+  familyId: string,
+): Promise<(Omit<T, "items"> & { items: (I & { isPantryStaple: boolean })[] }) | null> {
+  if (!list) return null;
+  const stapleSet = await getPantryStapleNameSet(familyId);
+  return {
+    ...list,
+    items: (list.items ?? []).map((item) => ({
+      ...item,
+      isPantryStaple: stapleSet.has(normalizeIngredientName(item.name)),
+    })),
+  };
+}
 
 /**
  * Canonical merge key: normalized name + normalized unit (issue #120).
@@ -187,7 +217,7 @@ export async function generateGroceryList(
 
   if (!existingList) {
     // No existing list — create fresh with all GENERATED items
-    return prisma.groceryList.create({
+    const created = await prisma.groceryList.create({
       data: {
         familyId,
         weekStart: start,
@@ -209,6 +239,7 @@ export async function generateGroceryList(
         items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
       },
     });
+    return annotatePantryStaples(created, familyId);
   }
 
   // Partition existing items: MANUAL items are never touched
@@ -298,33 +329,36 @@ export async function generateGroceryList(
   await prisma.$transaction(ops);
 
   // Return the refreshed list
-  return prisma.groceryList.findFirst({
+  const refreshed = await prisma.groceryList.findFirst({
     where: { id: existingList.id, familyId },
     include: {
       items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
+  return annotatePantryStaples(refreshed, familyId);
 }
 
 export async function getGroceryList(listId: string, familyId: string) {
-  return prisma.groceryList.findFirst({
+  const list = await prisma.groceryList.findFirst({
     where: { id: listId, familyId },
     include: {
       items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
+  return annotatePantryStaples(list, familyId);
 }
 
 export async function getGroceryListByWeek(familyId: string, weekStart: Date) {
   const start = new Date(weekStart);
   start.setUTCHours(0, 0, 0, 0);
 
-  return prisma.groceryList.findFirst({
+  const list = await prisma.groceryList.findFirst({
     where: { familyId, weekStart: start },
     include: {
       items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
+  return annotatePantryStaples(list, familyId);
 }
 
 /**
@@ -533,10 +567,11 @@ export async function removePastDays(familyId: string, listId: string) {
     );
   }
 
-  return prisma.groceryList.findFirst({
+  const refreshed = await prisma.groceryList.findFirst({
     where: { id: listId, familyId },
     include: {
       items: { orderBy: [{ category: "asc" }, { name: "asc" }] },
     },
   });
+  return annotatePantryStaples(refreshed, familyId);
 }

@@ -94,6 +94,19 @@ export interface GroceryCategory {
   familyId: string;
 }
 
+/** A family-scoped managed pantry staple (issue #205) — a "stock kitchen" item
+ *  (salt, spices, oil, ...) the family keeps on hand and does not want mixed into
+ *  the active shopping list. Like {@link GroceryCategory} the `nameNormalized`
+ *  uniqueness key is a service-internal detail and NOT part of the wire contract;
+ *  only the display `name` round-trips. A grocery item whose normalized name
+ *  matches a staple is auto-separated into a dedicated "Pantry Staples" section
+ *  (see {@link GroceryItem.isPantryStaple}) rather than its aisle category. */
+export interface PantryStaple {
+  id: string;
+  name: string;
+  familyId: string;
+}
+
 /** A family-scoped, curated recipe collection (issue #109) — a named list a
  *  meal can belong to. Like {@link Tag} the `nameNormalized`
  *  uniqueness key is a service-internal detail and NOT part of the wire
@@ -186,6 +199,11 @@ export interface GroceryItem {
   sourceMealIds?: string[];
   /** Weekday offsets (0=Monday .. 6=Sunday) of the source meals' plan days. */
   sourceDays?: number[];
+  /** True when this item's normalized name matches a family {@link PantryStaple}
+   *  (issue #205). Such items are grouped into a distinct "Pantry Staples"
+   *  section on the grocery list instead of their aisle category, and are never
+   *  pruned. Derived/serialized at read time — not a persisted column. */
+  isPantryStaple?: boolean;
 }
 
 export interface ApiKey {
