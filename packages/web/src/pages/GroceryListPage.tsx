@@ -3,7 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useFamily } from '../hooks/useFamily';
 import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import { useWeek } from '../context/WeekContext';
-import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem } from '../api/grocery';
+import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem, removePastDays } from '../api/grocery';
 import { formatWeekRange } from '../utils/date';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Select from '../components/Select';
@@ -34,6 +34,8 @@ export default function GroceryListPage() {
     const [newItemQuantity, setNewItemQuantity] = useState('');
     const [newItemUnit, setNewItemUnit] = useState('');
     const [newItemCategory, setNewItemCategory] = useState('other');
+    const [rangeStart, setRangeStart] = useState('');
+    const [rangeEnd, setRangeEnd] = useState('');
 
     const loadList = useCallback(async () => {
         if (!familyId || !weekStart) return;
@@ -51,11 +53,11 @@ export default function GroceryListPage() {
 
     useEffect(() => { loadList(); }, [loadList]);
 
-    const handleGenerate = async () => {
+    const handleGenerate = async (range?: { startDate?: string; endDate?: string }) => {
         if (!familyId || !weekStart) return;
         setError('');
         try {
-            const list = await generateGroceryList(familyId, weekStart);
+            const list = await generateGroceryList(familyId, weekStart, range);
             setGroceryList(list);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to generate grocery list');
@@ -65,6 +67,26 @@ export default function GroceryListPage() {
     const handleRegenerate = async () => {
         if (!confirm('Regenerate grocery list from current approved meals? This will replace the existing list.')) return;
         await handleGenerate();
+    };
+
+    const handleGenerateRange = async () => {
+        if (!rangeStart && !rangeEnd) return;
+        await handleGenerate({
+            startDate: rangeStart || undefined,
+            endDate: rangeEnd || undefined,
+        });
+    };
+
+    const handleRemovePastDays = async () => {
+        if (!familyId || !groceryList) return;
+        if (!confirm('Remove items whose days are entirely in the past? Checked items are kept.')) return;
+        setError('');
+        try {
+            const list = await removePastDays(familyId, groceryList.id);
+            setGroceryList(list);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to remove past days');
+        }
     };
 
     const handleToggle = async (item: GroceryItem) => {
@@ -158,12 +180,39 @@ export default function GroceryListPage() {
                 <div className="text-center py-12">
                     <p className="text-gray-500 dark:text-gray-400 mb-4">No grocery list for this week yet.</p>
                     <button
-                        onClick={handleGenerate}
+                        onClick={() => handleGenerate()}
                         className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
                     >
                         Generate Grocery List
                     </button>
                     <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Creates a list from approved meals for this week</p>
+                    <div className="mt-6 flex flex-col items-center gap-2">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Or generate for a specific date range (short-order shopping):</p>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                aria-label="Range start date"
+                                value={rangeStart}
+                                onChange={e => setRangeStart(e.target.value)}
+                                className="px-2 py-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-700"
+                            />
+                            <span className="text-gray-400">–</span>
+                            <input
+                                type="date"
+                                aria-label="Range end date"
+                                value={rangeEnd}
+                                onChange={e => setRangeEnd(e.target.value)}
+                                className="px-2 py-1 border rounded text-sm dark:bg-gray-800 dark:border-gray-700"
+                            />
+                            <button
+                                onClick={handleGenerateRange}
+                                disabled={!rangeStart && !rangeEnd}
+                                className="px-4 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm disabled:opacity-50"
+                            >
+                                Generate Range
+                            </button>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <>
@@ -172,12 +221,20 @@ export default function GroceryListPage() {
                         <span className="text-sm text-gray-600 dark:text-gray-300">
                             {checkedCount} of {items.length} items checked
                         </span>
-                        <button
-                            onClick={handleRegenerate}
-                            className="text-sm px-3 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/60"
-                        >
-                            Regenerate
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleRemovePastDays}
+                                className="text-sm px-3 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 rounded hover:bg-orange-200 dark:hover:bg-orange-900/60"
+                            >
+                                Remove Past Days
+                            </button>
+                            <button
+                                onClick={handleRegenerate}
+                                className="text-sm px-3 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/60"
+                            >
+                                Regenerate
+                            </button>
+                        </div>
                     </div>
 
                     {/* Progress bar */}

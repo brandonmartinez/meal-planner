@@ -36,6 +36,30 @@ const addItemSchema = z.object({
   category: z.string().optional(),
 });
 
+// Optional short-order date range for grocery generation (issue #206). Both
+// bounds are ISO date strings (YYYY-MM-DD or full ISO). When present, only
+// suggestions whose day falls in range contribute; absence means full week.
+const generateGrocerySchema = z
+  .object({
+    startDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+    endDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).optional(),
+  })
+  .refine(
+    (d) =>
+      d.startDate === undefined ||
+      d.endDate === undefined ||
+      new Date(d.startDate) <= new Date(d.endDate),
+    { message: 'startDate must be on or before endDate' },
+  );
+
+function parseBoundaryDate(val: string, endOfDay: boolean): Date {
+  // Accept a bare YYYY-MM-DD (anchor to UTC) or a full ISO timestamp.
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(val)
+    ? `${val}T${endOfDay ? '23:59:59.999' : '00:00:00'}Z`
+    : val;
+  return new Date(iso);
+}
+
 function paramStr(val: string | string[] | undefined): string {
   return Array.isArray(val) ? val[0] : val || '';
 }
@@ -49,9 +73,21 @@ groceryRouter.post(
     try {
       const familyId = paramStr(req.params.familyId);
       const weekStart = new Date(paramStr(req.params.weekStart) + 'T00:00:00Z');
-      const list = await groceryService.generateGroceryList(familyId, weekStart);
+      const { startDate, endDate } = generateGrocerySchema.parse(req.body ?? {});
+      const options =
+        startDate || endDate
+          ? {
+              startDate: startDate ? parseBoundaryDate(startDate, false) : undefined,
+              endDate: endDate ? parseBoundaryDate(endDate, true) : undefined,
+            }
+          : undefined;
+      const list = await groceryService.generateGroceryList(familyId, weekStart, options);
       res.status(201).json(list);
-    } catch {
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: 'Validation failed', details: error.errors });
+        return;
+      }
       res.status(500).json({ error: 'Failed to generate grocery list' });
     }
   }
@@ -182,6 +218,29 @@ groceryRouter.delete(
         return;
       }
       res.status(500).json({ error: 'Failed to remove item' });
+    }
+  }
+);
+
+// POST /api/families/:familyId/grocery/:listId/remove-past-days — manual prune
+// of items whose source days are entirely in the past (issue #206). This is a
+// deliberate, separate action and is NEVER performed automatically on generate.
+groceryRouter.post(
+  '/:familyId/grocery/:listId/remove-past-days',
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const listId = paramStr(req.params.listId);
+      const list = await groceryService.removePastDays(familyId, listId);
+      res.json(list);
+    } catch (error) {
+      if (error instanceof groceryService.GroceryError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: 'Failed to remove past days' });
     }
   }
 );

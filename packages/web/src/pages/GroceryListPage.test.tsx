@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { http, HttpResponse, delay } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
-import { renderWithProviders, screen, waitFor } from '../test-utils/render';
+import { renderWithProviders, screen, waitFor, fireEvent } from '../test-utils/render';
 import GroceryListPage from './GroceryListPage';
 
 const FAMILY_ID = 'fam-1';
@@ -82,6 +82,64 @@ describe('GroceryListPage', () => {
 
     expect(await screen.findByText('Milk')).toBeInTheDocument();
     expect(screen.getByText(/0 of 1 items checked/i)).toBeInTheDocument();
+  });
+
+  it('generates a list for a specific date range from the empty state', async () => {
+    let capturedBody: { startDate?: string; endDate?: string } | null = null;
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(null, { status: 404 }),
+      ),
+      http.post('/api/families/:familyId/weeks/:weekStart/grocery', async ({ request }) => {
+        capturedBody = (await request.json()) as { startDate?: string; endDate?: string };
+        return HttpResponse.json(listWith([item({ id: 'it-1', name: 'Eggs', category: 'dairy' })]));
+      }),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    fireEvent.change(await screen.findByLabelText(/range start date/i), {
+      target: { value: '2026-06-29' },
+    });
+    fireEvent.change(screen.getByLabelText(/range end date/i), {
+      target: { value: '2026-07-01' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /generate range/i }));
+
+    expect(await screen.findByText('Eggs')).toBeInTheDocument();
+    expect(capturedBody).toEqual({ startDate: '2026-06-29', endDate: '2026-07-01' });
+  });
+
+  it('removes past days via a distinct action, separate from regenerate', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({ id: 'it-1', name: 'Bananas', category: 'produce' }),
+            item({ id: 'it-2', name: 'Old Bread', category: 'bakery' }),
+          ]),
+        ),
+      ),
+      http.post('/api/families/:familyId/grocery/:listId/remove-past-days', () =>
+        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas', category: 'produce' })])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    expect(await screen.findByText('Old Bread')).toBeInTheDocument();
+    // Both actions are present and distinct — remove-past-days is NOT folded into regenerate.
+    expect(screen.getByRole('button', { name: /remove past days/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^regenerate$/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /remove past days/i }));
+
+    await waitFor(() => expect(screen.queryByText('Old Bread')).not.toBeInTheDocument());
+    expect(screen.getByText('Bananas')).toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it('renders an existing list grouped by category', async () => {

@@ -1,5 +1,5 @@
 import { GrocerySource } from "@prisma/client";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prismaMock } from "../../tests/helpers/prisma.js";
 
 vi.mock("../config/database.js", () => ({ default: prismaMock }));
@@ -14,6 +14,7 @@ const {
   addCustomItem,
   removeItem,
   editItemFields,
+  removePastDays,
   GroceryError,
 } = await import("./grocery.js");
 
@@ -230,6 +231,92 @@ describe("generateGroceryList", () => {
     await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
 
     expect(prismaMock.groceryList.delete).not.toHaveBeenCalled();
+  });
+
+  it("promotes checked GENERATED orphaned items to MANUAL (never deletes checked progress)", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [
+          {
+            id: "item-checked",
+            name: "Flour",
+            unit: "cups",
+            origin: GrocerySource.GENERATED,
+            edited: false,
+            checked: true,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryItem.update.mockResolvedValue({} as never);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
+
+    expect(prismaMock.groceryItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "item-checked" },
+        data: expect.objectContaining({ origin: GrocerySource.MANUAL }),
+      }),
+    );
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "item-checked" } }),
+    );
+  });
+
+  it("does not prune orphaned items when a short-order date range is active", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "gl-1",
+        items: [
+          {
+            id: "item-outofrange",
+            name: "Flour",
+            unit: "cups",
+            origin: GrocerySource.GENERATED,
+            edited: false,
+            checked: false,
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"), {
+      startDate: new Date("2026-05-05T00:00:00Z"),
+      endDate: new Date("2026-05-06T23:59:59Z"),
+    });
+
+    // Range active → orphan pruning skipped entirely: neither delete nor promote.
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+    expect(prismaMock.groceryItem.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "item-outofrange" } }),
+    );
+  });
+
+  it("clamps the date-range query to the week bounds", async () => {
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never)
+      .mockResolvedValueOnce({ id: "gl-1", items: [] } as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+
+    await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"), {
+      startDate: new Date("2026-05-05T00:00:00Z"),
+      endDate: new Date("2026-05-07T23:59:59.999Z"),
+    });
+
+    const where = prismaMock.mealSuggestion.findMany.mock
+      .calls[0][0] as { where: { dayPlan: { date: { gte: Date; lte: Date } } } };
+    expect(where.where.dayPlan.date.gte.toISOString()).toBe(
+      "2026-05-05T00:00:00.000Z",
+    );
+    expect(where.where.dayPlan.date.lte.toISOString()).toBe(
+      "2026-05-07T23:59:59.999Z",
+    );
   });
 
   it("tracks the source meal names and IDs for each ingredient", async () => {
@@ -664,5 +751,144 @@ describe("editItemFields", () => {
         }),
       }),
     );
+  });
+});
+
+describe("removePastDays", () => {
+  const WEEK_START = new Date("2026-05-04T00:00:00Z"); // Mon 2026-05-04
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // "today" is well after the list's week, so all week days are in the past.
+    vi.setSystemTime(new Date("2026-05-15T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function mockList(items: unknown[]) {
+    prismaMock.groceryList.findFirst
+      .mockResolvedValueOnce({
+        id: "list-1",
+        familyId: "fam-1",
+        weekStart: WEEK_START,
+        items,
+      } as never)
+      .mockResolvedValueOnce({ id: "list-1", items: [] } as never);
+  }
+
+  it("throws 404 when the list is not owned by the family", async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+
+    await expect(removePastDays("fam-1", "list-MISSING")).rejects.toMatchObject({
+      name: "GroceryError",
+      status: 404,
+    });
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+  });
+
+  it("drops an unchecked item whose source days are entirely in the past", async () => {
+    mockList([
+      {
+        id: "item-past",
+        checked: false,
+        sourceMealIds: ["meal-past"],
+      },
+    ]);
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: { id: "meal-past" },
+        dayPlan: { date: new Date("2026-05-05T00:00:00Z") },
+      },
+    ] as never);
+    prismaMock.$transaction.mockResolvedValue([]);
+    prismaMock.groceryItem.delete.mockResolvedValue({} as never);
+
+    await removePastDays("fam-1", "list-1");
+
+    expect(prismaMock.groceryItem.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "item-past" } }),
+    );
+  });
+
+  it("never drops a checked item even when its source days are all past", async () => {
+    mockList([
+      {
+        id: "item-checked",
+        checked: true,
+        sourceMealIds: ["meal-past"],
+      },
+    ]);
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: { id: "meal-past" },
+        dayPlan: { date: new Date("2026-05-05T00:00:00Z") },
+      },
+    ] as never);
+
+    await removePastDays("fam-1", "list-1");
+
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps MANUAL items with no source-meal provenance", async () => {
+    mockList([
+      {
+        id: "item-manual",
+        checked: false,
+        sourceMealIds: [],
+      },
+    ]);
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+
+    await removePastDays("fam-1", "list-1");
+
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps items whose source meals are no longer in the week (indeterminate)", async () => {
+    mockList([
+      {
+        id: "item-indeterminate",
+        checked: false,
+        sourceMealIds: ["meal-gone"],
+      },
+    ]);
+    // No suggestions returned → the source meal's dates are unknown → keep.
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([] as never);
+
+    await removePastDays("fam-1", "list-1");
+
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps items that still have at least one non-past source day", async () => {
+    // Move "today" inside the list's week so a later day in the same week is
+    // genuinely in the future (and would be returned by the week-bounded query).
+    vi.setSystemTime(new Date("2026-05-06T12:00:00Z")); // Wed of the week
+    mockList([
+      {
+        id: "item-future",
+        checked: false,
+        sourceMealIds: ["meal-future"],
+      },
+    ]);
+    // One past day (Mon 05-04) and one future day (Fri 05-08) → not entirely
+    // past → keep.
+    prismaMock.mealSuggestion.findMany.mockResolvedValue([
+      {
+        meal: { id: "meal-future" },
+        dayPlan: { date: new Date("2026-05-04T00:00:00Z") },
+      },
+      {
+        meal: { id: "meal-future" },
+        dayPlan: { date: new Date("2026-05-08T00:00:00Z") },
+      },
+    ] as never);
+
+    await removePastDays("fam-1", "list-1");
+
+    expect(prismaMock.groceryItem.delete).not.toHaveBeenCalled();
   });
 });
