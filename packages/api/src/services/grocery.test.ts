@@ -38,6 +38,7 @@ describe("generateGroceryList", () => {
   it("aggregates ingredients across approved suggestions and dedupes by name+unit", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([
       {
+        dayPlan: { date: new Date("2026-05-04T00:00:00Z") },
         meal: {
           id: "meal-1",
           name: "Meal A",
@@ -48,6 +49,7 @@ describe("generateGroceryList", () => {
         },
       },
       {
+        dayPlan: { date: new Date("2026-05-07T00:00:00Z") },
         meal: {
           id: "meal-2",
           name: "Meal B",
@@ -74,6 +76,7 @@ describe("generateGroceryList", () => {
             name: string;
             quantity: string | null;
             unit: string | null;
+            sourceDays: number[];
           }[];
         };
       };
@@ -84,6 +87,11 @@ describe("generateGroceryList", () => {
       (i) => i.name === "Onion" && (i.unit === null || i.unit === ""),
     );
     expect(merged?.quantity).toBe("3");
+    // Onion (no unit) sourced from Meal A (Mon=0) and Meal B (Thu=3)
+    expect(merged?.sourceDays).toEqual([0, 3]);
+    // Salt only from Meal A (Mon=0)
+    const salt = items.find((i) => i.name === "Salt");
+    expect(salt?.sourceDays).toEqual([0]);
   });
 
   it("creates a fresh list when none exists (no merge needed)", async () => {
@@ -235,6 +243,7 @@ describe("generateGroceryList", () => {
   it("tracks the source meal names and IDs for each ingredient", async () => {
     prismaMock.mealSuggestion.findMany.mockResolvedValue([
       {
+        dayPlan: { date: new Date("2026-05-04T00:00:00Z") },
         meal: {
           id: "meal-tacos",
           name: "Tacos",
@@ -244,6 +253,7 @@ describe("generateGroceryList", () => {
         },
       },
       {
+        dayPlan: { date: new Date("2026-05-06T00:00:00Z") },
         meal: {
           id: "meal-soup",
           name: "Soup",
@@ -259,7 +269,7 @@ describe("generateGroceryList", () => {
 
     await generateGroceryList("fam-1", new Date("2026-05-04T00:00:00Z"));
     const arg = prismaMock.groceryList.create.mock.calls[0][0] as {
-      data: { items: { create: { name: string; sources: string[]; sourceMealIds: string[] }[] } };
+      data: { items: { create: { name: string; sources: string[]; sourceMealIds: string[]; sourceDays: number[] }[] } };
     };
     const onion = arg.data.items.create.find(
       (i) => i.name.toLowerCase() === "onion",
@@ -268,6 +278,8 @@ describe("generateGroceryList", () => {
     expect(onion?.sources).toContain("Soup");
     expect(onion?.sourceMealIds).toContain("meal-tacos");
     expect(onion?.sourceMealIds).toContain("meal-soup");
+    // Tacos (Mon=0) and Soup (Wed=2), sorted + deduped
+    expect(onion?.sourceDays).toEqual([0, 2]);
   });
 });
 

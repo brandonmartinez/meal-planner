@@ -252,6 +252,10 @@ model GroceryItem {
   origin        GrocerySource @default(GENERATED)
   edited        Boolean       @default(false)
   sourceMealIds String[]      @default([])
+  /// Weekday offsets (0=Monday .. 6=Sunday, matching PlanningTemplateEntry.dayOfWeek)
+  /// of the meal-plan days this item's source meals fall on. Deduped and sorted
+  /// Mon→Sun at generation time. Empty for MANUAL items.
+  sourceDays    Int[]         @default([])
   groceryList   GroceryList   @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
   groceryListId String
 }

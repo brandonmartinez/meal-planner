@@ -78,6 +78,16 @@ interface ComputedItem {
   category: string;
   sources: string[];
   sourceMealIds: string[];
+  sourceDays: number[];
+}
+
+/**
+ * Weekday offset (0=Monday .. 6=Sunday) for a plan date, matching the
+ * `PlanningTemplateEntry.dayOfWeek` convention. JS `getUTCDay()` is
+ * 0=Sunday..6=Saturday, so shift by 6 and wrap.
+ */
+function weekdayOffset(date: Date): number {
+  return (date.getUTCDay() + 6) % 7;
 }
 
 export async function generateGroceryList(familyId: string, weekStart: Date) {
@@ -97,6 +107,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
       },
     },
     include: {
+      dayPlan: { select: { date: true } },
       meal: {
         include: { ingredients: true },
       },
@@ -106,6 +117,8 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
   // Build computed ingredient map from approved suggestions
   const computedMap = new Map<string, ComputedItem>();
   for (const suggestion of suggestions) {
+    const planDate = suggestion.dayPlan?.date;
+    const day = planDate ? weekdayOffset(new Date(planDate)) : null;
     for (const ing of suggestion.meal.ingredients) {
       const key = groceryKey(ing.name, ing.unit ?? undefined);
       const existing = computedMap.get(key);
@@ -120,6 +133,9 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
         if (!existing.sourceMealIds.includes(suggestion.meal.id)) {
           existing.sourceMealIds.push(suggestion.meal.id);
         }
+        if (day !== null && !existing.sourceDays.includes(day)) {
+          existing.sourceDays.push(day);
+        }
       } else {
         computedMap.set(key, {
           name: displayIngredientName(ing.name),
@@ -128,9 +144,15 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
           category: ing.category || "other",
           sources: [suggestion.meal.name],
           sourceMealIds: [suggestion.meal.id],
+          sourceDays: day !== null ? [day] : [],
         });
       }
     }
+  }
+
+  // Normalize sourceDays to Mon→Sun order for deterministic storage
+  for (const item of computedMap.values()) {
+    item.sourceDays.sort((a, b) => a - b);
   }
 
   // Fetch or create the grocery list
@@ -153,6 +175,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
             category: item.category || null,
             sources: item.sources,
             sourceMealIds: item.sourceMealIds,
+            sourceDays: item.sourceDays,
             origin: GrocerySource.GENERATED,
             edited: false,
           })),
@@ -186,6 +209,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
           data: {
             sources: computed.sources,
             sourceMealIds: computed.sourceMealIds,
+            sourceDays: computed.sourceDays,
             // Only refresh qty/unit/category for items the user hasn't edited
             ...(existing.edited
               ? {}
@@ -209,6 +233,7 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
             category: computed.category || null,
             sources: computed.sources,
             sourceMealIds: computed.sourceMealIds,
+            sourceDays: computed.sourceDays,
             origin: GrocerySource.GENERATED,
             edited: false,
             checked: false,
@@ -226,7 +251,11 @@ export async function generateGroceryList(familyId: string, weekStart: Date) {
         ops.push(
           prisma.groceryItem.update({
             where: { id: item.id },
-            data: { origin: GrocerySource.MANUAL, sourceMealIds: [] },
+            data: {
+              origin: GrocerySource.MANUAL,
+              sourceMealIds: [],
+              sourceDays: [],
+            },
           }),
         );
       } else {
