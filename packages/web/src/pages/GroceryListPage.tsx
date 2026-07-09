@@ -23,6 +23,18 @@ const CATEGORY_EMOJIS: Record<string, string> = {
     other: '📦',
 };
 
+// 0=Monday .. 6=Sunday, matching the API's sourceDays convention.
+const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function formatSourceDays(days: number[] | undefined): string {
+    if (!days || days.length === 0) return '';
+    return [...new Set(days)]
+        .filter(d => d >= 0 && d <= 6)
+        .sort((a, b) => a - b)
+        .map(d => DAY_ABBREV[d])
+        .join(', ');
+}
+
 export default function GroceryListPage() {
     const { familyId, hasFamilies } = useFamily();
     const { categories: groceryCategoryOptions } = useGroceryCategories(familyId);
@@ -206,6 +218,14 @@ export default function GroceryListPage() {
                                         />
                                         <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
                                             {item.name}
+                                            {formatSourceDays(item.sourceDays) && (
+                                                <span
+                                                    className="text-gray-400 dark:text-gray-500 ml-2 text-xs font-normal"
+                                                    title={`From ${formatSourceDays(item.sourceDays)}`}
+                                                >
+                                                    · {formatSourceDays(item.sourceDays)}
+                                                </span>
+                                            )}
                                             {item.quantity && (
                                                 <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
                                                     {item.quantity}{item.unit ? ` ${item.unit}` : ''}
