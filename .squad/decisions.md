@@ -2,60 +2,13 @@
 
 ## Active Decisions
 
+> Archive gate 2026-07-09T01:11:01-0400: decisions.md was 81141 bytes before merge and 85167 bytes after inbox merge. 30-day: archived 0 entries older than 30 days; 7-day: archived 9 entries older than 7 days. Archive: [decisions-archive/2026-07-09T01-11-01-0400-v0.6.0-grocery-mealpicker-archive.md](decisions-archive/2026-07-09T01-11-01-0400-v0.6.0-grocery-mealpicker-archive.md).
+
 > Archive gate 2026-07-03T02:23:57-0400: decisions.md was 78149 bytes before Wave 3 close. Archived 30 historical entries to [decisions-archive/2026-07-03T02-23-57-0400-wave3-premerge.md](decisions-archive/2026-07-03T02-23-57-0400-wave3-premerge.md); retained current governance rules plus Sprint 3 Wave 1/2 and Wave 3 active decisions. Previous gate report: [2026-07-03T01-15-59-0400-no-eligible-entries](decisions/archive/2026-07-03T01-15-59-0400-no-eligible-entries.md).
 
 ## Governance
 
-### 2026-07-02: Recipe-management sprint sequencing
-**By:** Rusty
-**What:** Sequence epic #91 as five roughly two-week sprints: Sprint 1 resolves P1 design gates (#92-#96) while Basher handles standalone #121; Sprints 2-3 deliver v0.4.0 P2 core features with #111/#112 treated as the v0.4 convergence path; Sprints 4-5 deliver v0.5.0 P3 media, collections, planning, and grocery enhancements.
-**Why:** #92 is the universal blocker and #96 is the second gate for most implementation. The plan maximizes parallelism after those gates land while calling out Saul and Livingston as bottlenecks and requiring Yen, Frank, Rai, and Fact Checker reviews at release and security-sensitive boundaries.
-### 2026-07-02: #111 trimmed to envelope + name-search (Option 1 — filter split)
-**By:** Squad (Coordinator), Brandon (@brandonmartinez) signed off
-**What:** #111 keystone scope trimmed. It ships ONLY: MealListResponseDTO envelope cutover (breaking, all consumers lockstep), offset/limit pagination, name trigram search (GIN on Meal.name), difficulty[] filter, sorts (name/lastCooked/created), lastCookedOn + getLastCookedMap(). It adds NO new Meal scalar columns.
-Filter ownership split (amends the #94 contract, comment posted to #94):
-- favorite + ratingMin (+ rating sort) → #98 (adds columns + extends listMealsQuerySchema)
-- notes search (notes GIN) → #97 (adds notes column)
-- tags[]/categories[]/collectionId → #107
-**Why:** Dependency inversion — current Meal model lacks notes/favorite/rating/tags; those columns are owned by the gated metadata issues (#97/#98/#107). Original #94 put all filters in #111, which would force #111 to steal column ownership and collide with Saul's later migrations. Option 1 keeps #111 as the true breaking keystone (envelope) that legitimately gates the metadata wave, with each issue owning its own field + filter + CSV + indexes incrementally atop the parity checklist. CSV rule does NOT trigger for #111 (no new persisted user-facing scalar).
-### 2026-07-02: Reverse #94 "avoid preview features" — declare pg_trgm index in schema.prisma
-
-**By:** Squad (Coordinator), on approval from @brandonmartinez
-**What:** Enable Prisma's `postgresqlExtensions` preview feature and declare the `pg_trgm` extension + the trigram GIN index (`Meal_name_trgm_idx`) declaratively in `schema.prisma`, so the schema matches the migrated DB and the CI drift gate passes.
-**Why:** #111 created `Meal_name_trgm_idx` via raw SQL (to avoid the preview feature per #94). But the CI drift gate (`migrate diff --from-url <db> --to-schema-datamodel schema.prisma --exit-code`) reports the undeclarable index as drift (`[-] Removed index on columns (name)`), failing EVERY PR. main went red on #111's merge and stayed red. Chosen fix keeps full drift-gate coverage rather than weakening the gate. Trade-off: reverses #94's decision to avoid preview features.
-### 2026-07-02: Enable branch protection on main
-
-**By:** Squad (Coordinator), on approval from @brandonmartinez
-**What:** main now requires the `test` status check (strict/up-to-date) before merge. enforce_admins=false (owner override retained). No required reviews (solo repo).
-**Why:** main had NO protection, so `gh pr merge --auto` landed red PRs (#118, #111) immediately. Protection prevents red auto-merges going forward. Team rule: do not use `--auto` on a red main.
-### 2026-07-02: Keep main fresh after every PR merge (worktree wave hygiene)
-**By:** Squad (Coordinator), requested by Brandon (@brandonmartinez)
-**What:** Standing workflow for the Sprint 2+ build waves:
-1. After every PR merges to main, fast-forward the local main checkout immediately.
-2. Create later-wave worktree sessions only AFTER their keystone PR (#111) merges, so they branch from post-keystone main.
-3. In-flight worktrees that touch a just-merged PR's files must rebase onto fresh main before opening their own PR.
-**Why:** During Sprint 2 kickoff, local main fell 4 commits behind origin and a stray uncommitted #118 schema.prisma edit was found in the main checkout. #111 is a breaking meals.ts/DTO rewrite that gates all metadata/UI issues — those worktrees MUST start from post-#111 main or they conflict hard.
-
 ## 2026-07-02T21:37:00-0400: Sprint 3 Wave 1
-### 2026-07-02: ImageAsset backend — schema, storage, security, and parity decisions (#104)
-**By:** Basher
-**What:** Shipped the concrete uploaded-image asset backend on top of the #93 storage abstraction. Key decisions:
-- **Schema (`ImageAsset`):** family-scoped, optional meal association. `family onDelete: Cascade` (an asset must not outlive its family — isolation/cleanup), `meal onDelete: SetNull` (an asset may outlive its meal; deleting a meal only releases the association). Server-derived `extension` (from MIME allowlist, never user input) and `createdBy` (uploader `User.id`) persisted. Indexes on `familyId` and `mealId`.
-- **Migration:** authored OFFLINE via `prisma migrate diff --from-schema-datamodel <main> --to-schema-datamodel <worktree> --script` inside the devcontainer (shared dev DB has a wedged advisory lock; `migrate dev` is forbidden). Folder `20260702210000_add_image_asset` — next timestamp after `20260702200000_add_recipe_instructions`. Pure `CREATE TABLE` + 2 indexes + 2 FKs, no destructive statements.
-- **Storage service (`imageStorage.ts`):** dependency-free `FilesystemImageStorage`. Path layout `{root}/{familyId}/{assetId}.{ext}`. Path-traversal defense-in-depth: strict UUID regex on both `familyId` and `assetId`, extension only from the fixed MIME→ext allowlist, and a post-`resolve` assertion that the path stays under the storage root. **Opaque IDs** — the filesystem path is never returned, logged, or accepted as input; clients only ever see `assetId`.
-- **Upload transport:** `express.raw({ type: () => true, limit })` (single raw body, explicit 5 MB limit) instead of a multipart library — smaller attack surface, consistent with the repo's minimal-dependency posture. **Magic-byte sniff** validates the real image type; `Content-Type` alone is not trusted.
-- **Config:** `config.imageStorage.root` from `IMAGE_STORAGE_ROOT` (dev default `<cwd>/.data/images`). Deliberately **NOT** in `PRODUCTION_REQUIRED_VARS` — the default path is safe and the K8s deploy sets the env to the RWX PVC mount (#93 deferred backend). Documented so prod ops know to point it at durable storage.
-- **Parity (rows 4/7/8) — REST-only, NO agent route / NO MCP tool (justified exclusion):** per `parity.instructions.md` §2a, binary upload is scope `meal:image`, explicitly deferred and not on the agent surface. MCP agents speak JSON-RPC text and cannot stream raw/multipart binary; the agent-appropriate image capability (external image URL, `meal:write`) already shipped in #103; §1b excludes binary bytes / opaque asset ids from CSV. Binary asset upload is a human web-UI interaction, not catalog-CRUD text — so the parity gate is satisfied by explicit exclusion, not by adding surfaces.
-- **Placeholder guard:** attaching an image to a placeholder meal (`meal.placeholderKind !== null`) returns 400, mirroring the meals-service guard.
-**Why:** #104 is the Sprint 3 Wave 1 MIGRATION keystone. Cross-family isolation, opaque path-traversal-safe IDs, and server-side MIME/size/extension validation are the security-critical requirements. On-disk file GC on family/row deletion is out of scope (families are never deleted in current flows) and is flagged as a future caveat.
-### 2026-07-02: Local cooking mode — frontend-only, in-memory state (#102)
-**By:** Linus
-**What:** Shipped local cooking mode (Sprint 3 Wave 1). New immersive route `/meals/:mealId/cook` (ProtectedRoute + Layout), entered via a "Start cooking" CTA on `MealDetailPage` (real meals only, hidden for placeholders). Components: `pages/CookingModePage.tsx` (data fetch + checklist/step-completion state), `components/CookTimer.tsx` (per-step Start/Pause/Reset countdown), `hooks/useCountdown.ts` (extracted, unit-testable timer logic). ALL state is in-memory React `useState` — `checkedIngredients: Set`, `completedSteps: Set`, per-step timers — NO backend/API/schema/CSV/MCP change, NO localStorage. Resets on refresh. Relies on merged #100 (PR #136) single-meal GET returning ordered `instructions` (`text` + `timerMinutes?`).
-**Why:** #102 is a human web-UI interaction with no server-persisted progress. Accessibility gate held: native checkboxes, 44×44 touch targets, aria-labeled timer buttons, a single `role="alert"` on timer completion (no per-tick SR spam), h1→h2 heading order, full keyboard nav. CSP intact (timers are bundled React; no inline scripts). Note: reconstructed by coordinator from Linus's completion report — original worktree inbox file did not survive worktree removal.
-### 2026-07-02: Repeat previous week planning — no migration, explicit existing-target modes (#114)
-**By:** Livingston
-**What:** Shipped `repeatWeek()` in the week-plan service (Sprint 3 Wave 1). Copies APPROVED source-week suggestions into a target week as NEW `approved: false` suggestions, preserving the parent approval workflow. No schema change — reuses existing WeekPlan/DayPlan/MealSuggestion. Day mapping by date offset (both weeks Monday-anchored, 7 days). Empty/nonexistent source = no-op. Existing-target handling via tested `existingMode` param: `error` (DEFAULT — 409 before any write if target already populated; never silently dup/overwrite), `skip` (fill only empty target days), `replace` (clear target week then copy). Surfaces at full parity 4/7/8: browser REST `POST /families/:familyId/weeks/:weekStart/repeat` (JWT+membership), agent route reusing `meal_plan:schedule` scope (no new scope, audited allowed/denied), MCP `repeat_week` tool + client, plus a parent-gated WeekPlanPage action. Shared `RepeatWeekRequest` DTO + mode union. CSV rule not triggered (no persisted meal field).
-**Why:** #114 preserves the family approval gate — repeated meals arrive unapproved so a parent still confirms. Default `error` mode is the safest/most explicit choice (forces a conscious skip/replace on an already-populated week). Cross-family isolation enforced on both source and target (family-scoped queries → cross-family source treated as empty/404). Note: reconstructed by coordinator from Livingston's completion report — original worktree inbox file did not survive worktree removal.
 ### 2026-07-03: Recipe collections backend (#109)
 **By:** Saul (Data/Migrations), requested by brandonmartinez
 **PR:** #142 (base main) — Refs #109 · **Branch:** brandonmartinez-recipe-collections-backend @ 051f2bb
@@ -80,37 +33,6 @@ Filter ownership split (amends the #94 contract, comment posted to #94):
 **Cross-family tests (prismaMock, globals:false):** Family A cannot read/list/update/delete Family B's collection (404), cannot attach a Family-B collection, filter-by-collection never leaks. Plus service unit, route CRUD+Zod 400s, CSV round-trip, placeholder symmetry, agent + MCP coverage.
 
 **Verification:** migration re-verified LIVE vs current main → diff EXIT 0, byte-identical to committed migration.sql, purely additive. Full build/test/lint blocked by devcontainer network outage (DNS down) — PR body carries honest Verification section; CI (Postgres 16) is the green gate. Not self-merged.
-### 2026-07-02: Image orphan cleanup + backup guidance (#106)
-
-**By:** Basher (DevOps/Security), requested by brandonmartinez
-**PR:** #141 (base main) — Refs #106 · Branch brandonmartinez-image-cleanup-backup @ 0c07c5f
-
-**Context:** #104 shipped the uploaded-image asset backend (ImageAsset rows + on-disk files at {root}/{familyId}/{assetId}.{ext}). On-disk GC flagged there as a future caveat; #106 is that follow-up. NO schema/migration this wave (#109 owns schema) — command/service + docs only.
-
-**What shipped:**
-- packages/api/src/services/imageCleanup.ts — pure cleanup service. scanStorageRoot (read-only readdir), planCleanup (classifies orphanedFiles/missingFiles/unrecognized), runCleanup (dry-run default). Deletions route through #104's audited FilesystemImageStorage.delete() — never a hand-rolled unlink.
-- packages/api/src/scripts/imageCleanup.ts — CLI runner under src/ (tsc/eslint covered). Wired as `images:cleanup` (tsx) script in packages/api/package.json.
-- packages/api/src/services/imageStorage.ts — ADDITIVE ONLY: exported UUID_RE + ALLOWED_EXTENSIONS (single source of truth) + added exists().
-- packages/api/src/services/imageCleanup.test.ts — 9 tests, temp dir + prismaMock.
-- docs/ops/backup-and-restore.md (new) + k8s/README.md pointer.
-
-**Decisions (3 open questions, all approved YES):**
-1. k8s PVC = document-only (commented example PVC+mount in ops doc, NOT active kustomization — respects #93 deferral).
-2. Additive edits to imageStorage.ts approved (export validators + exists(); no schema/behavior change).
-3. --delete-rows is opt-in and OFF-by-default even under --apply.
-
-**Orphan definition (both directions):**
-- on-disk-without-row (orphanedFiles) — recognized file whose assetId is provably absent from live DB set. Deletable under --apply.
-- row-without-file (missingFiles) — live row whose expected file is gone. Deletable only under --apply --delete-rows.
-- unrecognized — stray/misnamed entries not matching {uuid}/{uuid}.{ext}. Reported only, NEVER auto-deleted.
-
-**Safety invariant:** a file is a deletion candidate ONLY if its assetId is not in the live-id set. Dry-run default (apply=false). Reuses #104 defenses (UUID regex, MIME-allowlist ext, post-resolve under-root assertion) by routing all deletes through storage.delete().
-
-**Test strategy:** vitest globals:false; real temp dir (fs.mkdtemp) + real FilesystemImageStorage; prisma via direct prismaMock injection. Headline test: file with matching row → never flagged, never deleted.
-
-**Doc locations:** docs/ops/backup-and-restore.md (DB+image-volume matched-pair consistency, durable-PVC prerequisite w/ commented example, cleanup usage + safety contract, object-storage migration path). Pointer appended to k8s/README.md.
-
-**Verification:** api build tsc exit 0, 675 tests pass, lint 0 errors, in-container at 0c07c5f via /tmp/verify-106 detached worktree (node_modules symlink-borrow, zero /workspace pollution). NO self-merge.
 ### 2026-07-03: Random meal selection (#113) — design decisions
 
 **By:** Livingston (Backend), requested by brandonmartinez
@@ -554,3 +476,35 @@ Tests assert `size-16`, `object-cover`, NOT `absolute`. `self-stretch` assertion
 **What:** Hardened the #196 display image route in `packages/api/src/routes/display.ts` — added `Vary: x-api-key` on both the 200 and 304 response paths; added `console.error('[display] image storage failed', { assetId: asset.id }, err)` in the storage-read catch block before the 404 return.
 **Why:** The route varies its response by API key but did not advertise `Vary`, risking cross-family cache bleed on shared caches. Storage failures returned a silent 404 with no operator signal.
 **How:** `res.setHeader('Vary', 'x-api-key')` before both `res.status(304).end()` and `res.send(bytes)`; no Vary on 404 paths (not cacheable); API key is never included in log args. 25/25 tests pass — assert Vary on 200+304 and `console.error` spy on storage-error test. PR #200 squash-merged to main at a111ee26.
+
+## 2026-07-09T01:11:01-0400: v0.6.0 grocery & meal-picker feedback decisions
+
+### 2026-07-09T01:11:01-0400: Full WebSockets realtime for collaborative views
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Implement real-time updates with FULL bidirectional WebSockets, not SSE or polling. Scope includes grocery list, week plan, and Magic Mirror display. Build `http.createServer(app)` around Express, attach a socket server, use room-per-family scoping, authenticate the socket handshake via JWT/API key, and add `ws:`/`wss:` to Helmet CSP `connect-src`.
+**Why:** Family feedback needs true collaborative live updates across users and display surfaces; WebSockets are the chosen architecture despite being the largest v0.6.0 effort item.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09T01:11:01-0400: Managed pantry staples list separates stock-kitchen items
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Add a per-family managed pantry-staples list in settings (for example, `PantryStaple` keyed by family plus normalized name). Grocery items whose normalized name matches a staple should auto-separate into a dedicated `Pantry Staples` section.
+**Why:** The family wants stock-kitchen staples separated from normal shopping items without relying on ad hoc manual grocery edits.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09T01:11:01-0400: Grocery regeneration is date-range aware and never drops checked items silently
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Regenerate grocery list behavior has three required sub-behaviors: allow short-order generation for a chosen set/range of days; preserve checked generated items that become orphaned during regen (promote to MANUAL or equivalent instead of deleting); and make `Remove past days` an explicit manual button, never an automatic side effect of regeneration.
+**Why:** Checked items represent user intent and must not disappear. Date-range generation supports partial-week planning, while manual cleanup avoids surprising destructive changes.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09T01:11:01-0400: Grocery items show source day abbreviations without regrouping
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Annotate grocery items with source day abbreviations from contributing meal suggestions (for example, `Salt · Mon, Thu`) instead of regrouping the list. Use `dayOfWeek 0 = Monday`, matching `PlanningTemplateEntry.dayOfWeek`; likely persist/populate `sourceDays Int[]` on `GroceryItem` during generation.
+**Why:** Shoppers need to know which planned days drove an item while preserving the current grocery grouping model.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09T01:11:01-0400: Meal-picker modal remains frontend-only for v0.6.0
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Keep meal-picker modal work frontend-only. Existing server search already matches name, description, tags, and ingredients. UX changes: placeholder text becomes `Search meals by name or tags…`; difficulty pills become a dropdown; tags/collections move into collapsible advanced filters; result descriptions expand from one line to 2–3 lines.
+**Why:** The backend search contract is sufficient; the family feedback is about modal usability and should avoid unnecessary API/schema churn.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
