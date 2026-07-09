@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useFamily } from '../hooks/useFamily';
 import { useWeek } from '../context/WeekContext';
+import { useRealtimeEvent } from '../context/SocketContext';
 import {
     createWeekPlan,
     addSuggestion,
@@ -27,6 +28,7 @@ import ApplyTemplateModal from '../components/ApplyTemplateModal';
 import RepeatWeekModal from '../components/RepeatWeekModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { WeekPlan, DayPlan, MealSuggestion } from '@meal-planner/shared';
+import { RealtimeEvent } from '@meal-planner/shared';
 
 export default function WeekPlanPage() {
     const { familyId, hasFamilies } = useFamily();
@@ -65,6 +67,15 @@ export default function WeekPlanPage() {
     }, [familyId, weekStart]);
 
     useEffect(() => { loadWeekPlan(); }, [loadWeekPlan]);
+
+    // Live-update when another family member changes this family's week plan or
+    // its meal suggestions.
+    useRealtimeEvent(RealtimeEvent.WeekPlanChanged, (payload) => {
+        if (payload.familyId === familyId) loadWeekPlan();
+    });
+    useRealtimeEvent(RealtimeEvent.SuggestionChanged, (payload) => {
+        if (payload.familyId === familyId) loadWeekPlan();
+    });
 
     const handleAddSuggestion = async (mealId: string) => {
         if (!familyId || !pickerDayPlanId) return;

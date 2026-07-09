@@ -6,6 +6,10 @@ import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";
 import * as weekFillService from "../services/weekFill.js";
+import {
+  emitWeekPlanChanged,
+  emitSuggestionChanged,
+} from "../realtime/index.js";
 
 export const weekPlanRouter = Router();
 
@@ -205,6 +209,7 @@ weekPlanRouter.post(
         userId: user.id,
         existingMode,
       });
+      emitWeekPlanChanged(familyId);
       res.status(201).json(plan);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -251,6 +256,7 @@ weekPlanRouter.post(
         existingMode,
         allowPartial,
       });
+      emitWeekPlanChanged(familyId);
       res.status(201).json(plan);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -289,6 +295,7 @@ weekPlanRouter.post(
         new Date(`${date}T00:00:00Z`),
         user.id,
       );
+      emitSuggestionChanged(familyId);
       res.status(201).json(suggestion);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -326,6 +333,7 @@ weekPlanRouter.post(
         userId: user.id,
         filters,
       });
+      emitSuggestionChanged(familyId);
       res.status(201).json(suggestion);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -361,6 +369,7 @@ weekPlanRouter.post(
         mealId,
         user.id,
       );
+      emitSuggestionChanged(familyId);
       res.status(201).json(suggestion);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -394,6 +403,7 @@ weekPlanRouter.patch(
         suggestionId,
         { actorType: "user", actorId: user.id },
       );
+      emitSuggestionChanged(familyId);
       res.json(suggestion);
     } catch (error) {
       if (error instanceof weekPlanService.SuggestionError) {
@@ -419,6 +429,7 @@ weekPlanRouter.patch(
         familyId,
         suggestionId,
       );
+      emitSuggestionChanged(familyId);
       res.json(suggestion);
     } catch (error) {
       if (error instanceof weekPlanService.SuggestionError) {
@@ -445,6 +456,7 @@ weekPlanRouter.delete(
         id: user.id,
         isParent: isParentReq(req),
       });
+      emitSuggestionChanged(familyId);
       res.status(204).send();
     } catch (error) {
       if (error instanceof weekPlanService.SuggestionError) {
@@ -474,6 +486,7 @@ weekPlanRouter.patch(
         dayPlanId,
         { id: user.id, isParent: isParentReq(req) },
       );
+      emitSuggestionChanged(familyId);
       res.json(suggestion);
     } catch (error) {
       if (error instanceof z.ZodError) {

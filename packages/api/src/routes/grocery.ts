@@ -4,6 +4,7 @@ import { authenticateJWT } from '../middleware/auth.js';
 import { requireMembership } from '../middleware/membership.js';
 import * as groceryService from '../services/grocery.js';
 import * as groceryCategoryService from '../services/groceryCategories.js';
+import { emitGroceryChanged } from '../realtime/index.js';
 
 export const groceryRouter = Router();
 
@@ -50,6 +51,7 @@ groceryRouter.post(
       const familyId = paramStr(req.params.familyId);
       const weekStart = new Date(paramStr(req.params.weekStart) + 'T00:00:00Z');
       const list = await groceryService.generateGroceryList(familyId, weekStart);
+      emitGroceryChanged(familyId);
       res.status(201).json(list);
     } catch {
       res.status(500).json({ error: 'Failed to generate grocery list' });
@@ -124,6 +126,7 @@ groceryRouter.patch(
       }
 
       res.json(item);
+      emitGroceryChanged(familyId);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: 'Validation failed', details: error.errors });
@@ -149,6 +152,7 @@ groceryRouter.post(
       const listId = paramStr(req.params.listId);
       const { name, quantity, unit, category } = addItemSchema.parse(req.body);
       const item = await groceryService.addCustomItem(familyId, listId, { name, quantity, unit, category });
+      emitGroceryChanged(familyId);
       res.status(201).json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -175,6 +179,7 @@ groceryRouter.delete(
       const listId = paramStr(req.params.listId);
       const itemId = paramStr(req.params.itemId);
       await groceryService.removeItem(familyId, listId, itemId);
+      emitGroceryChanged(familyId);
       res.status(204).send();
     } catch (error) {
       if (error instanceof groceryService.GroceryError) {
