@@ -67,7 +67,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     // Same-origin connection; the httpOnly auth cookie is sent by the browser.
     // socket.io handles reconnection/backoff automatically.
-    const socket = io({ withCredentials: true });
+    //
+    // WebSocket-only transport (no long-polling fallback). A single long-lived
+    // WS connection pins to one API pod for its lifetime, so multi-replica
+    // deployments behind an ingress need no sticky-session config — the Redis
+    // adapter on the server fans events across pods. Long-polling would issue
+    // multiple independent HTTP requests that round-robin across pods without
+    // affinity, causing intermittent "Session ID unknown" 400s. Dropping the
+    // fallback is acceptable for this self-hosted, same-origin app.
+    const socket = io({ transports: ['websocket'], withCredentials: true });
     socketRef.current = socket;
 
     socket.on('connect', () => setConnected(true));

@@ -12,6 +12,8 @@
 
 import type { Server as HttpServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import { createClient, type RedisClientType } from "redis";
+import { createAdapter } from "@socket.io/redis-adapter";
 import { RealtimeEvent } from "@meal-planner/shared";
 import { config } from "../config/index.js";
 import { authenticateSocket } from "./auth.js";
@@ -23,6 +25,12 @@ import {
 } from "./handshake.js";
 
 let io: SocketIOServer | null = null;
+
+// Redis pub/sub clients backing the socket.io adapter, kept at module scope so
+// graceful shutdown (closeRealtime) can quit() them. Null when REDIS_URL is
+// unset — the server then uses the default in-memory adapter (#207).
+let pubClient: RedisClientType | null = null;
+let subClient: RedisClientType | null = null;
 
 // setTimeout delays are clamped to a signed 32-bit int (~24.8 days); a larger
 // delay fires immediately. Cap scheduled expiry disconnects to this so an
@@ -40,16 +48,46 @@ export function roomForFamily(familyId: string): string {
  * connection handler, and attach it to the given HTTP server. Returns the
  * server instance.
  *
+ * When `config.redis.url` is set, a Redis adapter is attached BEFORE any
+ * connection is accepted so `io.to(room).emit()` fans out across every API
+ * replica (#207 multi-replica support). When unset, the default in-memory
+ * adapter is used and behaviour is unchanged for local dev, tests, and
+ * single-instance deploys. This is why the function is async — the Redis
+ * clients must connect before the server starts listening.
+ *
  * Handshake middleware order (defense in depth, cheapest/broadest first):
  *   1. Throttle  — IP-keyed connection-flood guard (#213).
  *   2. Origin    — explicit browser-Origin allowlist, reusing the HTTP CORS
  *                  source (config.clientUrl) (#213).
  *   3. Auth      — the single trust boundary (authenticateSocket).
  */
-export function initRealtime(httpServer: HttpServer): SocketIOServer {
+export async function initRealtime(
+  httpServer: HttpServer,
+): Promise<SocketIOServer> {
   const server = new SocketIOServer(httpServer, {
     cors: { origin: config.clientUrl, credentials: true },
   });
+
+  // Cross-pod fan-out: with the Redis adapter attached, every `io.to(room)
+  // .emit()` is published to Redis and replayed on all other replicas, so a
+  // mutation handled by one pod reaches family members connected to any pod.
+  // Gated on REDIS_URL so single-instance and local/test runs skip Redis
+  // entirely. Attached before the handshake middleware and before the server
+  // accepts connections.
+  if (config.redis.url) {
+    pubClient = createClient({ url: config.redis.url });
+    subClient = pubClient.duplicate();
+    // Surface connection/runtime errors instead of letting them crash the
+    // process as unhandled 'error' events.
+    pubClient.on("error", (err) => {
+      console.error("Redis pub client error:", err);
+    });
+    subClient.on("error", (err) => {
+      console.error("Redis sub client error:", err);
+    });
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    server.adapter(createAdapter(pubClient, subClient));
+  }
 
   const allowedOrigins = parseAllowedOrigins(config.clientUrl);
   const throttle = createHandshakeThrottle({
@@ -150,6 +188,32 @@ export function scheduleExpiryDisconnect(socket: {
 /** Directly set (or clear) the attached server. Used by tests. */
 export function setRealtimeServer(server: SocketIOServer | null): void {
   io = server;
+}
+
+/**
+ * Graceful shutdown for the realtime layer. Closes the socket.io server (which
+ * disconnects clients and stops accepting connections) and quits the Redis
+ * pub/sub clients if they were created. Safe to call when Redis is not in use —
+ * the client refs are null and only the socket.io server is closed. Errors from
+ * quit() are swallowed so shutdown always completes.
+ */
+export async function closeRealtime(): Promise<void> {
+  if (io) {
+    io.close();
+    io = null;
+  }
+  const clients = [pubClient, subClient].filter(
+    (c): c is RedisClientType => c !== null,
+  );
+  pubClient = null;
+  subClient = null;
+  await Promise.all(
+    clients.map((client) =>
+      client.quit().catch((err) => {
+        console.error("Error quitting Redis client:", err);
+      }),
+    ),
+  );
 }
 
 function emitToFamily(event: string, familyId: string): void {
