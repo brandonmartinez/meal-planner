@@ -162,6 +162,29 @@ describe('GroceryListPage', () => {
     expect(screen.getByText(/1 of 2 items checked/i)).toBeInTheDocument();
   });
 
+  it('renders the source-day annotation for items with sourceDays', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            // 0=Mon, 3=Thu — provided out of order to verify sorting.
+            item({ id: 'it-1', name: 'Salt', category: 'condiments', sourceDays: [3, 0] }),
+            item({ id: 'it-2', name: 'Butter', category: 'dairy', sourceDays: [] }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    expect(await screen.findByText('Salt')).toBeInTheDocument();
+    // Sorted Mon→Sun and prefixed with a middot.
+    expect(screen.getByText('· Mon, Thu')).toBeInTheDocument();
+    // Butter has no sourceDays → only one annotation on the page.
+    expect(screen.getAllByText(/·\s*\w{3}/)).toHaveLength(1);
+  });
+
   it('toggles an item checked via the checkbox (optimistic update)', async () => {
     let patched = false;
     server.use(

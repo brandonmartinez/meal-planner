@@ -77,15 +77,53 @@ describe('MealPicker', () => {
         );
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
-        await userEvent.click(screen.getByRole('button', { name: 'Hard' }));
+        await userEvent.selectOptions(screen.getByLabelText('Difficulty'), 'HARD');
 
         await waitFor(() =>
             expect(new URL(lastUrl).searchParams.getAll('difficulty')).toEqual(['HARD']),
         );
-        expect(screen.getByRole('button', { name: 'Hard' })).toHaveAttribute(
-            'aria-pressed',
-            'true',
+        expect(screen.getByLabelText('Difficulty')).toHaveValue('HARD');
+    });
+
+    it('uses the name-or-tags search placeholder', async () => {
+        server.use(
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
+
+        renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        expect(
+            screen.getByPlaceholderText('Search meals by name or tags…'),
+        ).toBeInTheDocument();
+    });
+
+    it('hides advanced filters until the toggle is expanded', async () => {
+        server.use(
+            ...taxonomyHandlers([tag('t-1', 'Weeknight')]),
+            http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
+        );
+
+        renderWithProviders(
+            <MealPicker familyId="f-1" onSelect={() => { }} onClose={() => { }} />,
+        );
+        await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
+
+        // Collapsed by default: the tag facet is not in the DOM yet.
+        const toggle = await screen.findByRole('button', { name: /show more filters/i });
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.queryByRole('group', { name: /filter by tag/i })).not.toBeInTheDocument();
+
+        // Difficulty stays always-visible even while collapsed.
+        expect(screen.getByLabelText('Difficulty')).toBeInTheDocument();
+
+        await userEvent.click(toggle);
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(
+            await screen.findByRole('group', { name: /filter by tag/i }),
+        ).toBeInTheDocument();
     });
 
     it('invokes onSelect with the chosen meal id', async () => {
@@ -353,6 +391,8 @@ describe('MealPicker tags', () => {
         );
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
+        // Advanced facets are collapsed by default; reveal them first (#208).
+        await userEvent.click(screen.getByRole('button', { name: /show more filters/i }));
         await userEvent.click(await screen.findByRole('button', { name: 'Weeknight' }));
 
         await waitFor(() =>
@@ -404,7 +444,9 @@ describe('MealPicker collection filter', () => {
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
         // Distinct dropdown affordance (not a chip row), rendered once a
-        // collection exists for the family.
+        // collection exists for the family. Advanced facets are collapsed by
+        // default, so reveal them first (#208).
+        await userEvent.click(screen.getByRole('button', { name: /show more filters/i }));
         await userEvent.selectOptions(await screen.findByLabelText('Collection'), 'Weeknight');
 
         await waitFor(() =>

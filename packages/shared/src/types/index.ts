@@ -181,6 +181,8 @@ export interface GroceryItem {
   origin?: GrocerySource;
   edited?: boolean;
   sourceMealIds?: string[];
+  /** Weekday offsets (0=Monday .. 6=Sunday) of the source meals' plan days. */
+  sourceDays?: number[];
 }
 
 export interface ApiKey {
