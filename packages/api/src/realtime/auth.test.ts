@@ -42,7 +42,26 @@ describe("authenticateSocket — JWT (app users)", () => {
       kind: "user",
       userId: "u-1",
       familyIds: ["fam-1", "fam-2"],
+      tokenExp: expect.any(Number),
     });
+  });
+
+  it("exposes the JWT exp claim as tokenExp (epoch ms) for expiry-driven disconnect", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "u-1",
+      memberships: [{ familyId: "fam-1" }],
+    } as never);
+
+    const before = Date.now();
+    const result = await authenticateSocket(
+      handshake({ auth: { token: makeToken() } }),
+    );
+
+    // makeToken() signs with expiresIn: "1h" → exp ≈ now + 3600s.
+    expect(result?.tokenExp).toBeTypeOf("number");
+    const expMs = result!.tokenExp!;
+    expect(expMs).toBeGreaterThan(before);
+    expect(expMs).toBeLessThanOrEqual(before + 3600_000 + 5_000);
   });
 
   it("authenticates via the Authorization: Bearer header", async () => {
@@ -104,6 +123,8 @@ describe("authenticateSocket — API key (Magic Mirror)", () => {
     );
 
     expect(result).toEqual({ kind: "apiKey", familyIds: ["fam-mm"] });
+    // API-key connections are not JWTs — no exp, so no expiry disconnect is scheduled.
+    expect(result?.tokenExp).toBeUndefined();
     expect(prismaMock.apiKey.update).toHaveBeenCalledWith({
       where: { id: "k-1" },
       data: { lastUsed: expect.any(Date) },

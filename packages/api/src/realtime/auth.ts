@@ -13,6 +13,7 @@
 // nothing else; the connection handler joins only those rooms server-side, so a
 // client can never request another family's room.
 
+import jwt from "jsonwebtoken";
 import { verifyToken } from "../utils/jwt.js";
 import prisma from "../config/database.js";
 import { findApiKeyByRawKey } from "../services/apiKey.js";
@@ -33,10 +34,32 @@ export interface SocketAuthResult {
   familyIds: string[];
   /** Present only for JWT (app user) connections. */
   userId?: string;
+  /**
+   * JWT expiry as epoch milliseconds — present ONLY for JWT (app user)
+   * connections that carry an `exp` claim. The connection handler uses this to
+   * schedule an expiry-driven disconnect (#213) so a long-lived socket cannot
+   * outlive its token. API-key connections are not JWTs and have no expiry, so
+   * this is undefined for them and no disconnect is scheduled.
+   */
+  tokenExp?: number;
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Read the `exp` claim (epoch ms) from an already-VERIFIED JWT. We decode
+ * (not re-verify) here because `verifyToken` has already validated the
+ * signature and expiry a line above; decode only extracts the claim. Returns
+ * undefined for a token with no numeric `exp`.
+ */
+function readTokenExpiryMs(token: string): number | undefined {
+  const decoded = jwt.decode(token);
+  if (decoded && typeof decoded === "object" && typeof decoded.exp === "number") {
+    return decoded.exp * 1000;
+  }
+  return undefined;
 }
 
 /** Tiny cookie-header parser — we only need `token`, so avoid a dependency. */
@@ -104,6 +127,7 @@ export async function authenticateSocket(
           kind: "user",
           userId: user.id,
           familyIds: user.memberships.map((m) => m.familyId),
+          tokenExp: readTokenExpiryMs(token),
         };
       }
     } catch {
