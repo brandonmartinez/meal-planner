@@ -14,6 +14,12 @@ export const handlers = [
   // that don't exercise the agent-credential UI don't trip the
   // `onUnhandledRequest: "error"` guard. Tests that assert on it override here.
   http.get("/api/families/:id/agent-credentials", () => HttpResponse.json([])),
+  // Family pantry staples (issue #205) — FamilySettingsPage loads these on mount
+  // for parents. Default to empty so tests that don't exercise the staples UI
+  // don't trip the `onUnhandledRequest: "error"` guard.
+  http.get("/api/families/:id/pantry-staples", () =>
+    HttpResponse.json({ staples: [] }),
+  ),
   // Family taxonomy lists (issue #107) — MealsPage, MealPicker, and MealFormPage
   // load these via useTaxonomy on mount to populate filter/assign controls.
   // Default to empty so existing meal tests that don't exercise tags don't trip

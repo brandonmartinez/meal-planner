@@ -16,6 +16,7 @@ import { familyRouter } from "./routes/families.js";
 import { mealsRouter } from "./routes/meals.js";
 import { weekPlanRouter } from "./routes/weekPlan.js";
 import { planningTemplatesRouter } from "./routes/planningTemplates.js";
+import { pantryStaplesRouter } from "./routes/pantryStaples.js";
 import { groceryRouter } from "./routes/grocery.js";
 import { imagesRouter } from "./routes/images.js";
 import { displayRouter } from "./routes/display.js";
@@ -94,6 +95,7 @@ app.use("/api/families", familyRouter);
 app.use("/api/families", mealsRouter);
 app.use("/api/families", weekPlanRouter);
 app.use("/api/families", planningTemplatesRouter);
+app.use("/api/families", pantryStaplesRouter);
 app.use("/api/families", groceryRouter);
 app.use("/api/families", imagesRouter);
 // displayLimiter runs BEFORE the router's authenticateApiKey, so floods are

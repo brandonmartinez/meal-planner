@@ -596,6 +596,67 @@ describe("getGroceryList / getGroceryListByWeek", () => {
   });
 });
 
+describe("pantry-staple annotation (issue #205)", () => {
+  it("flags items whose normalized name matches a managed staple, leaving others untouched", async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue({
+      id: "list-1",
+      familyId: "fam-1",
+      items: [
+        { id: "i-1", name: "Salt", category: "pantry" },
+        { id: "i-2", name: "Chicken", category: "meat" },
+      ],
+    } as never);
+    // Staple set contains only the normalized "salt".
+    prismaMock.pantryStaple.findMany.mockResolvedValue([
+      { nameNormalized: "salt" },
+    ] as never);
+
+    const list = (await getGroceryList("list-1", "fam-1")) as unknown as {
+      items: { id: string; isPantryStaple: boolean }[];
+    };
+
+    const byId = Object.fromEntries(list.items.map((i) => [i.id, i]));
+    expect(byId["i-1"].isPantryStaple).toBe(true);
+    expect(byId["i-2"].isPantryStaple).toBe(false);
+    // Staple set was scoped to the same family.
+    expect(prismaMock.pantryStaple.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { familyId: "fam-1" } }),
+    );
+  });
+
+  it("matches case/whitespace-insensitively, consistent with groceryKey", async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue({
+      id: "list-1",
+      familyId: "fam-1",
+      items: [
+        { id: "i-1", name: "  OLIVE OIL ", category: "pantry" },
+        { id: "i-2", name: "Basil", category: "produce" },
+      ],
+    } as never);
+    prismaMock.pantryStaple.findMany.mockResolvedValue([
+      { nameNormalized: "olive oil" },
+    ] as never);
+
+    const list = (await getGroceryListByWeek(
+      "fam-1",
+      new Date("2026-05-04T00:00:00Z"),
+    )) as unknown as {
+      items: { id: string; isPantryStaple: boolean }[];
+    };
+
+    const byId = Object.fromEntries(list.items.map((i) => [i.id, i]));
+    expect(byId["i-1"].isPantryStaple).toBe(true);
+    expect(byId["i-2"].isPantryStaple).toBe(false);
+  });
+
+  it("returns null (and does not query staples) when the list is missing", async () => {
+    prismaMock.groceryList.findFirst.mockResolvedValue(null);
+    const list = await getGroceryList("nope", "fam-1");
+    expect(list).toBeNull();
+    expect(prismaMock.pantryStaple.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("item operations", () => {
   it("toggleItem updates checked when item belongs to list and family", async () => {
     prismaMock.groceryItem.findFirst.mockResolvedValue({ id: "item-1" } as never);

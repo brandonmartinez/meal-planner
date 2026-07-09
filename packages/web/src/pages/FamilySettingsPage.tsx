@@ -25,6 +25,8 @@ import type {
   AgentScope,
 } from '../api/families.js';
 import { AGENT_SCOPES, AGENT_SCOPE_METADATA } from '@meal-planner/shared';
+import { listPantryStaples, createPantryStaple, deletePantryStaple } from '../api/pantryStaples.js';
+import type { PantryStaple } from '../api/pantryStaples.js';
 import { useAuth } from '../context/AuthContext.js';
 import { useFamily } from '../hooks/useFamily';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -51,6 +53,11 @@ export default function FamilySettingsPage() {
   const [agentKeyCopyState, setAgentKeyCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Managed pantry staples (issue #205) — "stock kitchen" items that
+  // auto-separate matching grocery items into a dedicated section.
+  const [pantryStaples, setPantryStaples] = useState<PantryStaple[]>([]);
+  const [newStapleName, setNewStapleName] = useState('');
+  const [stapleError, setStapleError] = useState('');
   const [tzDraft, setTzDraft] = useState('UTC');
   const [tzSaving, setTzSaving] = useState(false);
   const [tzSaved, setTzSaved] = useState(false);
@@ -66,12 +73,14 @@ export default function FamilySettingsPage() {
       setTzDraft(f.timezone || 'UTC');
       setMembers(m);
       if (isParent) {
-        const [keys, creds] = await Promise.all([
+        const [keys, creds, staples] = await Promise.all([
           listApiKeys(familyId),
           listAgentCredentials(familyId),
+          listPantryStaples(familyId),
         ]);
         setApiKeys(keys);
         setAgentCreds(creds);
+        setPantryStaples(staples);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -145,6 +154,32 @@ export default function FamilySettingsPage() {
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to revoke key');
+    }
+  };
+
+  const handleAddStaple = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!familyId) return;
+    const name = newStapleName.trim();
+    if (!name) return;
+    setStapleError('');
+    try {
+      await createPantryStaple(familyId, name);
+      setNewStapleName('');
+      await loadData();
+    } catch (err) {
+      setStapleError(err instanceof Error ? err.message : 'Failed to add staple');
+    }
+  };
+
+  const handleRemoveStaple = async (stapleId: string) => {
+    if (!familyId) return;
+    setStapleError('');
+    try {
+      await deletePantryStaple(familyId, stapleId);
+      await loadData();
+    } catch (err) {
+      setStapleError(err instanceof Error ? err.message : 'Failed to remove staple');
     }
   };
 
@@ -313,6 +348,56 @@ export default function FamilySettingsPage() {
           ))}
         </ul>
       </section>
+
+      {/* Pantry Staples (issue #205) */}
+      {isParent && (
+        <section className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">Pantry Staples</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            "Stock kitchen" items you always have on hand (salt, oil, spices…).
+            Matching grocery items are auto-separated into a dedicated
+            "Pantry Staples" section on the shopping list instead of their aisle.
+          </p>
+          <form onSubmit={handleAddStaple} className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={newStapleName}
+              onChange={(e) => setNewStapleName(e.target.value)}
+              placeholder="e.g. Salt"
+              aria-label="Pantry staple name"
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+            />
+            <button
+              type="submit"
+              disabled={!newStapleName.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Add
+            </button>
+          </form>
+          {stapleError && (
+            <div role="alert" className="text-sm text-red-600 dark:text-red-400 mb-3">{stapleError}</div>
+          )}
+          {pantryStaples.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No pantry staples yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {pantryStaples.map((s) => (
+                <li key={s.id} className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded shadow-sm border border-transparent dark:border-gray-700">
+                  <span className="font-medium">{s.name}</span>
+                  <button
+                    onClick={() => handleRemoveStaple(s.id)}
+                    aria-label={`Remove ${s.name}`}
+                    className="text-sm px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/60"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Invite */}
       {isParent && (

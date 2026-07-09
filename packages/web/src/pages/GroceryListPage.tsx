@@ -49,6 +49,9 @@ export default function GroceryListPage() {
     const [newItemCategory, setNewItemCategory] = useState('other');
     const [rangeStart, setRangeStart] = useState('');
     const [rangeEnd, setRangeEnd] = useState('');
+    // Pantry Staples section is collapsible (issue #205); collapsed by default
+    // so the active shopping list stays front-and-centre.
+    const [staplesCollapsed, setStaplesCollapsed] = useState(true);
 
     const loadList = useCallback(async () => {
         if (!familyId || !weekStart) return;
@@ -156,9 +159,16 @@ export default function GroceryListPage() {
     const items = groceryList?.items || [];
     const checkedCount = items.filter(i => i.checked).length;
 
-    // Group items by category
+    // Pantry staples (issue #205) are auto-separated into their own section
+    // instead of their aisle category. Matching is derived server-side on the
+    // `isPantryStaple` flag (normalized name match against the family's managed
+    // staples), so the client just partitions on that flag here.
+    const stapleItems = items.filter(i => i.isPantryStaple);
+    const nonStapleItems = items.filter(i => !i.isPantryStaple);
+
+    // Group non-staple items by category
     const grouped = new Map<string, GroceryItem[]>();
-    for (const item of items) {
+    for (const item of nonStapleItems) {
         const cat = item.category || 'other';
         if (!grouped.has(cat)) grouped.set(cat, []);
         grouped.get(cat)!.push(item);
@@ -177,6 +187,49 @@ export default function GroceryListPage() {
     if (loading) {
         return <LoadingSpinner message="Loading grocery list…" />;
     }
+
+    const renderItem = (item: GroceryItem) => (
+        <li key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
+            <input
+                type="checkbox"
+                checked={item.checked}
+                onChange={() => handleToggle(item)}
+                aria-label={`${item.checked ? 'Uncheck' : 'Check'} ${item.name}`}
+                className="h-5 w-5 text-green-600 rounded"
+            />
+            <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
+                {item.name}
+                {formatSourceDays(item.sourceDays) && (
+                    <span
+                        className="text-gray-400 dark:text-gray-500 ml-2 text-xs font-normal"
+                        title={`From ${formatSourceDays(item.sourceDays)}`}
+                    >
+                        · {formatSourceDays(item.sourceDays)}
+                    </span>
+                )}
+                {item.quantity && (
+                    <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
+                        {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+                    </span>
+                )}
+            </span>
+            {item.sources && item.sources.length > 0 && (
+                <span
+                    className="hidden sm:block max-w-[40%] truncate text-xs text-gray-400 dark:text-gray-500 italic"
+                    title={item.sources.join(', ')}
+                >
+                    {item.sources.join(', ')}
+                </span>
+            )}
+            <button
+                onClick={() => handleRemove(item.id)}
+                aria-label={`Remove ${item.name}`}
+                className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
+            >
+                ×
+            </button>
+        </li>
+    );
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-6">
@@ -270,51 +323,30 @@ export default function GroceryListPage() {
                                 {CATEGORY_EMOJIS[category] || '📦'} {category}
                             </h2>
                             <ul className="space-y-1">
-                                {grouped.get(category)!.map(item => (
-                                    <li key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
-                                        <input
-                                            type="checkbox"
-                                            checked={item.checked}
-                                            onChange={() => handleToggle(item)}
-                                            aria-label={`${item.checked ? 'Uncheck' : 'Check'} ${item.name}`}
-                                            className="h-5 w-5 text-green-600 rounded"
-                                        />
-                                        <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
-                                            {item.name}
-                                            {formatSourceDays(item.sourceDays) && (
-                                                <span
-                                                    className="text-gray-400 dark:text-gray-500 ml-2 text-xs font-normal"
-                                                    title={`From ${formatSourceDays(item.sourceDays)}`}
-                                                >
-                                                    · {formatSourceDays(item.sourceDays)}
-                                                </span>
-                                            )}
-                                            {item.quantity && (
-                                                <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
-                                                    {item.quantity}{item.unit ? ` ${item.unit}` : ''}
-                                                </span>
-                                            )}
-                                        </span>
-                                        {item.sources && item.sources.length > 0 && (
-                                            <span
-                                                className="hidden sm:block max-w-[40%] truncate text-xs text-gray-400 dark:text-gray-500 italic"
-                                                title={item.sources.join(', ')}
-                                            >
-                                                {item.sources.join(', ')}
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={() => handleRemove(item.id)}
-                                            aria-label={`Remove ${item.name}`}
-                                            className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
-                                        >
-                                            ×
-                                        </button>
-                                    </li>
-                                ))}
+                                {grouped.get(category)!.map(item => renderItem(item))}
                             </ul>
                         </div>
                     ))}
+
+                    {/* Pantry Staples — auto-separated stock-kitchen items (issue #205) */}
+                    {stapleItems.length > 0 && (
+                        <div className="mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setStaplesCollapsed(c => !c)}
+                                aria-expanded={!staplesCollapsed}
+                                className="w-full flex items-center justify-between text-left text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2"
+                            >
+                                <span>🧂 Pantry Staples <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({stapleItems.length})</span></span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400">{staplesCollapsed ? '▸ Show' : '▾ Hide'}</span>
+                            </button>
+                            {!staplesCollapsed && (
+                                <ul className="space-y-1">
+                                    {stapleItems.map(item => renderItem(item))}
+                                </ul>
+                            )}
+                        </div>
+                    )}
 
                     {items.length === 0 && (
                         <p className="text-center text-gray-500 dark:text-gray-400 py-4">No items in the list. Add some below or regenerate from approved meals.</p>
