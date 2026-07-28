@@ -101,6 +101,12 @@
 **What:** Scribe's decision archive gate must archive only entries that are both old enough for the active tier and non-durable. Durable decisions are operationally defined as still-true standing process rules, architecture/data contracts, security/auth hardening contracts, environment/infra facts, or cross-package conventions with no natural expiry. `## Standing Policy` is the durable section: Scribe must never archive entries from it, must promote durable inbox decisions into it, and must report archived counts, durable retentions, promotions, and pressure conditions in the HEALTH REPORT.
 **Why:** Age alone evicted load-bearing rules such as pantry-staples separation and grocery regeneration provenance, recreating the failure mode where agents miss binding decisions. The byte ceilings stay useful, but durable contracts must survive the archive gate. If all remaining entries are durable and the file still exceeds the ceiling, Scribe reports the condition to the coordinator instead of dropping rules to fit. This decision is itself durable and belongs in `## Standing Policy`.
 
+### 2026-07-28: Devcontainer mounts host npm config when present
+
+**By:** Basher
+**What:** For `./dev.sh`, the local devcontainer uses the host's existing npm configuration as the single source of truth when available. If `~/.npmrc` exists on the host, `dev.sh` includes an optional compose fragment that bind-mounts that exact file read-only at `/home/node/.npmrc` for the container's `node` user. If the host file is absent, the fragment is skipped entirely so Docker does not create an empty source directory or shadow the container path. In-container commands continue to use non-login `bash -c`; `--fresh` forces dependency reinstall; and clean dev starts build shared + MCP before launching dev servers.
+**Why:** Some developer machines must use a sanctioned package-feed proxy while direct npmjs.org access is blocked. Mounting `~/.npmrc` keeps registry configuration and any feed auth in the host-owned config file, avoids a second repo-owned registry path, survives container recreation, and keeps CI/contributors without host npm config unaffected. No credential or registry URL belongs in `.squad/`; the merged inbox entry contained none.
+
 ## Historical Record
 
 ### 2026-07-09: WebSocket realtime backbone (#207, PR #212)

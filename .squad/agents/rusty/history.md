@@ -36,3 +36,6 @@ Lead / Architect. Owns cross-package contracts, scope, and code review. Build/CI
 ### 2026-07-28T10:15:00-04:00 — #218 grocery grouping review gate
 
 Reviewed Linus's #218 commit `21be592` and rejected it for two blockers: pantry-staple separation must remain mode-independent under #205, and meal grouping must use `sourceMealIds` for membership rather than stale-prone `sources` labels. Issued the binding ruling in `rusty-grocery-pantry-grouping.md`; re-reviewed Virgil's revision `bb7474e` and approved it after both blockers were closed.
+
+
+📌 Team update (2026-07-28T11:52:00-04:00): Archive-gate policy now requires both age and non-durability before Scribe can archive a decision. Rusty's durability test treats still-true process rules, architecture/data contracts, security/auth hardening, environment/infra facts, and cross-package conventions as durable; `## Standing Policy` is the hard-exempt section, and pressure is reported instead of evicting durable rules. — logged by Scribe
