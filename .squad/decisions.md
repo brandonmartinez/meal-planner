@@ -73,28 +73,6 @@
 **Why:** The route varies its response by API key but did not advertise `Vary`, risking cross-family cache bleed on shared caches. Storage failures returned a silent 404 with no operator signal.
 **How:** `res.setHeader('Vary', 'x-api-key')` before both `res.status(304).end()` and `res.send(bytes)`; no Vary on 404 paths (not cacheable); API key is never included in log args. 25/25 tests pass — assert Vary on 200+304 and `console.error` spy on storage-error test. PR #200 squash-merged to main at a111ee26.
 
-## 2026-07-09T01:11:01-0400: v0.6.0 grocery & meal-picker feedback decisions
-
-### 2026-07-09T01:11:01-0400: Full WebSockets realtime for collaborative views
-**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
-**What:** Implement real-time updates with FULL bidirectional WebSockets, not SSE or polling. Scope includes grocery list, week plan, and Magic Mirror display. Build `http.createServer(app)` around Express, attach a socket server, use room-per-family scoping, authenticate the socket handshake via JWT/API key, and add `ws:`/`wss:` to Helmet CSP `connect-src`.
-**Why:** Family feedback needs true collaborative live updates across users and display surfaces; WebSockets are the chosen architecture despite being the largest v0.6.0 effort item.
-**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
-
-### 2026-07-09: WebSocket realtime backbone (#207, PR #212)
-**By:** Basher
-**What:** Full bidirectional realtime via socket.io. Server: app.listen → http.createServer + socket.io; isolated JWT(cookie/Bearer)+API-key handshake in realtime/auth.ts (single trust boundary); room-per-family (`family:<id>`, joined server-side only); 13 typed emit sites; CSP connect-src += ws:/wss:. Shared: typed event contracts. Web: SocketProvider/useSocket/useRealtimeEvent, same-origin httpOnly-cookie socket, wired into grocery + week-plan pages; vite /socket.io ws proxy. No schema change. Traefik native WS passthrough (infra unchanged).
-**Why:** Family feedback — changes should propagate live across collaborative views.
-
-### 2026-07-09: WebSocket auth hardening (#213, PR #215)
-**By:** Basher
-**What:** Three API-side hardening items on the socket handshake — no schema/migration/new deps. (1) Explicit WS Origin gate — new pure `realtime/handshake.ts` (`parseAllowedOrigins`/`isOriginAllowed`) + middleware in `realtime/index.ts`, reusing `config.clientUrl` (same source as HTTP `cors()`), comma-split multi-origin, trailing-slash normalized; null-Origin ALLOWED (non-browser server clients legitimately omit; browsers always send), a present Origin must match exactly. (2) JWT expiry disconnect — `auth.ts` surfaces `SocketAuthResult.tokenExp` (epoch ms via `jwt.decode`, JWT `kind:"user"` branch only); `index.ts` `scheduleExpiryDisconnect` guarded by `authKind==="user" && typeof tokenExp==="number"` so API-key sockets (`kind:"apiKey"`, no exp) are never scheduled; timer `unref`'d, cleared on disconnect, delay clamped to 32-bit max. (3) IP-keyed handshake throttle — `createHandshakeThrottle` (fixed-window) mirroring `middleware/rateLimit.ts`, keyed off real client IP via `X-Forwarded-For` honoring `trust proxy`; env `WS_HANDSHAKE_LIMIT=60` / `WS_HANDSHAKE_WINDOW_MS=60000`, `limit:0` disables. Middleware order: throttle → origin → auth.
-**Why:** Closes Frank's three non-blocking advisories from the #207 socket-auth review (filed as #213). Origin gate added because Socket.IO CORS is not a complete WS Origin gate — direct upgrades must be checked server-side. Expiry disconnect closes the connect-time-only JWT check for long-lived sockets. Handshake throttle mirrors the HTTP rate-limit posture. Null-Origin allowed to preserve legitimate non-browser socket clients. Verification: full build chain green; `pnpm -r run test` = 1715 passed (api 1011 incl. new handshake.test.ts 20 + index.test.ts 6 + auth.test.ts +2; web 579, mcp 121, shared 4); lint 0 errors (6 pre-existing warnings in untouched files).
-
-## Retained active entries
-
-Retained entries newer than cutoff: 0
-
 ### 2026-07-09T01:11:01-0400: Managed pantry staples list separates stock-kitchen items
 **By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
 **What:** Add a per-family managed pantry-staples list in settings (for example, `PantryStaple` keyed by family plus normalized name). Grocery items whose normalized name matches a staple should auto-separate into a dedicated `Pantry Staples` section.
@@ -106,6 +84,29 @@ Retained entries newer than cutoff: 0
 **What:** Regenerate grocery list behavior has three required sub-behaviors: allow short-order generation for a chosen set/range of days; preserve checked generated items that become orphaned during regen (promote to MANUAL or equivalent instead of deleting); and make `Remove past days` an explicit manual button, never an automatic side effect of regeneration.
 **Why:** Checked items represent user intent and must not disappear. Date-range generation supports partial-week planning, while manual cleanup avoids surprising destructive changes.
 **Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09T01:11:01-0400: Full WebSockets realtime for collaborative views
+**By:** Brandon Martinez (via Copilot) — Squad Coordinator captured
+**What:** Implement real-time updates with FULL bidirectional WebSockets, not SSE or polling. Scope includes grocery list, week plan, and Magic Mirror display. Build `http.createServer(app)` around Express, attach a socket server, use room-per-family scoping, authenticate the socket handshake via JWT/API key, and add `ws:`/`wss:` to Helmet CSP `connect-src`.
+**Why:** Family feedback needs true collaborative live updates across users and display surfaces; WebSockets are the chosen architecture despite being the largest v0.6.0 effort item.
+**Context:** Family feedback on the latest grocery-list + meal-picker release; coordinator clarifications are authoritative for the v0.6.0 sprint.
+
+### 2026-07-09: WebSocket auth hardening (#213, PR #215)
+**By:** Basher
+**What:** Three API-side hardening items on the socket handshake — no schema/migration/new deps. (1) Explicit WS Origin gate — new pure `realtime/handshake.ts` (`parseAllowedOrigins`/`isOriginAllowed`) + middleware in `realtime/index.ts`, reusing `config.clientUrl` (same source as HTTP `cors()`), comma-split multi-origin, trailing-slash normalized; null-Origin ALLOWED (non-browser server clients legitimately omit; browsers always send), a present Origin must match exactly. (2) JWT expiry disconnect — `auth.ts` surfaces `SocketAuthResult.tokenExp` (epoch ms via `jwt.decode`, JWT `kind:"user"` branch only); `index.ts` `scheduleExpiryDisconnect` guarded by `authKind==="user" && typeof tokenExp==="number"` so API-key sockets (`kind:"apiKey"`, no exp) are never scheduled; timer `unref`'d, cleared on disconnect, delay clamped to 32-bit max. (3) IP-keyed handshake throttle — `createHandshakeThrottle` (fixed-window) mirroring `middleware/rateLimit.ts`, keyed off real client IP via `X-Forwarded-For` honoring `trust proxy`; env `WS_HANDSHAKE_LIMIT=60` / `WS_HANDSHAKE_WINDOW_MS=60000`, `limit:0` disables. Middleware order: throttle → origin → auth.
+**Why:** Closes Frank's three non-blocking advisories from the #207 socket-auth review (filed as #213). Origin gate added because Socket.IO CORS is not a complete WS Origin gate — direct upgrades must be checked server-side. Expiry disconnect closes the connect-time-only JWT check for long-lived sockets. Handshake throttle mirrors the HTTP rate-limit posture. Null-Origin allowed to preserve legitimate non-browser socket clients. Verification: full build chain green; `pnpm -r run test` = 1715 passed (api 1011 incl. new handshake.test.ts 20 + index.test.ts 6 + auth.test.ts +2; web 579, mcp 121, shared 4); lint 0 errors (6 pre-existing warnings in untouched files).
+
+### 2026-07-28: Archive gate requires age AND durability
+**By:** Rusty
+**What:** Scribe's decision archive gate must archive only entries that are both old enough for the active tier and non-durable. Durable decisions are operationally defined as still-true standing process rules, architecture/data contracts, security/auth hardening contracts, environment/infra facts, or cross-package conventions with no natural expiry. `## Standing Policy` is the durable section: Scribe must never archive entries from it, must promote durable inbox decisions into it, and must report archived counts, durable retentions, promotions, and pressure conditions in the HEALTH REPORT.
+**Why:** Age alone evicted load-bearing rules such as pantry-staples separation and grocery regeneration provenance, recreating the failure mode where agents miss binding decisions. The byte ceilings stay useful, but durable contracts must survive the archive gate. If all remaining entries are durable and the file still exceeds the ceiling, Scribe reports the condition to the coordinator instead of dropping rules to fit. This decision is itself durable and belongs in `## Standing Policy`.
+
+## Historical Record
+
+### 2026-07-09: WebSocket realtime backbone (#207, PR #212)
+**By:** Basher
+**What:** Full bidirectional realtime via socket.io. Server: app.listen → http.createServer + socket.io; isolated JWT(cookie/Bearer)+API-key handshake in realtime/auth.ts (single trust boundary); room-per-family (`family:<id>`, joined server-side only); 13 typed emit sites; CSP connect-src += ws:/wss:. Shared: typed event contracts. Web: SocketProvider/useSocket/useRealtimeEvent, same-origin httpOnly-cookie socket, wired into grocery + week-plan pages; vite /socket.io ws proxy. No schema change. Traefik native WS passthrough (infra unchanged).
+**Why:** Family feedback — changes should propagate live across collaborative views.
 
 ## Governance
 
