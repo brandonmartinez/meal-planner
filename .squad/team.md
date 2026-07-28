@@ -14,6 +14,7 @@
 |------|------|---------|--------|
 | Rusty | Lead / Architect | .squad/agents/rusty/charter.md | 🏗️ Active |
 | Linus | Frontend Dev | .squad/agents/linus/charter.md | ⚛️ Active |
+| Virgil | Frontend Specialist | .squad/agents/virgil/charter.md | ⚛️ Active |
 | Livingston | Backend Dev | .squad/agents/livingston/charter.md | 🔧 Active |
 | Saul | Data / Migrations | .squad/agents/saul/charter.md | 🗄️ Active |
 | Yen | Tester / QA | .squad/agents/yen/charter.md | 🧪 Active |

@@ -45,6 +45,7 @@ export default function WeekPlanPage() {
     const currentMembership = user?.memberships?.find(m => m.familyId === familyId);
     const isParent = currentMembership?.role === 'PARENT';
     const isPastWeek = weekStart < getCurrentWeekStart();
+    const showActionRow = !isPastWeek;
 
     // Reset the transient modal open-state as the user navigates between weeks.
     useEffect(() => {
@@ -170,47 +171,42 @@ export default function WeekPlanPage() {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-6">
-            {/* Responsive toolbar: single row on desktop, two rows on mobile */}
-            <div className="flex flex-wrap items-center gap-3 mb-6">
-                {/* Left cluster: title + date range */}
+            <div className="mb-6">
                 <div className="flex items-baseline gap-2">
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Week Plan</h1>
                     <p className="text-gray-600 dark:text-gray-300 text-lg">{formatWeekRange(weekStart)}</p>
                 </div>
 
-                {/* Grocery List — hidden when viewing a past week */}
-                {!isPastWeek && (
-                    <Link
-                        to="/grocery"
-                        className="inline-flex items-stretch overflow-hidden rounded w-full sm:w-auto bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900/60"
-                    >
-                        <span className="flex items-center justify-center px-3 border-r border-green-200 dark:border-green-800 bg-green-200/60 dark:bg-green-900/60">🛒</span>
-                        <span className="flex items-center px-4 py-2">Grocery List</span>
-                    </Link>
-                )}
-
-                {/* Spacer: pushes parent actions to the far right on desktop; invisible on mobile */}
-                <div className="hidden sm:block flex-1" aria-hidden="true" />
-
-                {/* Parent-only actions — hidden on past weeks; wrap to their own row on mobile */}
-                {isParent && !isPastWeek && (
-                    <div className="flex gap-3 w-full sm:w-auto">
-                        <button
-                            type="button"
-                            onClick={() => setShowRepeat(true)}
-                            className="inline-flex items-stretch overflow-hidden rounded flex-1 sm:flex-none bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/60"
+                {showActionRow && (
+                    <div role="group" aria-label="Week actions" className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
+                        <Link
+                            to="/grocery"
+                            className="inline-flex items-stretch overflow-hidden rounded w-full sm:w-auto bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900/60"
                         >
-                            <span className="flex items-center justify-center px-3 border-r border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60">🔁</span>
-                            <span className="flex items-center justify-center px-4 py-2">Repeat a previous week</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setShowApply(true)}
-                            className="inline-flex items-stretch overflow-hidden rounded flex-1 sm:flex-none bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 text-sm font-medium hover:bg-indigo-200 dark:hover:bg-indigo-900/60"
-                        >
-                            <span className="flex items-center justify-center px-3 border-r border-indigo-200 dark:border-indigo-800 bg-indigo-200/60 dark:bg-indigo-900/60">🗓️</span>
-                            <span className="flex items-center justify-center px-4 py-2">Apply a template</span>
-                        </button>
+                            <span className="flex items-center justify-center px-3 border-r border-green-200 dark:border-green-800 bg-green-200/60 dark:bg-green-900/60">🛒</span>
+                            <span className="flex items-center px-4 py-2">Grocery List</span>
+                        </Link>
+
+                        {isParent && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRepeat(true)}
+                                    className="inline-flex items-stretch overflow-hidden rounded w-full sm:w-auto bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/60"
+                                >
+                                    <span className="flex items-center justify-center px-3 border-r border-blue-200 dark:border-blue-800 bg-blue-200/60 dark:bg-blue-900/60">🔁</span>
+                                    <span className="flex items-center justify-center px-4 py-2">Repeat a previous week</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowApply(true)}
+                                    className="inline-flex items-stretch overflow-hidden rounded w-full sm:w-auto bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 text-sm font-medium hover:bg-indigo-200 dark:hover:bg-indigo-900/60"
+                                >
+                                    <span className="flex items-center justify-center px-3 border-r border-indigo-200 dark:border-indigo-800 bg-indigo-200/60 dark:bg-indigo-900/60">🗓️</span>
+                                    <span className="flex items-center justify-center px-4 py-2">Apply a template</span>
+                                </button>
+                            </>
+                        )}
                     </div>
                 )}
             </div>

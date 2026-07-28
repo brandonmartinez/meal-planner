@@ -32,3 +32,18 @@ Lead / Architect. Owns cross-package contracts, scope, and code review. Build/CI
 📌 Team update (2026-07-02T10:16:59-0400): Rusty led the approved decomposition of epic #91 into 29 dependency-ordered issues (#92-#120) across P1-P3. — logged by Scribe
 📌 Team update (2026-07-02T10:59:35-04:00): Rusty produced a five-sprint recipe-management execution plan for #91-#121; Sprint 1 owner issue is #96, with the critical path #92 → #96 → #111 → #112. — logged by Scribe
 📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 design gate #96 (API/MCP parity rules) APPROVED. Contract: 11-row parity checklist standardized; reuse meal:write for all recipe metadata; meal:image scope deferred to #103/#104 (binary only); display deny-by-default; placeholders un-editable+excluded. HARD RULE: UI-only recipe features violate parity. Option A: commit .github/instructions/parity.instructions.md as FIRST Sprint 2 task. Issue closed, decision record posted. All Sprint 1 design gates complete. — logged by Scribe
+
+### 2026-07-28T10:15:00-04:00 — #218 grocery grouping review gate
+
+Reviewed Linus's #218 commit `21be592` and rejected it for two blockers: pantry-staple separation must remain mode-independent under #205, and meal grouping must use `sourceMealIds` for membership rather than stale-prone `sources` labels. Issued the binding ruling in `rusty-grocery-pantry-grouping.md`; re-reviewed Virgil's revision `bb7474e` and approved it after both blockers were closed.
+
+
+📌 Team update (2026-07-28T11:52:00-04:00): Archive-gate policy now requires both age and non-durability before Scribe can archive a decision. Rusty's durability test treats still-true process rules, architecture/data contracts, security/auth hardening, environment/infra facts, and cross-package conventions as durable; `## Standing Policy` is the hard-exempt section, and pressure is reported instead of evicting durable rules. — logged by Scribe
+
+### 2026-07-28T13:51:00-04:00 — Scribe archive gate byte budget
+
+Rewrote Scribe's charter/template gate to budget `archivable_bytes` (top-level `##` sections except `## Standing Policy`) with 24 KiB / 64 KiB tiers and reporting-only `total_bytes`. Decision inbox entry `rusty-archivable-byte-gate.md` supersedes the threshold half of `b288603` while preserving the durability test and Standing Policy never-archive rule.
+
+### 2026-07-28T13:55:00-04:00 — Archive budgets must measure actionable content
+
+A memory budget measured against content the gate cannot act on creates a permanently red signal. For Scribe's decision archive gate, trigger sweeps from `archivable_bytes` only and keep `total_bytes` as reporting-only visibility into durable-corpus growth.

@@ -5,10 +5,9 @@ import { useGroceryCategories } from '../hooks/useGroceryCategories';
 import { useWeek } from '../context/WeekContext';
 import { useRealtimeEvent } from '../context/SocketContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem, removePastDays } from '../api/grocery';
-import { formatWeekRange } from '../utils/date';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Select from '../components/Select';
-import { RealtimeEvent, type GroceryList, type GroceryItem } from '@meal-planner/shared';
+import { GrocerySource, RealtimeEvent, type GroceryList, type GroceryItem } from '@meal-planner/shared';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     produce: '🥬',
@@ -27,6 +26,24 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 // 0=Monday .. 6=Sunday, matching the API's sourceDays convention.
 const DAY_ABBREV = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+type GroceryGroupMode = 'category' | 'day' | 'meal' | 'alphabetical';
+
+interface GroceryGroup {
+    key: string;
+    title: string;
+    items: GroceryItem[];
+}
+
+const GROUP_MODE_LABELS: Record<GroceryGroupMode, string> = {
+    category: 'Category',
+    day: 'Day',
+    meal: 'Meal',
+    alphabetical: 'Alphabetical',
+};
+
+const STANDARD_BUTTON_CLASSES =
+    'rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed';
+
 function formatSourceDays(days: number[] | undefined): string {
     if (!days || days.length === 0) return '';
     return [...new Set(days)]
@@ -34,6 +51,103 @@ function formatSourceDays(days: number[] | undefined): string {
         .sort((a, b) => a - b)
         .map(d => DAY_ABBREV[d])
         .join(', ');
+}
+
+function uniqueValidDays(days: number[] | undefined): number[] {
+    if (!days || days.length === 0) return [];
+    return [...new Set(days)]
+        .filter(day => day >= 0 && day <= 6)
+        .sort((a, b) => a - b);
+}
+
+function buildMealGroupEntries(item: GroceryItem): Array<{ key: string; title: string }> {
+    if (item.origin === GrocerySource.MANUAL) return [{ key: 'meal:unassigned', title: 'Unassigned' }];
+
+    const entries = (item.sourceMealIds ?? [])
+        .map((sourceMealId, index) => {
+            const id = sourceMealId.trim();
+            if (!id) return null;
+            return {
+                key: `meal:${id}`,
+                title: item.sources?.[index]?.trim() || 'Unknown meal',
+            };
+        })
+        .filter((entry): entry is { key: string; title: string } => entry !== null);
+
+    if (entries.length === 0) return [{ key: 'meal:unassigned', title: 'Unassigned' }];
+
+    return entries.filter((entry, index, all) =>
+        all.findIndex(candidate => candidate.key === entry.key) === index,
+    );
+}
+
+function buildGroceryGroups(
+    items: GroceryItem[],
+    mode: GroceryGroupMode,
+    groceryCategoryOptions: string[],
+): GroceryGroup[] {
+    if (mode === 'alphabetical') {
+        return [{
+            key: 'alphabetical:all',
+            title: 'All Items',
+            items: [...items].sort((a, b) => a.name.localeCompare(b.name)),
+        }];
+    }
+
+    if (mode === 'day') {
+        const grouped = new Map<string, GroceryGroup>();
+        for (const item of items) {
+            const days = uniqueValidDays(item.sourceDays);
+            const groupKeys = days.length > 0
+                ? days.map(day => ({ key: `day:${day}`, title: DAY_ABBREV[day] }))
+                : [{ key: 'day:unassigned', title: 'Unassigned' }];
+
+            for (const group of groupKeys) {
+                if (!grouped.has(group.key)) grouped.set(group.key, { ...group, items: [] });
+                grouped.get(group.key)!.items.push(item);
+            }
+        }
+
+        return [
+            ...DAY_ABBREV.map((_, day) => grouped.get(`day:${day}`)).filter((group): group is GroceryGroup => !!group),
+            ...(grouped.has('day:unassigned') ? [grouped.get('day:unassigned')!] : []),
+        ];
+    }
+
+    if (mode === 'meal') {
+        const grouped = new Map<string, GroceryGroup>();
+        for (const item of items) {
+            for (const group of buildMealGroupEntries(item)) {
+                if (!grouped.has(group.key)) grouped.set(group.key, { ...group, items: [] });
+                grouped.get(group.key)!.items.push(item);
+            }
+        }
+
+        return [...grouped.values()].sort((a, b) => {
+            if (a.key === 'meal:unassigned') return 1;
+            if (b.key === 'meal:unassigned') return -1;
+            return a.title.localeCompare(b.title);
+        });
+    }
+
+    const grouped = new Map<string, GroceryItem[]>();
+    for (const item of items) {
+        const cat = item.category || 'other';
+        if (!grouped.has(cat)) grouped.set(cat, []);
+        grouped.get(cat)!.push(item);
+    }
+
+    return [...grouped.keys()]
+        .sort((a, b) => {
+            const idxA = groceryCategoryOptions.indexOf(a);
+            const idxB = groceryCategoryOptions.indexOf(b);
+            return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+        })
+        .map(category => ({
+            key: `category:${category}`,
+            title: `${CATEGORY_EMOJIS[category] || '📦'} ${category}`,
+            items: grouped.get(category)!,
+        }));
 }
 
 export default function GroceryListPage() {
@@ -49,6 +163,7 @@ export default function GroceryListPage() {
     const [newItemCategory, setNewItemCategory] = useState('other');
     const [rangeStart, setRangeStart] = useState('');
     const [rangeEnd, setRangeEnd] = useState('');
+    const [groupMode, setGroupMode] = useState<GroceryGroupMode>('category');
     // Pantry Staples section is collapsible (issue #205); collapsed by default
     // so the active shopping list stays front-and-centre.
     const [staplesCollapsed, setStaplesCollapsed] = useState(true);
@@ -165,22 +280,8 @@ export default function GroceryListPage() {
     // staples), so the client just partitions on that flag here.
     const stapleItems = items.filter(i => i.isPantryStaple);
     const nonStapleItems = items.filter(i => !i.isPantryStaple);
-
-    // Group non-staple items by category
-    const grouped = new Map<string, GroceryItem[]>();
-    for (const item of nonStapleItems) {
-        const cat = item.category || 'other';
-        if (!grouped.has(cat)) grouped.set(cat, []);
-        grouped.get(cat)!.push(item);
-    }
-
-    // Sort categories by the effective grocery-category order (defaults first,
-    // then custom); unknown/legacy values sink to the end. #119.
-    const sortedCategories = [...grouped.keys()].sort((a, b) => {
-        const idxA = groceryCategoryOptions.indexOf(a);
-        const idxB = groceryCategoryOptions.indexOf(b);
-        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-    });
+    const groupedItems = buildGroceryGroups(nonStapleItems, groupMode, groceryCategoryOptions);
+    const groupedStapleItems = buildGroceryGroups(stapleItems, groupMode, groceryCategoryOptions);
 
     if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
@@ -188,8 +289,19 @@ export default function GroceryListPage() {
         return <LoadingSpinner message="Loading grocery list…" />;
     }
 
-    const renderItem = (item: GroceryItem) => (
-        <li key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
+    const renderItem = (item: GroceryItem, itemKey: string) => {
+        const sourceDays = formatSourceDays(item.sourceDays);
+        const quantity = item.quantity ? `${item.quantity}${item.unit ? ` ${item.unit}` : ''}` : '';
+        const sourceLabels = item.sources?.map(source => source.trim()).filter(Boolean).join(', ') ?? '';
+        const showSourceDays = groupMode !== 'day' && !!sourceDays;
+        const showSourceLabels = groupMode !== 'meal' && !!sourceLabels;
+        const provenanceTitle = [
+            sourceDays ? `Days: ${sourceDays}` : '',
+            sourceLabels ? `Meals: ${sourceLabels}` : '',
+        ].filter(Boolean).join(' · ');
+
+        return (
+        <li key={itemKey} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
             <input
                 type="checkbox"
                 checked={item.checked}
@@ -197,39 +309,48 @@ export default function GroceryListPage() {
                 aria-label={`${item.checked ? 'Uncheck' : 'Check'} ${item.name}`}
                 className="h-5 w-5 text-green-600 rounded"
             />
-            <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
+            <span
+                className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}
+                title={provenanceTitle || undefined}
+            >
                 {item.name}
-                {formatSourceDays(item.sourceDays) && (
+                {showSourceDays && (
                     <span
                         className="text-gray-400 dark:text-gray-500 ml-2 text-xs font-normal"
-                        title={`From ${formatSourceDays(item.sourceDays)}`}
+                        title={`From ${sourceDays}`}
                     >
-                        · {formatSourceDays(item.sourceDays)}
+                        · {sourceDays}
                     </span>
                 )}
-                {item.quantity && (
-                    <span className="text-gray-500 dark:text-gray-400 ml-2 text-sm">
-                        {item.quantity}{item.unit ? ` ${item.unit}` : ''}
-                    </span>
+                {showSourceLabels && (
+                    <>
+                        <span className="hidden sm:inline ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
+                            —
+                        </span>
+                        <span
+                            className="hidden sm:inline-block max-w-[40%] truncate align-middle ml-1 text-xs text-gray-400 dark:text-gray-500 italic"
+                            title={sourceLabels}
+                        >
+                            {sourceLabels}
+                        </span>
+                    </>
                 )}
             </span>
-            {item.sources && item.sources.length > 0 && (
-                <span
-                    className="hidden sm:block max-w-[40%] truncate text-xs text-gray-400 dark:text-gray-500 italic"
-                    title={item.sources.join(', ')}
-                >
-                    {item.sources.join(', ')}
+            {quantity && (
+                <span className="ml-auto min-w-[4rem] shrink-0 pr-2 text-right text-sm text-gray-500 dark:text-gray-400">
+                    {quantity}
                 </span>
             )}
             <button
                 onClick={() => handleRemove(item.id)}
                 aria-label={`Remove ${item.name}`}
-                className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
+                className="shrink-0 px-1 text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 text-lg font-bold"
             >
                 ×
             </button>
         </li>
-    );
+        );
+    };
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-6">
@@ -242,8 +363,6 @@ export default function GroceryListPage() {
                     ← Back to Week Plan
                 </Link>
             </div>
-
-            <p className="text-gray-600 dark:text-gray-300 mb-6">{weekStart && formatWeekRange(weekStart)}</p>
 
             {error && <div role="alert" className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-3 rounded mb-4">{error}</div>}
 
@@ -287,43 +406,75 @@ export default function GroceryListPage() {
                 </div>
             ) : (
                 <>
-                    {/* Progress */}
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm text-gray-600 dark:text-gray-300">
-                            {checkedCount} of {items.length} items checked
-                        </span>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleRemovePastDays}
-                                className="text-sm px-3 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 rounded hover:bg-orange-200 dark:hover:bg-orange-900/60"
+                    <div className="mb-6 space-y-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <label
+                                    id="grocery-group-mode-label"
+                                    htmlFor="grocery-group-mode"
+                                    className="block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                >
+                                    Group by
+                                </label>
+                                <Select
+                                    id="grocery-group-mode"
+                                    value={groupMode}
+                                    onChange={e => setGroupMode(e.target.value as GroceryGroupMode)}
+                                    aria-labelledby="grocery-group-mode-label"
+                                    selectSize="sm"
+                                    className="mt-1 w-full sm:w-44"
+                                >
+                                    {Object.entries(GROUP_MODE_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </Select>
+                            </div>
+                            <div
+                                role="group"
+                                aria-label="Grocery list actions"
+                                className="grid grid-cols-2 gap-2 sm:flex sm:items-center"
                             >
-                                Remove Past Days
-                            </button>
-                            <button
-                                onClick={handleRegenerate}
-                                className="text-sm px-3 py-1 bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/60"
-                            >
-                                Regenerate
-                            </button>
+                                <button
+                                    onClick={handleRemovePastDays}
+                                    className={`${STANDARD_BUTTON_CLASSES} w-full sm:w-auto`}
+                                >
+                                    Remove Past Days
+                                </button>
+                                <button
+                                    onClick={handleRegenerate}
+                                    className={`${STANDARD_BUTTON_CLASSES} w-full sm:w-auto`}
+                                >
+                                    Regenerate
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Progress bar */}
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-6">
                         <div
-                            className="bg-green-500 h-2 rounded-full transition-all"
-                            style={{ width: items.length > 0 ? `${(checkedCount / items.length) * 100}%` : '0%' }}
-                        />
+                            className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2"
+                            role="progressbar"
+                            aria-label="Grocery completion"
+                            aria-valuemin={0}
+                            aria-valuemax={items.length}
+                            aria-valuenow={checkedCount}
+                        >
+                            <div
+                                className="bg-green-500 h-2 rounded-full transition-all"
+                                style={{ width: items.length > 0 ? `${(checkedCount / items.length) * 100}%` : '0%' }}
+                            />
+                        </div>
+                        <p className="text-center text-sm text-gray-600 dark:text-gray-300">
+                            {checkedCount} of {items.length} items checked
+                        </p>
                     </div>
 
-                    {/* Items grouped by category */}
-                    {sortedCategories.map(category => (
-                        <div key={category} className="mb-6">
+                    {/* Items grouped by selected mode */}
+                    {groupedItems.map(group => (
+                        <div key={group.key} className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2 capitalize">
-                                {CATEGORY_EMOJIS[category] || '📦'} {category}
+                                {group.title}
                             </h2>
                             <ul className="space-y-1">
-                                {grouped.get(category)!.map(item => renderItem(item))}
+                                {group.items.map(item => renderItem(item, `${group.key}-${item.id}`))}
                             </ul>
                         </div>
                     ))}
@@ -341,9 +492,18 @@ export default function GroceryListPage() {
                                 <span className="text-sm text-gray-500 dark:text-gray-400">{staplesCollapsed ? '▸ Show' : '▾ Hide'}</span>
                             </button>
                             {!staplesCollapsed && (
-                                <ul className="space-y-1">
-                                    {stapleItems.map(item => renderItem(item))}
-                                </ul>
+                                <div className="space-y-3">
+                                    {groupedStapleItems.map(group => (
+                                        <div key={`pantry-staples-${group.key}`}>
+                                            <h3 className="mb-1 text-sm font-semibold text-gray-600 dark:text-gray-300 capitalize">
+                                                {group.title}
+                                            </h3>
+                                            <ul className="space-y-1">
+                                                {group.items.map(item => renderItem(item, `pantry-staples-${group.key}-${item.id}`))}
+                                            </ul>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     )}
