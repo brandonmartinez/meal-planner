@@ -7,6 +7,7 @@ How to decide who handles what.
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
 | Frontend / UI | Linus | React components, pages, hooks, Tailwind, web API client, web tests (MSW) |
+| Frontend revision (author locked out) | Virgil | Second web seat — takes over `packages/web` work when a reviewer rejects and locks out the original author; derived/provenance state bugs |
 | Backend / API | Livingston | Express routes, services, middleware, Prisma/data access, Zod validation, auth chain |
 | Database / schema | Saul (with Livingston) | Prisma schema edits, migrations (with schema-migrator), migration compatibility, seed data & fixtures, data integrity |
 | Security / Auth | Frank | Auth chain review, JWT/OAuth, API key lifecycle, secret handling, vuln triage |

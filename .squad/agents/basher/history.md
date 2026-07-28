@@ -53,3 +53,6 @@ DevOps / Platform. Owns Docker, `k8s/`, CI (`.github/workflows/ci.yml`), and the
 **Outcome:** PR #215 merged to origin/main (squash ac09cf5, current HEAD). 1715 tests passed (api 1011 incl. new handshake.test.ts 20 + index.test.ts 6 + auth.test.ts +2; web 579, mcp 121, shared 4). Lint 0 errors. Decision record in `.squad/decisions.md`, orchestration log in `.squad/orchestration-log/2026-07-09T02-50-00Z-basher.md`.
 
 **Team Notes:** Closed all three Frank advisories from #213. Origin gate added because Socket.IO CORS is not a complete WS Origin gate. Expiry disconnect closes connect-time-only JWT check for long-lived sockets. Null-Origin allowed to preserve legitimate non-browser socket clients (e.g., MCP server connections). Zero API contract changes — all hardening is internal to handshake/lifecycle.
+
+
+📌 Team update (2026-07-28T11:52:00-04:00): Devcontainer npm registry failures can come from the container `node` user missing the host npm config while direct npmjs.org access is blocked. Reference pattern for other repos: guard on host `~/.npmrc` existence, then include an optional compose fragment that bind-mounts it read-only to `/home/node/.npmrc`; skip the fragment entirely when absent. Also remember stale duplicate containers can hide an OOMKilled app when Docker memory is tight (observed around 4.1GB). — logged by Scribe

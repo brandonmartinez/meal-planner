@@ -78,7 +78,17 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+NPMRC_COMPOSE_FILE="${REPO_ROOT}/.devcontainer/docker-compose.npmrc.yml"
+
 COMPOSE_FILES=(-f "${COMPOSE_FILE}" -f "${PORTS_FILE}")
+
+# If the host has an npm config, mount that exact file read-only at the node
+# user's home. The compose fragment is only included when the file exists, so
+# contributors without ~/.npmrc do not get an accidental directory bind mount.
+if [[ -f "${HOME:-}/.npmrc" ]]; then
+  export HOST_NPMRC="${HOME}/.npmrc"
+  COMPOSE_FILES+=(-f "${NPMRC_COMPOSE_FILE}")
+fi
 
 # Run a command inside the app container as the node user in /workspace.
 in_app() {
@@ -106,22 +116,28 @@ done
 
 # Ensure pnpm is available inside the container (postCreateCommand only runs
 # under VS Code / the devcontainer CLI, not plain `compose up`).
-if ! in_app bash -lc 'command -v pnpm >/dev/null 2>&1'; then
+if ! in_app bash -c 'command -v pnpm >/dev/null 2>&1'; then
   echo "▶ Installing pnpm in the container…"
-  in_app bash -lc 'npm install -g pnpm@9 >/dev/null 2>&1'
+  in_app bash -c 'npm install -g pnpm@9 >/dev/null 2>&1'
 fi
 
-if [[ "${FRESH}" == true ]] || ! in_app bash -lc 'test -d node_modules'; then
+if [[ "${FRESH}" == true ]]; then
+  echo "▶ Installing dependencies (pnpm install --force)…"
+  in_app bash -c 'pnpm install --force'
+elif ! in_app bash -c 'test -d node_modules'; then
   echo "▶ Installing dependencies (pnpm install)…"
-  in_app bash -lc 'pnpm install'
+  in_app bash -c 'pnpm install'
 fi
 
 echo "▶ Applying migrations and generating the Prisma client…"
-in_app bash -lc 'pnpm db:migrate && pnpm db:generate'
+in_app bash -c 'pnpm db:migrate && pnpm db:generate'
+
+echo "▶ Building workspace packages needed by the dev servers…"
+in_app bash -c 'pnpm --filter @meal-planner/shared run build && pnpm --filter @meal-planner/mcp run build'
 
 if [[ "${SEED}" == true ]]; then
   echo "▶ Seeding the database (pnpm db:seed)…"
-  in_app bash -lc 'pnpm db:seed'
+  in_app bash -c 'pnpm db:seed'
 fi
 
 if [[ "${NO_APPS}" == true ]]; then
