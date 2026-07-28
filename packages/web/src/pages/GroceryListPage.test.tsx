@@ -192,6 +192,50 @@ describe('GroceryListPage', () => {
     expect(screen.getAllByText(/·\s*\w{3}/)).toHaveLength(1);
   });
 
+  it('renders the meal source inline with item provenance while keeping quantity right-aligned', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({
+              id: 'it-1',
+              name: 'Salmon fillet',
+              quantity: '2',
+              unit: 'lbs',
+              category: 'seafood',
+              sourceDays: [1],
+              sources: ['Baked Salmon with Asparagus'],
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    const checkbox = await screen.findByRole('checkbox', { name: 'Check Salmon fillet' });
+    const row = checkbox.closest('li');
+    expect(row).not.toBeNull();
+
+    const sourceDay = screen.getByText('· Tue');
+    const mealSource = screen.getByText('Baked Salmon with Asparagus');
+    expect(mealSource.parentElement).toBe(sourceDay.parentElement);
+    expect(mealSource.parentElement).toHaveClass('flex-1');
+    expect(mealSource.parentElement).toHaveClass('min-w-0');
+    expect(mealSource.parentElement?.textContent).toMatch(/Salmon fillet\s*· Tue\s*—\s*Baked Salmon with Asparagus/);
+    expect([...row!.children]).not.toContain(mealSource);
+    expect(mealSource).toHaveClass('hidden');
+    expect(mealSource).toHaveClass('sm:inline-block');
+    expect(mealSource).toHaveClass('max-w-[40%]');
+    expect(mealSource).toHaveClass('truncate');
+    expect(mealSource).toHaveAttribute('title', 'Baked Salmon with Asparagus');
+
+    const quantity = screen.getByText('2 lbs');
+    expect(quantity).toHaveClass('ml-auto');
+    expect(quantity).toHaveClass('text-right');
+  });
+
   it('toggles an item checked via the checkbox (optimistic update)', async () => {
     let patched = false;
     server.use(

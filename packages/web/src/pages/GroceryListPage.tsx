@@ -292,6 +292,7 @@ export default function GroceryListPage() {
     const renderItem = (item: GroceryItem, itemKey: string) => {
         const sourceDays = formatSourceDays(item.sourceDays);
         const quantity = item.quantity ? `${item.quantity}${item.unit ? ` ${item.unit}` : ''}` : '';
+        const sourceLabels = item.sources?.join(', ') ?? '';
 
         return (
         <li key={itemKey} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
@@ -312,15 +313,20 @@ export default function GroceryListPage() {
                         · {sourceDays}
                     </span>
                 )}
+                {item.sources && item.sources.length > 0 && (
+                    <>
+                        <span className="hidden sm:inline ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
+                            —
+                        </span>
+                        <span
+                            className="hidden sm:inline-block max-w-[40%] truncate align-middle ml-1 text-xs text-gray-400 dark:text-gray-500 italic"
+                            title={sourceLabels}
+                        >
+                            {sourceLabels}
+                        </span>
+                    </>
+                )}
             </span>
-            {item.sources && item.sources.length > 0 && (
-                <span
-                    className="hidden sm:block max-w-[40%] truncate text-xs text-gray-400 dark:text-gray-500 italic"
-                    title={item.sources.join(', ')}
-                >
-                    {item.sources.join(', ')}
-                </span>
-            )}
             {quantity && (
                 <span className="ml-auto min-w-[4rem] shrink-0 pr-2 text-right text-sm text-gray-500 dark:text-gray-400">
                     {quantity}
