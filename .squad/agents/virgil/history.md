@@ -15,3 +15,7 @@ Added as Frontend Specialist. First assignment: revise issue #218 (grocery view 
 ### 2026-07-28 — Closed Rusty's #218 grocery grouping rejection
 
 Revised `GroceryListPage` so pantry staples remain in their collapsed Pantry Staples section for category, day, meal, and alphabetical modes. Meal grouping now keys membership from `sourceMealIds` and sends MANUAL/promoted-orphan items with stale `sources` labels to Unassigned; added web tests for both regressions and verified web test/lint/build.
+
+### 2026-07-28T10:15:00-04:00 — #218 revision verification note
+
+Material follow-up to the existing #218 entry: the accepted revision was commit `bb7474e`, closed both Rusty blockers, and verified 592 tests passing before Rusty's approval.
