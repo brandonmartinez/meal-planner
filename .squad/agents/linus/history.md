@@ -65,3 +65,7 @@ Rusty rejected Linus's commit `21be592` on two counts: pantry-staple separation 
 ### 2026-07-28T13:00:00-04:00 — #220 Week Plan header action row
 
 Moved the Week Plan header actions (Grocery List, Repeat a previous week, Apply a template) into a dedicated action row below the title/date cluster. Removed the obsolete desktop spacer. The row renders only for non-past weeks, stacks full-width on mobile, and omits itself entirely on past weeks; tests cover parent, child/partial, and past-week/no-row cases. Web validation green: `pnpm --filter @meal-planner/web run test` (593 passed), lint, build.
+
+### 2026-07-28T13:55:00-04:00 — Week Plan header action row edge cases
+
+Week Plan title/date now own the first header row, while Grocery List and parent actions live in a dedicated `role="group"` Week actions row below. Past weeks omit the row entirely; non-parent viewers still get Grocery List only. Tests should assert row membership and the absence of the action-row heading in omitted cases.

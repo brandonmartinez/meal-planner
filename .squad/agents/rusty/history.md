@@ -43,3 +43,7 @@ Reviewed Linus's #218 commit `21be592` and rejected it for two blockers: pantry-
 ### 2026-07-28T13:51:00-04:00 — Scribe archive gate byte budget
 
 Rewrote Scribe's charter/template gate to budget `archivable_bytes` (top-level `##` sections except `## Standing Policy`) with 24 KiB / 64 KiB tiers and reporting-only `total_bytes`. Decision inbox entry `rusty-archivable-byte-gate.md` supersedes the threshold half of `b288603` while preserving the durability test and Standing Policy never-archive rule.
+
+### 2026-07-28T13:55:00-04:00 — Archive budgets must measure actionable content
+
+A memory budget measured against content the gate cannot act on creates a permanently red signal. For Scribe's decision archive gate, trigger sweeps from `archivable_bytes` only and keep `total_bytes` as reporting-only visibility into durable-corpus growth.

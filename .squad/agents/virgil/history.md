@@ -27,3 +27,7 @@ Adjusted `GroceryListPage` so source meal labels render inside the item provenan
 ### 2026-07-28T13:05:00-04:00 — Suppressed repeated #218 grocery provenance labels
 
 Verified `buildGroceryGroups` splits multi-day items into each day bucket and multi-meal items into each valid `sourceMealIds` bucket. Updated `GroceryListPage` so day grouping hides row day chips and meal grouping hides row meal labels while category/alphabetical keep both; full provenance remains available in the row title, including Pantry Staples. Added web coverage and verified web tests/lint/build.
+
+### 2026-07-28T13:55:00-04:00 — Grocery provenance suppression contract
+
+Group headings own the provenance label they state: day grouping suppresses row day chips, meal grouping suppresses row meal labels, and category/alphabetical keep both labels. Before suppressing labels, verify the grouping builder splits multi-day and multi-meal items into every bucket they belong to; that split is what makes the suppression lossless.
