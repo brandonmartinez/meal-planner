@@ -160,7 +160,7 @@ describe('GroceryListPage', () => {
 
     expect(await screen.findByText('Bananas')).toBeInTheDocument();
     expect(screen.getByText('Chicken')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: /group grocery items by/i })).toHaveValue('category');
+    expect(screen.getByRole('combobox', { name: /group by/i })).toHaveValue('category');
     expect(screen.getByText(/1 of 2 items checked/i)).toBeInTheDocument();
     expect(screen.queryByText(formatWeekRange(getCurrentWeekStart()))).not.toBeInTheDocument();
 
@@ -283,7 +283,7 @@ describe('GroceryListPage', () => {
 
     await screen.findByText('Salt');
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      screen.getByRole('combobox', { name: /group by/i }),
       'day',
     );
 
@@ -318,7 +318,7 @@ describe('GroceryListPage', () => {
 
     await screen.findByText('Salt');
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      screen.getByRole('combobox', { name: /group by/i }),
       'day',
     );
 
@@ -355,7 +355,7 @@ describe('GroceryListPage', () => {
 
     await screen.findByText('Cheese');
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      screen.getByRole('combobox', { name: /group by/i }),
       'meal',
     );
 
@@ -367,6 +367,51 @@ describe('GroceryListPage', () => {
     expect(unassigned).not.toBeNull();
     expect(within(unassigned!).getByRole('checkbox', { name: 'Check Napkins' })).toBeInTheDocument();
     expect(within(unassigned!).getByRole('checkbox', { name: 'Check Paper Towels' })).toBeInTheDocument();
+  });
+
+  it('does not use stale source labels as meal provenance for manual items', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({
+              id: 'it-1',
+              name: 'Paper Towels',
+              category: 'paper',
+              origin: 'MANUAL',
+              sources: ['Taco Night'],
+              sourceMealIds: [],
+              sourceDays: [],
+            }),
+            item({
+              id: 'it-2',
+              name: 'Cheese',
+              category: 'dairy',
+              sources: ['Taco Night'],
+              sourceMealIds: ['meal-taco'],
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Paper Towels');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /group by/i }),
+      'meal',
+    );
+
+    const tacoNight = screen.getByRole('heading', { name: 'Taco Night' }).closest('div');
+    const unassigned = screen.getByRole('heading', { name: 'Unassigned' }).closest('div');
+    expect(tacoNight).not.toBeNull();
+    expect(unassigned).not.toBeNull();
+    expect(within(tacoNight!).getByRole('checkbox', { name: 'Check Cheese' })).toBeInTheDocument();
+    expect(within(tacoNight!).queryByRole('checkbox', { name: 'Check Paper Towels' })).not.toBeInTheDocument();
+    expect(within(unassigned!).getByRole('checkbox', { name: 'Check Paper Towels' })).toBeInTheDocument();
+    expect(within(unassigned!).getByText('Taco Night')).toBeInTheDocument();
   });
 
   it('shows a single alphabetical group sorted by item name case-insensitively', async () => {
@@ -388,7 +433,7 @@ describe('GroceryListPage', () => {
 
     await screen.findByText('Banana');
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      screen.getByRole('combobox', { name: /group by/i }),
       'alphabetical',
     );
 
@@ -448,7 +493,7 @@ describe('GroceryListPage', () => {
     renderWithProviders(<GroceryListPage />);
 
     await screen.findByText('Salt');
-    const groupSelect = screen.getByRole('combobox', { name: /group grocery items by/i });
+    const groupSelect = screen.getByRole('combobox', { name: /group by/i });
     const expectedNames = ['Apples', 'Bananas', 'Napkins', 'Salt'];
     const visibleDistinctNames = () => [
       ...new Set(
@@ -714,5 +759,58 @@ describe('GroceryListPage accessibility', () => {
         screen.queryByRole('button', { name: /pantry staples/i }),
       ).not.toBeInTheDocument();
     });
+
+    it.each(['day', 'meal', 'alphabetical'] as const)(
+      'keeps pantry staples separated when grouped by %s',
+      async (mode) => {
+        server.use(
+          authMeWithFamily(),
+          http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+            HttpResponse.json(
+              listWith([
+                item({
+                  id: 'it-1',
+                  name: 'Bananas',
+                  category: 'produce',
+                  sourceDays: [0],
+                  sources: ['Smoothies'],
+                  sourceMealIds: ['meal-smoothies'],
+                }),
+                item({
+                  id: 'it-2',
+                  name: 'Salt',
+                  category: 'pantry',
+                  isPantryStaple: true,
+                  sourceDays: [0],
+                  sources: ['Taco Night'],
+                  sourceMealIds: ['meal-taco'],
+                }),
+              ]),
+            ),
+          ),
+        );
+
+        renderWithProviders(<GroceryListPage />);
+
+        expect(await screen.findByText('Bananas')).toBeInTheDocument();
+        await userEvent.selectOptions(
+          screen.getByRole('combobox', { name: /group by/i }),
+          mode,
+        );
+
+        expect(screen.queryByText('Salt')).not.toBeInTheDocument();
+        const toggle = screen.getByRole('button', { name: /pantry staples/i });
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+        await userEvent.click(toggle);
+
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        const pantrySection = toggle.closest('div');
+        expect(pantrySection).not.toBeNull();
+        expect(within(pantrySection!).getByText('Salt')).toBeInTheDocument();
+        expect(screen.getAllByRole('checkbox', { name: 'Check Salt' })).toHaveLength(1);
+        expect(screen.getAllByRole('checkbox', { name: 'Check Bananas' })).toHaveLength(1);
+      },
+    );
   });
 });

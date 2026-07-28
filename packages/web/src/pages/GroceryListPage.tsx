@@ -7,7 +7,7 @@ import { useRealtimeEvent } from '../context/SocketContext';
 import { generateGroceryList, getGroceryListByWeek, toggleGroceryItem, addCustomItem, removeGroceryItem, removePastDays } from '../api/grocery';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Select from '../components/Select';
-import { RealtimeEvent, type GroceryList, type GroceryItem } from '@meal-planner/shared';
+import { GrocerySource, RealtimeEvent, type GroceryList, type GroceryItem } from '@meal-planner/shared';
 
 const CATEGORY_EMOJIS: Record<string, string> = {
     produce: '🥬',
@@ -60,25 +60,21 @@ function uniqueValidDays(days: number[] | undefined): number[] {
         .sort((a, b) => a - b);
 }
 
-function normalizedGroupKey(value: string): string {
-    return value.trim().toLowerCase().replace(/\s+/g, '-');
-}
-
 function buildMealGroupEntries(item: GroceryItem): Array<{ key: string; title: string }> {
-    const sourceNames = (item.sources ?? []).map(source => source.trim()).filter(Boolean);
-    const sourceMealIds = (item.sourceMealIds ?? []).map(id => id.trim()).filter(Boolean);
-    const maxSources = Math.max(sourceNames.length, sourceMealIds.length);
+    if (item.origin === GrocerySource.MANUAL) return [{ key: 'meal:unassigned', title: 'Unassigned' }];
 
-    if (maxSources === 0) return [{ key: 'meal:unassigned', title: 'Unassigned' }];
+    const entries = (item.sourceMealIds ?? [])
+        .map((sourceMealId, index) => {
+            const id = sourceMealId.trim();
+            if (!id) return null;
+            return {
+                key: `meal:${id}`,
+                title: item.sources?.[index]?.trim() || 'Unknown meal',
+            };
+        })
+        .filter((entry): entry is { key: string; title: string } => entry !== null);
 
-    const entries = Array.from({ length: maxSources }, (_, index) => {
-        const name = sourceNames[index] || 'Unknown meal';
-        const id = sourceMealIds[index];
-        return {
-            key: id ? `meal:${id}` : `meal-name:${normalizedGroupKey(name)}`,
-            title: name,
-        };
-    });
+    if (entries.length === 0) return [{ key: 'meal:unassigned', title: 'Unassigned' }];
 
     return entries.filter((entry, index, all) =>
         all.findIndex(candidate => candidate.key === entry.key) === index,
@@ -284,11 +280,8 @@ export default function GroceryListPage() {
     // staples), so the client just partitions on that flag here.
     const stapleItems = items.filter(i => i.isPantryStaple);
     const nonStapleItems = items.filter(i => !i.isPantryStaple);
-    const groupedItems = buildGroceryGroups(
-        groupMode === 'category' ? nonStapleItems : items,
-        groupMode,
-        groceryCategoryOptions,
-    );
+    const groupedItems = buildGroceryGroups(nonStapleItems, groupMode, groceryCategoryOptions);
+    const groupedStapleItems = buildGroceryGroups(stapleItems, groupMode, groceryCategoryOptions);
 
     if (!hasFamilies) return <Navigate to="/family/create" replace />;
 
@@ -400,12 +393,19 @@ export default function GroceryListPage() {
                 <>
                     <div className="mb-6 space-y-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                                Group by
+                            <div>
+                                <label
+                                    id="grocery-group-mode-label"
+                                    htmlFor="grocery-group-mode"
+                                    className="block text-sm font-medium text-gray-700 dark:text-gray-200"
+                                >
+                                    Group by
+                                </label>
                                 <Select
+                                    id="grocery-group-mode"
                                     value={groupMode}
                                     onChange={e => setGroupMode(e.target.value as GroceryGroupMode)}
-                                    aria-label="Group grocery items by"
+                                    aria-labelledby="grocery-group-mode-label"
                                     selectSize="sm"
                                     className="mt-1 w-full sm:w-44"
                                 >
@@ -413,7 +413,7 @@ export default function GroceryListPage() {
                                         <option key={value} value={value}>{label}</option>
                                     ))}
                                 </Select>
-                            </label>
+                            </div>
                             <div
                                 role="group"
                                 aria-label="Grocery list actions"
@@ -465,7 +465,7 @@ export default function GroceryListPage() {
                     ))}
 
                     {/* Pantry Staples — auto-separated stock-kitchen items (issue #205) */}
-                    {groupMode === 'category' && stapleItems.length > 0 && (
+                    {stapleItems.length > 0 && (
                         <div className="mb-6">
                             <button
                                 type="button"
@@ -477,9 +477,18 @@ export default function GroceryListPage() {
                                 <span className="text-sm text-gray-500 dark:text-gray-400">{staplesCollapsed ? '▸ Show' : '▾ Hide'}</span>
                             </button>
                             {!staplesCollapsed && (
-                                <ul className="space-y-1">
-                                    {stapleItems.map(item => renderItem(item, `pantry-staples-${item.id}`))}
-                                </ul>
+                                <div className="space-y-3">
+                                    {groupedStapleItems.map(group => (
+                                        <div key={`pantry-staples-${group.key}`}>
+                                            <h3 className="mb-1 text-sm font-semibold text-gray-600 dark:text-gray-300 capitalize">
+                                                {group.title}
+                                            </h3>
+                                            <ul className="space-y-1">
+                                                {group.items.map(item => renderItem(item, `pantry-staples-${group.key}-${item.id}`))}
+                                            </ul>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     )}
