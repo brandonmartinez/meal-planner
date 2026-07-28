@@ -15,15 +15,17 @@
 - `.squad/decisions.md` — the shared decision log all agents read (canonical, merged)
 - `.squad/decisions/inbox/` — decision drop-box (agents write here, I merge)
 - Cross-agent context propagation — when one agent's decision affects another
-- Decision archival — **HARD GATE**: enforce two-tier ceiling on decisions.md before every merge using age AND durability:
+- Decision archival — **HARD GATE**: enforce two-tier ceiling on archivable `decisions.md` content before every merge using age AND durability:
   - `## Standing Policy` is the durable section. Never archive entries from that section.
+  - **Measured quantities:** Read `.squad/decisions.md` as UTF-8. `total_bytes` is the byte length of the full file and is reporting-only; it must never trigger archival. `archivable_bytes` is the sum of byte lengths of every top-level `## ` section except exact `## Standing Policy`, including each counted section's `##` header line, following newlines, prose, and decision blocks up to but not including the next top-level `## ` header. The `# Squad Decisions` title and any preamble before the first `## ` do not count. Missing sections contribute 0 bytes.
   - **Durability test:** A decision is durable when it states a rule, architecture/data contract, security or auth hardening contract, environment/infra fact, or cross-package convention that is still true today and has no natural expiry. A decision is non-durable when it records sprint-specific implementation history, completed one-off work, a superseded call, or a temporary choice with a natural expiry.
   - Durable examples from this repo: #205 managed pantry staples stay separated in every grocery grouping mode; #206 grocery regeneration provenance preserves checked generated items and uses explicit cleanup; "capture a GitHub issue for all substantial work"; production deploys via the cluster GitOps repo; vendor MMM-meal-planner as a git submodule; meal taxonomy categories are folded into tags; WebSocket auth hardening contracts.
   - Non-durable examples from this repo: "we shipped PR #X this way" feature notes, completed wave/sprint closeout notes, and superseded decisions such as pantry staples being separated only in category mode.
-  - **Tier 1 (30-day):** If >20KB, archive only entries outside `## Standing Policy` that are older than 30 days AND non-durable.
-  - **Tier 2 (7-day):** If still >50KB after Tier 1, archive only entries outside `## Standing Policy` that are older than 7 days AND non-durable.
-  - If `decisions.md` still exceeds a ceiling after all eligible non-durable entries are archived, do not evict durable entries to hit the byte target. Emit the pressure condition in the HEALTH REPORT and let the coordinator decide.
-  - Emit HEALTH REPORT to session log after archival runs: bytes before/after, entries archived, entries retained as durable, entries promoted into `## Standing Policy`, archive path, and any pressure condition.
+  - **Tier 1 (30-day):** If `archivable_bytes` is >24 KiB (24,576 bytes), archive only entries outside `## Standing Policy` that are older than 30 days AND non-durable.
+  - **Tier 2 (7-day):** Recompute after Tier 1. If `archivable_bytes` is still >64 KiB (65,536 bytes), archive only entries outside `## Standing Policy` that are older than 7 days AND non-durable.
+  - Recompute `archivable_bytes` after each tier before deciding the next tier or any pressure condition.
+  - If `archivable_bytes` still exceeds the applicable ceiling after all eligible non-durable entries are archived and durable entries outside `## Standing Policy` have been retained or promoted, do not evict durable entries or `## Standing Policy` entries to hit the byte target. Emit the pressure condition in the HEALTH REPORT and let the coordinator decide.
+  - Emit HEALTH REPORT to session log after archival runs: total bytes before/after (reporting-only), archivable bytes before/after, tier thresholds evaluated, entries archived, entries retained as durable, entries promoted into `## Standing Policy`, archive path, and any pressure condition.
 
 ## How I Work
 
