@@ -37,6 +37,11 @@ this work without VS Code lives in
 `.devcontainer/docker-compose.dev-ports.yml` (layered on automatically by
 `dev.sh`).
 
+If your machine has `~/.npmrc`, `dev.sh` mounts that file read-only at
+`/home/node/.npmrc` so npm and pnpm use the same registry/auth config inside the
+container. If the host file is absent, the mount fragment is skipped and the
+container uses its normal npm defaults.
+
 ### VS Code
 
 1. **Open in the container.** In VS Code with the Dev Containers extension,
