@@ -226,9 +226,16 @@ describe('WeekPlanPage', () => {
     renderWithProviders(<WeekPlanPage />);
     await screen.findByText('Tacos');
 
-    expect(screen.getByRole('link', { name: /grocery list/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /repeat a previous week/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /apply a template/i })).toBeInTheDocument();
+    const actionRow = screen.getByRole('group', { name: /week actions/i });
+    const groceryLink = screen.getByRole('link', { name: /grocery list/i });
+    const repeatButton = screen.getByRole('button', { name: /repeat a previous week/i });
+    const applyButton = screen.getByRole('button', { name: /apply a template/i });
+
+    expect(actionRow).toContainElement(groceryLink);
+    expect(actionRow).toContainElement(repeatButton);
+    expect(actionRow).toContainElement(applyButton);
+    expect(Array.from(actionRow.children)).toEqual([groceryLink, repeatButton, applyButton]);
+    expect(actionRow).not.toContainElement(screen.getByRole('heading', { name: /week plan/i }));
   });
 
   it('hides all action buttons when viewing a past week', async () => {
@@ -247,9 +254,10 @@ describe('WeekPlanPage', () => {
     expect(screen.queryByRole('link', { name: /grocery list/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /repeat a previous week/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /apply a template/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /week actions/i })).not.toBeInTheDocument();
   });
 
-  it('shows the repeat-week action to parents and hides it from children', async () => {
+  it('keeps only the grocery action row for children and shows parent actions to parents', async () => {
     server.use(
       authMe('CHILD'),
       http.post('/api/families/:familyId/weeks/:weekStart', () =>
@@ -259,6 +267,10 @@ describe('WeekPlanPage', () => {
 
     const { unmount } = renderWithProviders(<WeekPlanPage />);
     await screen.findByText('Tacos');
+    const childActionRow = screen.getByRole('group', { name: /week actions/i });
+    const childGroceryLink = screen.getByRole('link', { name: /grocery list/i });
+    expect(childActionRow).toContainElement(childGroceryLink);
+    expect(Array.from(childActionRow.children)).toEqual([childGroceryLink]);
     expect(
       screen.queryByRole('button', { name: /repeat a previous week/i }),
     ).not.toBeInTheDocument();

@@ -61,3 +61,7 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 ### 2026-07-28T10:15:00-04:00 — #218 grocery grouping rejection lesson
 
 Rusty rejected Linus's commit `21be592` on two counts: pantry-staple separation was made category-mode-only, which regressed the #205 contract that managed pantry staples remain separated mode-independently; and meal grouping inferred provenance from `sources`, which the API can leave stale when a MANUAL orphan is promoted. Linus was locked out of the revision under the Reviewer Rejection Protocol; Virgil owned the follow-up fix.
+
+### 2026-07-28T13:00:00-04:00 — #220 Week Plan header action row
+
+Moved the Week Plan header actions (Grocery List, Repeat a previous week, Apply a template) into a dedicated action row below the title/date cluster. Removed the obsolete desktop spacer. The row renders only for non-past weeks, stacks full-width on mobile, and omits itself entirely on past weeks; tests cover parent, child/partial, and past-week/no-row cases. Web validation green: `pnpm --filter @meal-planner/web run test` (593 passed), lint, build.
