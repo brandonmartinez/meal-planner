@@ -236,6 +236,73 @@ describe('GroceryListPage', () => {
     expect(quantity).toHaveClass('text-right');
   });
 
+  it('suppresses provenance already supplied by the selected group heading', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({
+              id: 'it-1',
+              name: 'Garlic',
+              quantity: '5',
+              unit: 'clove',
+              category: 'produce',
+              sourceDays: [0, 2],
+              sources: ['Baked Salmon with Asparagus', 'Beef and Broccoli'],
+              sourceMealIds: ['meal-salmon', 'meal-beef'],
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Garlic');
+    const groupSelect = screen.getByRole('combobox', { name: /group by/i });
+    const currentGarlicRow = () => screen.getByRole('checkbox', { name: 'Check Garlic' }).closest('li')!;
+
+    let garlicRow = currentGarlicRow();
+    expect(garlicRow).toHaveTextContent(/Garlic\s*· Mon, Wed\s*—\s*Baked Salmon with Asparagus, Beef and Broccoli/);
+    expect(garlicRow.querySelector('span.flex-1')).toHaveAttribute(
+      'title',
+      'Days: Mon, Wed · Meals: Baked Salmon with Asparagus, Beef and Broccoli',
+    );
+
+    await userEvent.selectOptions(groupSelect, 'meal');
+
+    const salmonGroup = screen.getByRole('heading', { name: 'Baked Salmon with Asparagus' }).closest('div');
+    expect(salmonGroup).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Beef and Broccoli' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { name: 'Check Garlic' })).toHaveLength(2);
+
+    garlicRow = within(salmonGroup!).getByRole('checkbox', { name: 'Check Garlic' }).closest('li')!;
+    expect(garlicRow).toHaveTextContent('· Mon, Wed');
+    expect(garlicRow).not.toHaveTextContent('—');
+    expect(garlicRow).not.toHaveTextContent('Baked Salmon with Asparagus');
+    expect(garlicRow).not.toHaveTextContent('Beef and Broccoli');
+    expect(garlicRow.querySelector('span.flex-1')).toHaveAttribute(
+      'title',
+      'Days: Mon, Wed · Meals: Baked Salmon with Asparagus, Beef and Broccoli',
+    );
+
+    await userEvent.selectOptions(groupSelect, 'day');
+
+    const mondayGroup = screen.getByRole('heading', { name: 'Mon' }).closest('div');
+    expect(mondayGroup).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Wed' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { name: 'Check Garlic' })).toHaveLength(2);
+
+    garlicRow = within(mondayGroup!).getByRole('checkbox', { name: 'Check Garlic' }).closest('li')!;
+    expect(garlicRow).not.toHaveTextContent('· Mon');
+    expect(garlicRow).toHaveTextContent(/—\s*Baked Salmon with Asparagus, Beef and Broccoli/);
+    expect(garlicRow.querySelector('span.flex-1')).toHaveAttribute(
+      'title',
+      'Days: Mon, Wed · Meals: Baked Salmon with Asparagus, Beef and Broccoli',
+    );
+  });
+
   it('toggles an item checked via the checkbox (optimistic update)', async () => {
     let patched = false;
     server.use(
@@ -454,8 +521,10 @@ describe('GroceryListPage', () => {
     expect(unassigned).not.toBeNull();
     expect(within(tacoNight!).getByRole('checkbox', { name: 'Check Cheese' })).toBeInTheDocument();
     expect(within(tacoNight!).queryByRole('checkbox', { name: 'Check Paper Towels' })).not.toBeInTheDocument();
-    expect(within(unassigned!).getByRole('checkbox', { name: 'Check Paper Towels' })).toBeInTheDocument();
-    expect(within(unassigned!).getByText('Taco Night')).toBeInTheDocument();
+    const stalePaperTowelsRow = within(unassigned!).getByRole('checkbox', { name: 'Check Paper Towels' }).closest('li');
+    expect(stalePaperTowelsRow).not.toBeNull();
+    expect(stalePaperTowelsRow).not.toHaveTextContent('Taco Night');
+    expect(stalePaperTowelsRow!.querySelector('span.flex-1')).toHaveAttribute('title', 'Meals: Taco Night');
   });
 
   it('shows a single alphabetical group sorted by item name case-insensitively', async () => {
@@ -856,5 +925,55 @@ describe('GroceryListPage accessibility', () => {
         expect(screen.getAllByRole('checkbox', { name: 'Check Bananas' })).toHaveLength(1);
       },
     );
+
+    it('applies group-owned provenance suppression inside Pantry Staples groups', async () => {
+      server.use(
+        authMeWithFamily(),
+        http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+          HttpResponse.json(
+            listWith([
+              item({
+                id: 'it-1',
+                name: 'Olive oil',
+                category: 'pantry',
+                isPantryStaple: true,
+                sourceDays: [0, 2],
+                sources: ['Baked Salmon with Asparagus', 'Beef and Broccoli'],
+                sourceMealIds: ['meal-salmon', 'meal-beef'],
+              }),
+            ]),
+          ),
+        ),
+      );
+
+      renderWithProviders(<GroceryListPage />);
+
+      const groupSelect = await screen.findByRole('combobox', { name: /group by/i });
+      await userEvent.selectOptions(groupSelect, 'meal');
+      const toggle = screen.getByRole('button', { name: /pantry staples/i });
+      await userEvent.click(toggle);
+
+      const pantrySection = toggle.closest('div');
+      expect(pantrySection).not.toBeNull();
+      const salmonGroup = within(pantrySection!).getByRole('heading', { name: 'Baked Salmon with Asparagus' }).closest('div');
+      expect(salmonGroup).not.toBeNull();
+
+      let oliveOilRow = within(salmonGroup!).getByRole('checkbox', { name: 'Check Olive oil' }).closest('li')!;
+      expect(oliveOilRow).toHaveTextContent('· Mon, Wed');
+      expect(oliveOilRow).not.toHaveTextContent('—');
+      expect(oliveOilRow).not.toHaveTextContent('Baked Salmon with Asparagus');
+      expect(oliveOilRow.querySelector('span.flex-1')).toHaveAttribute(
+        'title',
+        'Days: Mon, Wed · Meals: Baked Salmon with Asparagus, Beef and Broccoli',
+      );
+
+      await userEvent.selectOptions(groupSelect, 'day');
+
+      const mondayGroup = within(pantrySection!).getByRole('heading', { name: 'Mon' }).closest('div');
+      expect(mondayGroup).not.toBeNull();
+      oliveOilRow = within(mondayGroup!).getByRole('checkbox', { name: 'Check Olive oil' }).closest('li')!;
+      expect(oliveOilRow).not.toHaveTextContent('· Mon');
+      expect(oliveOilRow).toHaveTextContent(/—\s*Baked Salmon with Asparagus, Beef and Broccoli/);
+    });
   });
 });

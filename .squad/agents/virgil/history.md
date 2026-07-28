@@ -19,3 +19,11 @@ Revised `GroceryListPage` so pantry staples remain in their collapsed Pantry Sta
 ### 2026-07-28T10:15:00-04:00 — #218 revision verification note
 
 Material follow-up to the existing #218 entry: the accepted revision was commit `bb7474e`, closed both Rusty blockers, and verified 592 tests passing before Rusty's approval.
+
+### 2026-07-28T12:35:00-04:00 — Inlined #218 grocery meal source labels
+
+Adjusted `GroceryListPage` so source meal labels render inside the item provenance text flow after the day chip instead of as a separate flex sibling. Preserved stale-`sources` display semantics, hover title, responsive hiding, truncation guard, and right-aligned quantity behavior; added web coverage and verified web test/lint/build. Commit: `80971ce`.
+
+### 2026-07-28T13:05:00-04:00 — Suppressed repeated #218 grocery provenance labels
+
+Verified `buildGroceryGroups` splits multi-day items into each day bucket and multi-meal items into each valid `sourceMealIds` bucket. Updated `GroceryListPage` so day grouping hides row day chips and meal grouping hides row meal labels while category/alphabetical keep both; full provenance remains available in the row title, including Pantry Staples. Added web coverage and verified web tests/lint/build.

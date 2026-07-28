@@ -292,7 +292,13 @@ export default function GroceryListPage() {
     const renderItem = (item: GroceryItem, itemKey: string) => {
         const sourceDays = formatSourceDays(item.sourceDays);
         const quantity = item.quantity ? `${item.quantity}${item.unit ? ` ${item.unit}` : ''}` : '';
-        const sourceLabels = item.sources?.join(', ') ?? '';
+        const sourceLabels = item.sources?.map(source => source.trim()).filter(Boolean).join(', ') ?? '';
+        const showSourceDays = groupMode !== 'day' && !!sourceDays;
+        const showSourceLabels = groupMode !== 'meal' && !!sourceLabels;
+        const provenanceTitle = [
+            sourceDays ? `Days: ${sourceDays}` : '',
+            sourceLabels ? `Meals: ${sourceLabels}` : '',
+        ].filter(Boolean).join(' · ');
 
         return (
         <li key={itemKey} className="flex items-center gap-3 py-2 px-3 bg-white dark:bg-gray-800 rounded shadow-sm border border-transparent dark:border-gray-700">
@@ -303,9 +309,12 @@ export default function GroceryListPage() {
                 aria-label={`${item.checked ? 'Uncheck' : 'Check'} ${item.name}`}
                 className="h-5 w-5 text-green-600 rounded"
             />
-            <span className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
+            <span
+                className={`flex-1 min-w-0 ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}
+                title={provenanceTitle || undefined}
+            >
                 {item.name}
-                {sourceDays && (
+                {showSourceDays && (
                     <span
                         className="text-gray-400 dark:text-gray-500 ml-2 text-xs font-normal"
                         title={`From ${sourceDays}`}
@@ -313,7 +322,7 @@ export default function GroceryListPage() {
                         · {sourceDays}
                     </span>
                 )}
-                {item.sources && item.sources.length > 0 && (
+                {showSourceLabels && (
                     <>
                         <span className="hidden sm:inline ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">
                             —
