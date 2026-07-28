@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { http, HttpResponse, delay } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { server } from '../../tests/msw/server';
-import { renderWithProviders, screen, waitFor, fireEvent } from '../test-utils/render';
+import { renderWithProviders, screen, waitFor, fireEvent, within } from '../test-utils/render';
+import { formatWeekRange, getCurrentWeekStart } from '../utils/date';
 import GroceryListPage from './GroceryListPage';
 
 const FAMILY_ID = 'fam-1';
@@ -142,13 +143,13 @@ describe('GroceryListPage', () => {
     confirmSpy.mockRestore();
   });
 
-  it('renders an existing list grouped by category', async () => {
+  it('renders an existing list grouped by category by default', async () => {
     server.use(
       authMeWithFamily(),
       http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
         HttpResponse.json(
           listWith([
-            item({ id: 'it-1', name: 'Bananas', category: 'produce', checked: true }),
+            item({ id: 'it-1', name: 'Bananas', quantity: '12', unit: 'oz', category: 'produce', checked: true }),
             item({ id: 'it-2', name: 'Chicken', category: 'meat', checked: false }),
           ]),
         ),
@@ -159,7 +160,13 @@ describe('GroceryListPage', () => {
 
     expect(await screen.findByText('Bananas')).toBeInTheDocument();
     expect(screen.getByText('Chicken')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /group grocery items by/i })).toHaveValue('category');
     expect(screen.getByText(/1 of 2 items checked/i)).toBeInTheDocument();
+    expect(screen.queryByText(formatWeekRange(getCurrentWeekStart()))).not.toBeInTheDocument();
+
+    const quantity = screen.getByText('12 oz');
+    expect(quantity).toHaveClass('text-right');
+    expect(quantity).toHaveClass('pr-2');
   });
 
   it('renders the source-day annotation for items with sourceDays', async () => {
@@ -209,6 +216,181 @@ describe('GroceryListPage', () => {
 
     await waitFor(() => expect(checkbox).toBeChecked());
     expect(patched).toBe(true);
+  });
+
+  it('places checked-count text below the progress bar and centers it', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({ id: 'it-1', name: 'Bananas', checked: true }),
+            item({ id: 'it-2', name: 'Chicken', checked: false }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    const checkedText = await screen.findByText(/1 of 2 items checked/i);
+    const progress = screen.getByRole('progressbar', { name: /grocery completion/i });
+
+    expect(progress).toHaveAttribute('aria-valuenow', '1');
+    expect(progress.compareDocumentPosition(checkedText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(checkedText).toHaveClass('text-center');
+  });
+
+  it('styles remove-past-days and regenerate as standard responsive action buttons', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(listWith([item({ id: 'it-1', name: 'Bananas' })])),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Bananas');
+    const actions = screen.getByRole('group', { name: /grocery list actions/i });
+    expect(actions).toHaveClass('grid');
+    expect(actions).toHaveClass('grid-cols-2');
+    expect(actions).toHaveClass('sm:flex');
+
+    for (const name of [/remove past days/i, /^regenerate$/i]) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toHaveClass('rounded');
+      expect(button).toHaveClass('bg-blue-600');
+      expect(button).toHaveClass('w-full');
+      expect(button).toHaveClass('sm:w-auto');
+    }
+  });
+
+  it('groups by day and duplicates multi-day items into each weekday bucket', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({ id: 'it-1', name: 'Salt', category: 'condiments', sourceDays: [3, 0] }),
+            item({ id: 'it-2', name: 'Napkins', category: 'paper', sourceDays: [] }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Salt');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      'day',
+    );
+
+    expect(screen.getByRole('heading', { name: 'Mon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Thu' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Unassigned' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { name: 'Check Salt' })).toHaveLength(2);
+    expect(screen.getByRole('checkbox', { name: 'Check Napkins' })).toBeInTheDocument();
+  });
+
+  it('toggles the underlying item from duplicated day groups', async () => {
+    let patched: { itemId: string; checked?: boolean } | null = null;
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({ id: 'it-1', name: 'Salt', category: 'condiments', sourceDays: [0, 3] }),
+          ]),
+        ),
+      ),
+      http.patch('/api/families/:familyId/grocery/:listId/items/:itemId', async ({ params, request }) => {
+        const body = (await request.json()) as { checked?: boolean };
+        patched = { itemId: String(params.itemId), checked: body.checked };
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Salt');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      'day',
+    );
+
+    const duplicatedChecks = screen.getAllByRole('checkbox', { name: 'Check Salt' });
+    expect(duplicatedChecks).toHaveLength(2);
+    await userEvent.click(duplicatedChecks[0]);
+
+    await waitFor(() => expect(screen.getAllByRole('checkbox', { name: 'Uncheck Salt' })).toHaveLength(2));
+    expect(patched).toEqual({ itemId: 'it-1', checked: true });
+  });
+
+  it('groups by source meal and buckets manual items as unassigned', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({
+              id: 'it-1',
+              name: 'Cheese',
+              category: 'dairy',
+              sources: ['Taco Night', 'Pasta Night'],
+              sourceMealIds: ['meal-taco', 'meal-pasta'],
+            }),
+            item({ id: 'it-2', name: 'Napkins', category: 'paper', sources: [], sourceMealIds: [] }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Cheese');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      'meal',
+    );
+
+    expect(screen.getByRole('heading', { name: 'Pasta Night' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Taco Night' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Unassigned' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox', { name: 'Check Cheese' })).toHaveLength(2);
+    expect(screen.getByRole('checkbox', { name: 'Check Napkins' })).toBeInTheDocument();
+  });
+
+  it('shows a single alphabetical group sorted by item name', async () => {
+    server.use(
+      authMeWithFamily(),
+      http.get('/api/families/:familyId/weeks/:weekStart/grocery', () =>
+        HttpResponse.json(
+          listWith([
+            item({ id: 'it-1', name: 'Zucchini' }),
+            item({ id: 'it-2', name: 'Apples' }),
+            item({ id: 'it-3', name: 'Milk' }),
+          ]),
+        ),
+      ),
+    );
+
+    renderWithProviders(<GroceryListPage />);
+
+    await screen.findByText('Zucchini');
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /group grocery items by/i }),
+      'alphabetical',
+    );
+
+    const group = screen.getByRole('heading', { name: 'All Items' }).closest('div');
+    expect(group).not.toBeNull();
+    expect(within(group!).getAllByRole('checkbox').map(checkbox => checkbox.getAttribute('aria-label'))).toEqual([
+      'Check Apples',
+      'Check Milk',
+      'Check Zucchini',
+    ]);
   });
 
   it('adds a custom item through the form', async () => {
