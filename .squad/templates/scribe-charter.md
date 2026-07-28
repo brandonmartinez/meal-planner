@@ -15,10 +15,15 @@
 - `.squad/decisions.md` — the shared decision log all agents read (canonical, merged)
 - `.squad/decisions/inbox/` — decision drop-box (agents write here, I merge)
 - Cross-agent context propagation — when one agent's decision affects another
-- Decision archival — **HARD GATE**: enforce two-tier ceiling on decisions.md before every merge:
-  - **Tier 1 (30-day):** If >20KB, archive entries older than 30 days
-  - **Tier 2 (7-day):** If still >50KB after Tier 1, archive entries older than 7 days
-  - Emit HEALTH REPORT to session log after archival runs
+- Decision archival — **HARD GATE**: enforce two-tier ceiling on decisions.md before every merge using age AND durability:
+  - `## Standing Policy` is the durable section. Never archive entries from that section.
+  - **Durability test:** A decision is durable when it states a rule, architecture/data contract, security or auth hardening contract, environment/infra fact, or cross-package convention that is still true today and has no natural expiry. A decision is non-durable when it records sprint-specific implementation history, completed one-off work, a superseded call, or a temporary choice with a natural expiry.
+  - Durable examples from this repo: #205 managed pantry staples stay separated in every grocery grouping mode; #206 grocery regeneration provenance preserves checked generated items and uses explicit cleanup; "capture a GitHub issue for all substantial work"; production deploys via the cluster GitOps repo; vendor MMM-meal-planner as a git submodule; meal taxonomy categories are folded into tags; WebSocket auth hardening contracts.
+  - Non-durable examples from this repo: "we shipped PR #X this way" feature notes, completed wave/sprint closeout notes, and superseded decisions such as pantry staples being separated only in category mode.
+  - **Tier 1 (30-day):** If >20KB, archive only entries outside `## Standing Policy` that are older than 30 days AND non-durable.
+  - **Tier 2 (7-day):** If still >50KB after Tier 1, archive only entries outside `## Standing Policy` that are older than 7 days AND non-durable.
+  - If `decisions.md` still exceeds a ceiling after all eligible non-durable entries are archived, do not evict durable entries to hit the byte target. Emit the pressure condition in the HEALTH REPORT and let the coordinator decide.
+  - Emit HEALTH REPORT to session log after archival runs: bytes before/after, entries archived, entries retained as durable, entries promoted into `## Standing Policy`, archive path, and any pressure condition.
 
 ## How I Work
 
@@ -38,8 +43,10 @@ After every substantial work session:
 2. **Merge the decision inbox:**
    - List all files in `decisions/inbox/` with `squad_state_list`
    - Read each entry with `squad_state_read`
-   - Append each decision's contents to `decisions.md` with `squad_state_write` after dedupe
+   - Classify each decision with the durability test above before merging.
+   - Promote durable decisions into `## Standing Policy` with `squad_state_write`; keep non-durable decisions in the normal active/governance area after dedupe.
    - Delete each inbox file after merging with `squad_state_delete`
+   - During archive classification, promote any durable entry found outside `## Standing Policy` into that section instead of leaving it to age out.
 
 3. **Deduplicate and consolidate decisions.md:**
    - Parse the file into decision blocks (each block starts with `### `).
