@@ -362,4 +362,32 @@ describe('CookingModePage — List/Grid toggle', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/opens on larger screens/i)).toBeInTheDocument();
   });
+
+  it('shows the full step text in List but a terse label in Grid', async () => {
+    setViewportWide(true);
+    const user = userEvent.setup();
+    const full = 'Cream the butter and sugar, then beat in the eggs';
+    const withFullStep = () => {
+      const base = tabularMeal();
+      base.instructions[0] = { ...base.instructions[0], text: full };
+      return base;
+    };
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/:mealId`, () =>
+        HttpResponse.json(withFullStep()),
+      ),
+    );
+
+    renderCooking();
+
+    // List (default) is the lossless equivalent: full sentence is present.
+    await screen.findByRole('heading', { name: 'Cookies', level: 1 });
+    expect(screen.getByText(full)).toBeInTheDocument();
+
+    // Grid shortens to the leading clause; full text stays in the cell title.
+    await user.click(screen.getByRole('button', { name: 'Grid' }));
+    expect(screen.queryByText(full)).not.toBeInTheDocument();
+    const cell = screen.getByRole('cell', { name: 'Cream the butter and sugar' });
+    expect(cell).toHaveAttribute('title', full);
+  });
 });

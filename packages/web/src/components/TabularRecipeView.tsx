@@ -1,5 +1,6 @@
 import type { TabularRecipeMealDTO } from '@meal-planner/shared';
 import { buildTabularRecipe } from '../utils/buildTabularRecipe';
+import { shortStepLabel, isRedundantSubLabel } from '../utils/shortStepLabel';
 
 /** Left-border accent colours for ingredient group runs, rotated by run index
  *  (mirrors the prototype's g0..g3 accent / link / warning / success). */
@@ -54,22 +55,25 @@ export default function TabularRecipeView({ meal }: { meal: TabularRecipeMealDTO
             it combines.
           </caption>
           <thead>
-            {setup.map((band) => (
-              <tr key={band.id}>
-                <th
-                  scope="colgroup"
-                  colSpan={totalCols}
-                  className="border border-gray-300 bg-blue-100 px-3 py-2 text-center font-semibold text-gray-900 dark:border-gray-700 dark:bg-blue-900/40 dark:text-gray-100"
-                >
-                  {band.text}
-                  {band.subLabel && (
-                    <span className="ml-2 font-medium text-gray-600 dark:text-gray-300">
-                      {band.subLabel}
-                    </span>
-                  )}
-                </th>
-              </tr>
-            ))}
+            {setup.map((band) => {
+              const showSub = !isRedundantSubLabel(band.subLabel, band.text);
+              return (
+                <tr key={band.id}>
+                  <th
+                    scope="colgroup"
+                    colSpan={totalCols}
+                    className="border border-gray-300 bg-blue-100 px-3 py-2 text-center font-semibold text-gray-900 dark:border-gray-700 dark:bg-blue-900/40 dark:text-gray-100"
+                  >
+                    {band.text}
+                    {band.subLabel && showSub && (
+                      <span className="ml-2 font-medium text-gray-600 dark:text-gray-300">
+                        {band.subLabel}
+                      </span>
+                    )}
+                  </th>
+                </tr>
+              );
+            })}
             {/* Screen-reader column headers so rowspan cells read with context. */}
             <tr>
               <th scope="col" id={ingHeaderId} className="sr-only">
@@ -125,15 +129,20 @@ export default function TabularRecipeView({ meal }: { meal: TabularRecipeMealDTO
                       { length: cell.rowSpan },
                       (_, i) => ingRowId(row.rowIndex + i),
                     ).join(' ');
+                    // Chu's format wants a terse verb in the box; the full step
+                    // text stays one hover away (`title`) and lossless in List.
+                    const label = shortStepLabel(cell.instruction.text);
+                    const showSub = !isRedundantSubLabel(cell.instruction.subLabel, label);
                     return (
                       <td
                         key={column}
                         rowSpan={cell.rowSpan}
                         headers={`${colHeaderId(column)} ${spannedRows}`}
+                        title={cell.instruction.text}
                         className="min-w-[6rem] border border-gray-300 bg-blue-50 px-3 py-2 text-center align-middle font-semibold text-blue-700 dark:border-gray-700 dark:bg-blue-900/20 dark:text-blue-300"
                       >
-                        {cell.instruction.text}
-                        {cell.instruction.subLabel && (
+                        {label}
+                        {cell.instruction.subLabel && showSub && (
                           <span className="mt-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
                             {cell.instruction.subLabel}
                           </span>

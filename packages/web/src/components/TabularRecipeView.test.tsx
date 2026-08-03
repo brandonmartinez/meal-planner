@@ -205,4 +205,81 @@ describe('TabularRecipeView', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText(/no ingredients to chart/i)).toBeInTheDocument();
   });
+
+  it('renders a terse short label with the full step text in a title', () => {
+    const full =
+      'Whisk the flour, cornstarch, cornmeal, cajun seasoning, paprika, and garlic powder';
+    render(
+      <TabularRecipeView
+        meal={meal({
+          ingredients: [ing(0, 'Flour'), ing(1, 'Cornstarch'), ing(2, 'Paprika')],
+          instructions: [step(0, full, 'PROCESS', 0, 2)],
+        })}
+      />,
+    );
+
+    const cell = screen.getByRole('cell', { name: 'Whisk the flour' });
+    expect(cell).toHaveAttribute('title', full);
+    // The full sentence is not printed in the cell — only the terse label.
+    expect(cell).not.toHaveTextContent('cornstarch');
+  });
+
+  it('suppresses a sub-label that merely restates the displayed label', () => {
+    render(
+      <TabularRecipeView
+        meal={meal({
+          ingredients: [ing(0, 'Shrimp'), ing(1, 'Flour')],
+          // Short label becomes "Chill the shrimp"; sub "30 min" is a substring
+          // of nothing here, so it is additive and shown...
+          instructions: [step(0, 'Chill 30 min', 'PROCESS', 0, 1, '30 min')],
+        })}
+      />,
+    );
+
+    // "Chill 30 min" has no comma/tail, so the label keeps "30 min"; the sub is
+    // then redundant and suppressed (shown once, not twice).
+    const cell = screen.getByRole('cell', { name: /Chill 30 min/ });
+    expect(within(cell).queryAllByText('30 min')).toHaveLength(0);
+    expect(cell).toHaveTextContent('Chill 30 min');
+  });
+
+  it('keeps a sub-label that is additive once the label is shortened', () => {
+    render(
+      <TabularRecipeView
+        meal={meal({
+          ingredients: [ing(0, 'Oil')],
+          instructions: [step(0, 'Heat the frying oil to 350°F', 'PROCESS', 0, 0, '350°F')],
+        })}
+      />,
+    );
+
+    const cell = screen.getByRole('cell', { name: /Heat the frying oil/ });
+    expect(cell).toHaveTextContent('350°F'); // additive: label no longer says it
+    expect(cell).toHaveAttribute('title', 'Heat the frying oil to 350°F');
+  });
+
+  it('degrades cleanly with no groups: no pills and no coloured borders', () => {
+    const { container } = render(
+      <TabularRecipeView
+        meal={meal({
+          // Every ingredient has a null groupLabel (the common case on real data
+          // until Phase 2 authoring exists).
+          ingredients: [ing(0, 'Butter'), ing(1, 'Sugar'), ing(2, 'Eggs')],
+          instructions: [step(0, 'cream', 'PROCESS', 0, 2)],
+        })}
+      />,
+    );
+
+    // No group pill markup at all.
+    expect(container.querySelector('.rounded-full')).toBeNull();
+    // Row headers carry a transparent left accent (consistent width, no shift)
+    // and never a coloured group border.
+    const rowHeaders = screen.getAllByRole('rowheader');
+    expect(rowHeaders.length).toBeGreaterThan(0);
+    for (const th of rowHeaders) {
+      expect(th.className).toContain('border-l-transparent');
+      expect(th.className).not.toContain('border-l-blue-500');
+      expect(th.className).not.toContain('border-l-amber-500');
+    }
+  });
 });

@@ -82,3 +82,13 @@ Shipped the visible half of the Cooking-for-Engineers Grid mode, web-only, again
 
 Verify: web build ✓, lint 0 ✓, tests 623 ✓ (37 new across 5 files).
 Stub note: `getTabularMeal` casts the meal-detail response to `TabularRecipeMealDTO`; when Livingston's derive-on-read path isn't yet serving the new fields the Grid degrades gracefully (List always correct). Tests drive the real shape via MSW fixtures.
+
+### 2026-08-03T12:16:22-04:00 — Grid content-shaping follow-ups (Rusty findings 1 & 2)
+
+Rusty APPROVED the web layer (`4d23572`) with two content-shaping follow-ups; fixed together, web-only, presentation-only (no DTO field, no `packages/shared`/`packages/api` edits — `text` stays the single semantic source).
+- New `utils/shortStepLabel.ts`: `shortStepLabel(text)` derives a terse Grid label — leading clause up to first comma, else ~6-word cap; strips a trailing "to/for <detail>" tail; falls back to trimmed original if emptied. `isRedundantSubLabel(sub, label)` = case-insensitive substring test.
+- `TabularRecipeView`: PROCESS cells now render the short label with the **full text in `title`** (hover); subLabel suppressed when it's a substring of the displayed label (belt-and-suspenders for finding 1). SETUP bands also suppress a redundant subLabel. List view untouched → still lossless.
+- Examples: "Whisk the flour, cornstarch, cornmeal, …" → **"Whisk the flour"**; "Heat the frying oil to 350°F" → **"Heat the frying oil"** + additive "350°F"; "Chill 30 min" (sub "30 min") → "Chill 30 min" with the dup sub suppressed; "whisk" → "whisk".
+- **No-groups degrade path** (Livingston removed shared's `?? ing.category` fallback, so derived `groupLabel` is now all-null — the common case on real data): verified no pills, no coloured borders, consistent transparent 4px left accent (no layout shift). Updated my own `TabularRecipeView.pipeline.test.tsx` (from `e5765fc`) which had asserted the old category-pill behavior.
+
+Verify: web build ✓, lint 0 ✓, tests 650 ✓ (shortStepLabel 13, +4 renderer, +1 page integration; pipeline test updated to new contract).

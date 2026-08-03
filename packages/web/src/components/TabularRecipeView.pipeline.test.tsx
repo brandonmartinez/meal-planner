@@ -23,8 +23,9 @@ import { buildTabularRecipe } from '../utils/buildTabularRecipe';
  * test lets a real derivation flow through the real renderer, so a drift between
  * what shared emits and what web consumes (field names, span index base, group
  * ordering) fails loudly. It uses the prototype's po'boy as the stress case:
- * many ingredients, several contiguous category groups, a setup band, cascading
- * process steps, and a finish note.
+ * many ingredients across several grocery categories, a setup band, cascading
+ * process steps, and a finish note. (Derived data no longer produces group
+ * pills — categories are shopping aisles, not cooking sections.)
  */
 
 interface RawRow {
@@ -175,16 +176,17 @@ describe('Grid pipeline (derive → serve → render) — po’boy stress case',
     expect(byPos[3]).toMatchObject({ kind: 'PROCESS', spanFrom: 5, spanTo: 6 });
     expect(byPos[6]).toMatchObject({ kind: 'PROCESS', spanFrom: 8, spanTo: 9 });
 
-    // Effective group labels = contiguous category runs.
-    expect(meal.ingredients.map((i) => i.groupLabel)).toEqual([
-      'seafood', 'dairy', 'pantry', 'pantry', 'pantry',
-      'condiments', 'condiments', 'bakery', 'produce', 'produce',
-    ]);
+    // Derived matrices no longer synthesise group labels from grocery aisles
+    // (Rusty's ruling — real categories like "produce"/"pantry" are shopping
+    // aisles, not cooking sections). groupLabel is null unless authored.
+    expect(meal.ingredients.map((i) => i.groupLabel)).toEqual(
+      new Array(RAW_INGREDIENTS.length).fill(null),
+    );
   });
 
   it('renders a coherent, accessible grid from the derived DTO', () => {
     const meal = serve(RAW_INGREDIENTS, RAW_STEPS);
-    render(<TabularRecipeView meal={meal} />);
+    const { container } = render(<TabularRecipeView meal={meal} />);
 
     const table = screen.getByRole('table');
     // Semantic table with the spec §9 caption.
@@ -204,9 +206,11 @@ describe('Grid pipeline (derive → serve → render) — po’boy stress case',
     expect(band).toHaveAttribute('colspan', String(1 + layout.columnCount));
     expect(band).toHaveTextContent('350°F');
 
-    // Each contiguous group run contributes exactly one pill.
+    // Derived data carries no group labels, so the grid degrades cleanly: no
+    // pills and no grocery-aisle text leaking into the chart.
+    expect(container.querySelector('.rounded-full')).toBeNull();
     for (const label of ['seafood', 'dairy', 'pantry', 'condiments', 'bakery', 'produce']) {
-      expect(screen.getAllByText(label)).toHaveLength(1);
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
     }
 
     // The "whisk dry" process cell spans rows 2–4 and links to those row ids.
