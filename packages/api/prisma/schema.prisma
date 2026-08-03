@@ -109,6 +109,22 @@ model MealIngredient {
   quantity String?
   unit     String?
   category String?
+  /// Dense, 0-based row order within a meal (matches MealInstruction.position),
+  /// backfilled from pre-existing insertion order and maintained on write from
+  /// the input array index. The tabular ("Grid") recipe view is order-sensitive
+  /// — instruction spans reference ingredient rows by this position — so a
+  /// stable durable order is required; Prisma insertion order alone is not a
+  /// promise (tabular recipe view).
+  position   Int     @default(0)
+  /// AUTHORED LAYOUT OVERRIDE — never derived-and-persisted. An optional group
+  /// pill label ("Shrimp", "Breading", …) for the tabular view. `null` does NOT
+  /// mean "authored as empty": it means *derive this at read time* (from
+  /// contiguous runs of `category`). The derived grouping is display-only,
+  /// recomputed on every read, and is NEVER written back. Do not backfill or
+  /// cache derived group labels here — persisted derived state goes stale (see
+  /// the grocery-provenance staleness lesson in decisions.md). Only the Phase-2
+  /// layout editor writes this column.
+  groupLabel String?
   meal     Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
   mealId   String
 }
@@ -127,8 +143,60 @@ model MealInstruction {
   position     Int
   text         String
   timerMinutes Int?
+  /// Tabular-view band classification. `SETUP` renders as a full-width leading
+  /// band, `FINISH` as a trailing note, `PROCESS` (the default) as a spanning
+  /// process column. Defaulted, so every existing step is a plain PROCESS step
+  /// until the Phase-2 editor says otherwise; the derived value (from a verb
+  /// allow-list at read time) is display-only and never written here.
+  kind      InstructionKind @default(PROCESS)
+  /// AUTHORED LAYOUT OVERRIDE — never derived-and-persisted. An optional "sub"
+  /// detail line (e.g. a temperature/time fragment) for the tabular view. `null`
+  /// does NOT mean "authored as empty": it means *derive this at read time* from
+  /// the step text. The derived value is display-only, recomputed on every read,
+  /// and is NEVER written back. Do not backfill or cache it here. Only the
+  /// Phase-2 layout editor writes this column.
+  subLabel  String?
+  /// AUTHORED LAYOUT OVERRIDE — never derived-and-persisted. The process-column
+  /// index this step occupies (cascade ordering) in the tabular view. `null`
+  /// does NOT mean "authored as empty": it means *derive this at read time*. The
+  /// derived layout is display-only, recomputed on every read, and is NEVER
+  /// written back. Do not backfill or cache it here. Only the Phase-2 layout
+  /// editor writes this column.
+  column    Int?
+  /// AUTHORED LAYOUT OVERRIDE — never derived-and-persisted, and the source of
+  /// truth for provenance: a meal is "authored" IFF any instruction has a
+  /// non-null `spanFrom` (there is deliberately no stored `isDerived` boolean —
+  /// a cached provenance flag is exactly the state that goes stale). This is the
+  /// inclusive start of the ingredient-row range (references
+  /// `MealIngredient.position`) that this step combines. `null` does NOT mean
+  /// "authored as empty": it means *derive this at read time* from step text.
+  /// The derived span is display-only, recomputed on every read, and is NEVER
+  /// written back — do not backfill or cache derived spans here; persisted
+  /// derived state goes stale (see the grocery-provenance staleness lesson in
+  /// decisions.md). Only the Phase-2 layout editor writes this column.
+  spanFrom  Int?
+  /// AUTHORED LAYOUT OVERRIDE — never derived-and-persisted. The inclusive end
+  /// of the ingredient-row range (references `MealIngredient.position`) this
+  /// step combines. `null` does NOT mean "authored as empty": it means *derive
+  /// this at read time* from step text. The derived span is display-only,
+  /// recomputed on every read, and is NEVER written back — do not backfill or
+  /// cache derived spans here (persisted derived state goes stale; see
+  /// decisions.md). Only the Phase-2 layout editor writes this column.
+  spanTo    Int?
 
   @@index([mealId])
+}
+
+/// Tabular-recipe band classification for a `MealInstruction` (tabular recipe
+/// view). `PROCESS` (the default) is a normal spanning process step; `SETUP` is
+/// a full-width leading band (preheat/line/boil…); `FINISH` is a trailing note
+/// (cool/rest/serve/garnish). The value stored here is the AUTHORED
+/// classification; when unauthored, the read path derives an effective kind at
+/// read time (display-only, never persisted).
+enum InstructionKind {
+  SETUP
+  PROCESS
+  FINISH
 }
 
 /// Family-scoped, free-form tag taxonomy (issue #107). A tag belongs to exactly

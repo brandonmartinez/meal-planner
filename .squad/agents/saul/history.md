@@ -31,3 +31,29 @@
 **Outcome:** PR #214 merged to origin/main (squash 62b97a2). Full build/test green, lint clean. Decision record in `.squad/decisions.md`, orchestration log in `.squad/orchestration-log/2026-07-09T02-50-00Z-saul.md`.
 
 **Team Notes:** Read-time derivation kept pantry separation orthogonal to #204 sourceDays and #206 preserve-checked orphan logic — zero merge conflicts. `onDelete: Cascade` chosen (vs sibling models' `Restrict`) because staples have no meaning without their family. No MCP parity required (pantry staples are family settings/grocery, not recipe/meal agent surface).
+
+## 2026-08-03T11:00:32-04:00 — Recipe-matrix schema (tabular "Grid" view, P1-1)
+
+**Task:** Additive Phase-1 migration for the Cooking-for-Engineers tabular recipe
+view (Rusty's spec §3.1/§3.2). Own the schema half only.
+
+**Work:** `enum InstructionKind {SETUP PROCESS FINISH}` (default PROCESS);
+`MealIngredient.position Int @default(0)` + `groupLabel String?`;
+`MealInstruction.kind/subLabel/column/spanFrom/spanTo`. All nullable/defaulted →
+strictly additive. Migration `20260803110032_add_recipe_matrix_layout` authored
+OFFLINE (no Docker/Postgres on host) via schema-to-schema `prisma migrate diff`
+— the team's established standard — with a hand-added `position` backfill
+(`row_number() over (partition by "mealId" order by "ctid") - 1`, 0-based to
+match `MealInstruction.position`). Five authored-layout columns deliberately
+left NULL (NULL = derive-at-read; persisting derived state is the
+grocery-provenance staleness bug). Load-bearing doc comments per Brandon on
+every layout column. Provenance is structural (`some(i.spanFrom != null)`), no
+`isDerived` boolean. Seed: `position: i` on ingredient creates, no authored spans.
+
+**Verify:** `pnpm db:generate` green — client exposes all new fields.
+`packages/api` build compiles (the only failure was pre-existing unbuilt
+`@meal-planner/mcp` dist, unrelated). NOT applied to a real DB — flagged for
+Rusty/Livingston to confirm backfill on first `migrate deploy`.
+
+**Left for Livingston:** `deriveRecipeMatrix()` + DTO in shared, service
+position-from-index writes, REST/MCP read shaping (outside my fence, untouched).

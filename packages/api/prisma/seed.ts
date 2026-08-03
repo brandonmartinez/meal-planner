@@ -106,11 +106,12 @@ async function seed() {
         description: recipe.description,
         difficulty: recipe.difficulty,
         ingredients: {
-          create: recipe.ingredients.map((ing) => ({
+          create: recipe.ingredients.map((ing, i) => ({
             name: ing.name,
             quantity: ing.quantity,
             unit: ing.unit,
             category: ing.category,
+            position: i,
           })),
         },
       },
