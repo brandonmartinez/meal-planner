@@ -15,18 +15,29 @@ describe('shortStepLabel', () => {
     ).toBe('Whisk the flour');
   });
 
-  it('strips a trailing "to <detail>" tail', () => {
+  it('strips a trailing "to <temperature>" tail (redundant measurement)', () => {
     expect(shortStepLabel('Heat the frying oil to 350°F')).toBe('Heat the frying oil');
   });
 
-  it('strips a trailing "for <detail>" tail', () => {
+  it('strips a trailing "for <duration>" tail (redundant measurement)', () => {
     expect(shortStepLabel('Simmer the sauce for 20 minutes')).toBe('Simmer the sauce');
   });
 
-  it('caps a long comma-free label at ~6 words', () => {
+  it('does NOT strip a "to <non-measurement>" tail — the verb would be meaningless', () => {
+    expect(shortStepLabel('Bring to a boil')).toBe('Bring to a boil');
+    expect(shortStepLabel('Reduce to a simmer')).toBe('Reduce to a simmer');
+    expect(shortStepLabel('Sear to a deep crust')).toBe('Sear to a deep crust');
+  });
+
+  it('keeps a measurement tail rather than emit a single bare word (2-word floor)', () => {
+    expect(shortStepLabel('Cook to 165°F')).toBe('Cook to 165°F');
+    expect(shortStepLabel('Chill for 30 min')).toBe('Chill for 30 min');
+  });
+
+  it('caps a long comma-free label at ~6 words, trimming a dangling connective', () => {
     expect(
       shortStepLabel('Beat the butter and sugar and eggs and vanilla until light'),
-    ).toBe('Beat the butter and sugar and');
+    ).toBe('Beat the butter and sugar');
   });
 
   it('prefers the comma clause even when a "for" tail follows the comma', () => {
@@ -65,5 +76,10 @@ describe('isRedundantSubLabel', () => {
   it('keeps an additive sub-label the short label no longer mentions', () => {
     expect(isRedundantSubLabel('350°F', 'Heat the frying oil')).toBe(false);
     expect(isRedundantSubLabel('20 min', 'Marinate the shrimp in buttermilk')).toBe(false);
+  });
+
+  it('suppresses the sub-label when the label deliberately keeps the measurement', () => {
+    // "Cook to 165°F" keeps its tail (2-word floor); the dup sub drops out here.
+    expect(isRedundantSubLabel('165°F', 'Cook to 165°F')).toBe(true);
   });
 });

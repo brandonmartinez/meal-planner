@@ -92,3 +92,13 @@ Rusty APPROVED the web layer (`4d23572`) with two content-shaping follow-ups; fi
 - **No-groups degrade path** (Livingston removed shared's `?? ing.category` fallback, so derived `groupLabel` is now all-null — the common case on real data): verified no pills, no coloured borders, consistent transparent 4px left accent (no layout shift). Updated my own `TabularRecipeView.pipeline.test.tsx` (from `e5765fc`) which had asserted the old category-pill behavior.
 
 Verify: web build ✓, lint 0 ✓, tests 650 ✓ (shortStepLabel 13, +4 renderer, +1 page integration; pipeline test updated to new contract).
+
+### 2026-08-03T12:24:12-04:00 — Short-label heuristic: principled to/for strip
+
+Rusty follow-up: the positional "to/for tail" strip was misfiring ("Bring to a boil" → "Bring", "Reduce to a simmer" → "Reduce") — meaningless in a cooking app. Made the rule principled (web-only, `utils/shortStepLabel.ts`):
+- Strip a trailing `to|for <tail>` ONLY when the tail contains a **temperature or duration** (the exact fragments `extractSubLabel` re-shows) — tied to the redundancy it exists to remove.
+- **2-word floor:** never strip down to a bare verb. "Cook to 165°F" stays whole (its dup "165°F" subLabel is then dropped by `isRedundantSubLabel`); "Bring to a boil"/"Sear to a deep crust" keep their tails (no measurement).
+- Word cap now trims a trailing dangling connective (and/with/the/until/…) so a truncated label never ends mid-phrase.
+- Guiding principle codified in the module doc: the short label must be *abbreviated*, never *wrong*; when in doubt keep more text (title + List carry the rest).
+
+Verify: web build ✓, lint 0 ✓, tests 653 ✓ (shortStepLabel now 16).
