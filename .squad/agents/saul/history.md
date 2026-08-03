@@ -86,3 +86,27 @@ pg_dump safety backup taken to `~/saul-scratch/` first (.dump + .sql).
 `ctid` proxy validated empirically, not just by reasoning. Left Postgres running
 on localhost:5432 (container `saul-mealdb`, postgres/postgres, db meal_planner)
 for Yen's e2e. No code change needed — backfill required no fix.
+
+## 2026-08-03 — Seed library revamp for tabular Grid
+Replaced the 50-recipe ingredients-only demo library with 14 curated recipes that
+actually exercise the Grid. Touched only `packages/api/prisma/data/recipes.ts` +
+`seed.ts` (added `instructions` create block + `groupLabel` passthrough).
+
+- **11 DERIVED** (use-ordered, no authored spans): SETUP bands, cascading combines,
+  FINISH notes, multi-use lime, a long chili (11 ing) and short guac/grilled-cheese.
+  Two carry authored `groupLabel`s (pills render on derived meals too).
+- **3 AUTHORED** (kind + inclusive 0-based spanFrom/spanTo + column + pills): Fried
+  Shrimp (breading cascade + parallel rémoulade), Baked Lasagna (two parallel
+  sub-recipes → assembly), Caprese (small). Give Brandon a derived-vs-authored A/B for
+  the Phase-2 editor call.
+
+**Clean-span result: 11/11 derived recipes bracket cleanly** (verified with a
+throwaway harness re-running the real `deriveRecipeMatrix`; deleted before commit).
+Fixed one real over-bracket: "Beef broth" collided with "Ground beef" on the `beef`
+token, so first-use reordering swept chili powder/cumin into the broth step →
+renamed the ingredient "Broth".
+
+Seeded a scratch DB (`saul-seed-scratch`, :5433, fresh volume) via `migrate deploy` +
+`db seed`: 14 recipes; ingredient AND instruction positions dense/0-based; derived
+meals persist 0 layout columns; authored spans in range. **`saul-mealdb` (:5432,
+Brandon's real 74 meals) was never written to** — left running for Yen.

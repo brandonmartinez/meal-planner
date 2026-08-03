@@ -92,7 +92,10 @@ async function seed() {
     select: { id: true },
   });
 
-  // 3. Recipe library - 50 real meals with ingredients.
+  // 3. Recipe library - tabular-Grid-aware meals with ingredients AND
+  // instructions. Ingredients are stored in USE order (position = array index)
+  // so derived recipes bracket cleanly; a few recipes carry authored layout
+  // (kind/spanFrom/spanTo/groupLabel). See data/recipes.ts for the rationale.
   const recipeMeals: {
     id: string;
     ingredients: (typeof DEMO_RECIPES)[number]["ingredients"];
@@ -112,6 +115,22 @@ async function seed() {
             unit: ing.unit,
             category: ing.category,
             position: i,
+            groupLabel: ing.groupLabel ?? null,
+          })),
+        },
+        instructions: {
+          create: recipe.instructions.map((step, i) => ({
+            position: i,
+            text: step.text,
+            timerMinutes: step.timerMinutes,
+            // Authored layout fields. Left undefined on derived recipes so the
+            // read path recomputes the matrix; NEVER backfilled (see the
+            // grocery-provenance staleness lesson in decisions.md).
+            kind: step.kind,
+            subLabel: step.subLabel,
+            column: step.column,
+            spanFrom: step.spanFrom,
+            spanTo: step.spanTo,
           })),
         },
       },
