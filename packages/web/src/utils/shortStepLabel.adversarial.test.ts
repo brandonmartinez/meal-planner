@@ -39,53 +39,71 @@ describe('shortStepLabel — hardening holds (regression family)', () => {
   });
 });
 
-describe('shortStepLabel — KNOWN DEFECTS (it.fails: flip red when fixed)', () => {
+describe('shortStepLabel — defects fixed (Yen adversarial, converted from it.fails)', () => {
   // DEFECT 1 (strong): a leading adverbial / conditional / temporal clause
-  // before the first comma is returned verbatim, DROPPING the actual imperative
-  // that follows it. The visible Grid cell then reads as a different instruction
-  // (or none at all). The rowspan does NOT rescue these — the dropped words are
-  // the verb+object, and the surviving clause names no ingredient. Recipe prose
-  // opens this way constantly ("Meanwhile, …", "Once …,", "When …,", "Using …,").
-  it.fails('"Meanwhile, cook the pasta" must not collapse to a non-instruction', () => {
-    expect(shortStepLabel('Meanwhile, cook the pasta')).toMatch(/cook/i);
+  // before the first comma was returned verbatim, DROPPING the imperative that
+  // follows. Now such openers are skipped and the instruction clause survives.
+  it('"Meanwhile, cook the pasta" keeps the imperative', () => {
+    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('cook the pasta');
   });
 
-  it.fails('"After 5 minutes, flip the fish" must keep the action, not read as a timer', () => {
-    // Currently -> "After 5 minutes": a cook glancing sees a duration, not "flip".
-    expect(shortStepLabel('After 5 minutes, flip the fish')).toMatch(/flip/i);
+  it('"After 5 minutes, flip the fish" keeps the action, not the timer', () => {
+    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('flip the fish');
   });
 
-  it.fails('"Once boiling, add the pasta" must keep the imperative', () => {
-    expect(shortStepLabel('Once boiling, add the pasta')).toMatch(/add/i);
+  it('"Once boiling, add the pasta" keeps the imperative', () => {
+    expect(shortStepLabel('Once boiling, add the pasta')).toMatch(/^add the pasta$/i);
   });
 
-  it.fails('"When the oil shimmers, add the garlic" must keep the imperative', () => {
-    expect(shortStepLabel('When the oil shimmers, add the garlic')).toMatch(/add/i);
+  it('"When the oil shimmers, add the garlic" keeps the imperative', () => {
+    expect(shortStepLabel('When the oil shimmers, add the garlic')).toMatch(/^add the garlic$/i);
   });
 
-  it.fails('"Using a slotted spoon, transfer to a plate" must keep the imperative', () => {
-    expect(shortStepLabel('Using a slotted spoon, transfer to a plate')).toMatch(/transfer/i);
+  it('"Using a slotted spoon, transfer to a plate" keeps the imperative', () => {
+    expect(shortStepLabel('Using a slotted spoon, transfer to a plate')).toMatch(/^transfer/i);
   });
 
-  it.fails('"Carefully, lower the eggs into the water" must not collapse to just "Carefully"', () => {
-    expect(shortStepLabel('Carefully, lower the eggs into the water')).toMatch(/lower/i);
+  it('"Carefully, lower the eggs into the water" does not collapse to "Carefully"', () => {
+    expect(shortStepLabel('Carefully, lower the eggs into the water')).toMatch(/^lower/i);
   });
 
-  // DEFECT 2 (minor/moderate): the strip's stated premise is that the measurement
-  // it removes is "redundant" because the subLabel re-displays it. But the subLabel
-  // (shared extractSubLabel) only recognizes minutes/hours/temperature — NOT
-  // seconds or days — while this heuristic's DURATION regex also strips
-  // seconds/days. So for a `to|for <N seconds|days>` tail the measurement is
-  // removed from the label AND absent from the subLabel: it survives only in the
-  // hover `title` and the List view. On a touch tablet (no hover — the primary
-  // cooking device and a screenshot target) a cook-critical timing is invisible.
-  // Blanch/sear/toast times (seconds) and cure times (days) are all realistic.
-  it.fails('"Blanch the beans for 90 seconds" must keep the seconds somewhere in the label', () => {
-    // Currently -> "Blanch the beans" (90s only in title/List; gone from Grid).
+  // DEFECT 3 (information loss): the strip covered seconds/days, but shared's
+  // extractSubLabel only emits min/hr/° — so those timings vanished from BOTH
+  // the label and the subLabel (invisible on a no-hover touch tablet). The
+  // strip now mirrors extractSubLabel exactly, keeping seconds/days in-label.
+  it('"Blanch the beans for 90 seconds" keeps the seconds in the label', () => {
     expect(shortStepLabel('Blanch the beans for 90 seconds')).toMatch(/90|second/i);
   });
 
-  it.fails('"Cure the salmon for 2 days" must keep the days in the label', () => {
+  it('"Cure the salmon for 2 days" keeps the days in the label', () => {
     expect(shortStepLabel('Cure the salmon for 2 days')).toMatch(/2|day/i);
+  });
+});
+
+describe('shortStepLabel — Defect 2: no mid-phrase fragments', () => {
+  // The 6-word cap truncated "Dredge the shrimp in the seasoned flour" into
+  // "Dredge the shrimp in the seasoned" — "the seasoned" WHAT? A complete,
+  // slightly longer phrase beats a fragment, so moderate labels are kept whole.
+  it('keeps "…in the seasoned flour" rather than end on a dangling adjective', () => {
+    expect(shortStepLabel('Dredge the shrimp in the seasoned flour')).toBe(
+      'Dredge the shrimp in the seasoned flour',
+    );
+  });
+
+  it('never ends a label on a dangling article / preposition / conjunction', () => {
+    const samples = [
+      'Transfer to a plate and let rest',
+      'Add the chopped onion to the hot pan and stir',
+      'Fold the whipped cream into the chilled custard base',
+      'Spread the remoulade evenly over the toasted French bread',
+    ];
+    for (const s of samples) {
+      const out = shortStepLabel(s);
+      expect(/\b(?:the|a|an|and|or|but|with|to|for|in|of|into|on|until|then)$/i.test(out)).toBe(
+        false,
+      );
+      // And the label must still start with the original imperative verb.
+      expect(out.toLowerCase().startsWith(s.split(' ')[0].toLowerCase())).toBe(true);
+    }
   });
 });

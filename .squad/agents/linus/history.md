@@ -102,3 +102,14 @@ Rusty follow-up: the positional "to/for tail" strip was misfiring ("Bring to a b
 - Guiding principle codified in the module doc: the short label must be *abbreviated*, never *wrong*; when in doubt keep more text (title + List carry the rest).
 
 Verify: web build ✓, lint 0 ✓, tests 653 ✓ (shortStepLabel now 16).
+
+### 2026-08-03T12:43:32-04:00 — Short-label: three "misleading not abbreviated" defects
+
+Yen found two adversarially, Brandon a third off the shipping screenshot — all the same principle violation. Fixed web-side in `utils/shortStepLabel.ts`; converted Yen's `it.fails` in `shortStepLabel.adversarial.test.ts` to passing and extended.
+- **D1 adverbial opener promoted to the whole label** ("Meanwhile, cook the pasta" → "Meanwhile"). Now split on commas and pick the first clause that ISN'T a recognized opener (meanwhile/once/after/before/while/when/carefully/gently/using/if/as/then/next/…), so the imperative survives → "cook the pasta".
+- **D2 6-word cap truncated mid-phrase** ("Dredge the shrimp in the seasoned flour" → "…the seasoned"). Root cause was the aggressive cap; raised the runaway guard to 9 words (a complete 7–8-word phrase beats a fragment — "err long"), and the cap trims trailing glue words so it never ends on an article/prep/conjunction.
+- **D3 seconds/days stripped but never re-shown.** Verified shared's `extractSubLabel` only emits min/hr/° (deriveRecipeMatrix.ts:96–109). Narrowed the strip to temperature + minutes/hours ONLY, so "Blanch the beans for 90 seconds" / "Cure the salmon for 2 days" keep the timing in-label (it'd otherwise be invisible on a no-hover touch tablet).
+- Codified the unifying rule in the module doc: never emit a label a cook reads as a DIFFERENT or INCOMPLETE instruction; abbreviate only by dropping redundant detail (bracket/subLabel already convey it); when in doubt, KEEP MORE TEXT.
+- My own extra probe (assume a 4th): trailing "…and let" / determiner+adjective run-ons — covered by keeping moderate clauses whole + the glue-word trim; added a family asserting no label ends on a dangling article/prep/conjunction and always starts with the original verb.
+
+Verify: web build ✓, lint 0 ✓, tests 670 ✓ (shortStepLabel 19, adversarial 14).

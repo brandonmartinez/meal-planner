@@ -12,76 +12,107 @@
  * the full text one hover away via a `title` attribute. Smart verb extraction
  * and user-authored labels are Phase 2 — this is the light heuristic only.
  *
- * Guiding principle: the short label must never be *wrong* or *misleading* —
- * only *abbreviated*. When in doubt, keep more text. Erring long costs a little
- * column width (the `title`/List carry the rest); erring short costs
- * correctness, and this is a recipe people cook from.
+ * THE UNIFYING RULE (we have relitigated this three times — please don't again):
+ * never emit a label that a cook would read as a DIFFERENT or INCOMPLETE
+ * instruction. Abbreviate only by dropping genuinely REDUNDANT detail — detail
+ * the rowspan bracket or the subLabel already conveys — never by truncating into
+ * a fragment or by promoting a non-instruction (an adverbial/temporal opener) to
+ * the whole label. When the heuristic cannot produce something clean, KEEP MORE
+ * TEXT: erring long costs a little column width (the title/List carry the rest);
+ * erring short costs correctness, and this is a recipe people cook from.
  */
 
-const MAX_WORDS = 6;
+/** Runaway guard only — most labels are far shorter after clause selection.
+ *  Deliberately generous: a complete 7–8 word phrase beats a terse fragment. */
+const MAX_WORDS = 9;
 /** Never abbreviate down to a bare verb — "Bring"/"Cook" alone are meaningless. */
 const MIN_LABEL_WORDS = 2;
 
-/** A temperature fragment, e.g. "350°F", "165 degrees", "200C". */
-const TEMPERATURE = /\d+\s*(?:°|℉|℃|degrees?\b|deg\b|°?\s*[fc]\b)/i;
-/** A duration fragment, e.g. "20 min", "2 hours", "30 seconds", "5m". */
-const DURATION =
-  /\d+\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|[smh])\b/i;
+/**
+ * Measurements we may strip from a `to`/`for` tail. These MUST match what
+ * shared's `extractSubLabel` re-surfaces as the subLabel — temperature and
+ * minutes/hours ONLY. Seconds and days are intentionally excluded: the subLabel
+ * never shows them, so stripping them would delete a cook-critical timing from
+ * the Grid entirely (invisible on a touch tablet with no hover). Keep those.
+ */
+const STRIPPABLE_TEMPERATURE = /\d+\s*(?:°|degrees?\b)/i;
+const STRIPPABLE_DURATION = /\d+\s*(?:min(?:ute)?s?|h(?:ou)?rs?)\b/i;
 
-/** Trailing "glue" words a truncated label must not end on. */
-const CONNECTIVES = new Set([
-  'and', 'or', 'with', 'the', 'a', 'an', 'to', 'for',
-  'in', 'of', 'into', 'on', 'until', 'then',
+/** Adverbial / temporal / conditional openers that are NOT the instruction.
+ *  A leading comma-clause starting with one of these is skipped so the actual
+ *  imperative that follows becomes the label ("Meanwhile, cook the pasta"). */
+const OPENERS = new Set([
+  'meanwhile', 'once', 'after', 'before', 'while', 'when', 'whenever',
+  'carefully', 'gently', 'slowly', 'immediately', 'quickly', 'then', 'next',
+  'first', 'finally', 'using', 'if', 'as',
+]);
+
+/** Closed set of "glue" words a label must never END on — an article,
+ *  preposition, or conjunction trailing after truncation reads as unfinished. */
+const WEAK_ENDINGS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'with', 'to', 'for', 'in', 'of',
+  'into', 'onto', 'on', 'at', 'by', 'from', 'over', 'under', 'until', 'then',
+  'as', 'up', 'off', 'about', 'through',
 ]);
 
 function words(value: string): string[] {
   return value.split(/\s+/).filter(Boolean);
 }
 
-/** True when a `to`/`for` tail carries the redundant measurement the subLabel
- *  already re-displays (a temperature or a duration). */
-function isRedundantTail(tail: string): boolean {
-  return TEMPERATURE.test(tail) || DURATION.test(tail);
+/** Lowercase and strip surrounding punctuation for set membership tests. */
+function normWord(word: string): string {
+  return word.toLowerCase().replace(/[^a-z°]/g, '');
+}
+
+function isOpenerClause(clause: string): boolean {
+  return OPENERS.has(normWord(words(clause)[0] ?? ''));
+}
+
+function isStrippableMeasurement(tail: string): boolean {
+  return STRIPPABLE_TEMPERATURE.test(tail) || STRIPPABLE_DURATION.test(tail);
 }
 
 /**
  * Derive a terse display label from a full-sentence step:
- *   1. take the leading clause up to the first comma (else the whole text);
- *   2. strip a trailing "to/for <detail>" tail ONLY when that tail is a
- *      redundant measurement (temperature/duration) and at least
- *      `MIN_LABEL_WORDS` survive — so "Heat the oil to 350°F" -> "Heat the oil"
- *      but "Bring to a boil" and "Cook to 165°F" keep their tail;
- *   3. cap at ~MAX_WORDS words on a clean boundary, dropping a dangling
- *      connective so the label never ends mid-phrase on "and"/"with"/etc.
+ *   1. pick the first comma-clause that actually carries the instruction —
+ *      skipping leading adverbial/temporal/conditional openers ("Meanwhile,",
+ *      "After 5 minutes,", "Carefully,") so the imperative survives;
+ *   2. strip a trailing "to/for <detail>" tail ONLY when the tail is a
+ *      redundant, subLabel-mirrored measurement (temperature or minutes/hours)
+ *      and at least MIN_LABEL_WORDS survive — so "Heat the oil to 350°F" becomes
+ *      "Heat the oil", while "Bring to a boil", "Cook to 165°F" (floor), and
+ *      "Blanch the beans for 90 seconds" (seconds aren't re-shown) keep the tail;
+ *   3. only as a runaway guard, cap at MAX_WORDS words, trimming trailing glue
+ *      words so a rare very long label never ends mid-phrase on "and"/"the".
  * Falls back to the trimmed original if the heuristic empties the string.
  */
 export function shortStepLabel(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return trimmed;
 
-  const commaIndex = trimmed.indexOf(',');
-  let label = (commaIndex === -1 ? trimmed : trimmed.slice(0, commaIndex)).trim();
+  // (1) First clause that is a real instruction, not an adverbial opener.
+  const clauses = trimmed.split(',').map((c) => c.trim()).filter(Boolean);
+  const instruction = clauses.find((c) => !isOpenerClause(c));
+  let label = instruction ?? trimmed;
 
-  // Greedy head -> matches the LAST "to/for" clause, so we strip minimally.
+  // (2) Redundant-measurement tail strip (greedy head → strip the LAST tail).
   const tailMatch = label.match(/^(.*)(\s+(?:to|for)\s+\S.*)$/i);
   if (tailMatch) {
     const head = tailMatch[1].trim();
     const tail = tailMatch[2];
-    if (isRedundantTail(tail) && words(head).length >= MIN_LABEL_WORDS) {
+    if (isStrippableMeasurement(tail) && words(head).length >= MIN_LABEL_WORDS) {
       label = head;
     }
   }
 
-  let parts = words(label);
+  // (3) Runaway guard, on a clean boundary.
+  const parts = words(label);
   if (parts.length > MAX_WORDS) {
-    parts = parts.slice(0, MAX_WORDS);
-    while (
-      parts.length > MIN_LABEL_WORDS &&
-      CONNECTIVES.has(parts[parts.length - 1].toLowerCase())
-    ) {
-      parts.pop();
+    const cut = parts.slice(0, MAX_WORDS);
+    while (cut.length > MIN_LABEL_WORDS && WEAK_ENDINGS.has(normWord(cut[cut.length - 1]))) {
+      cut.pop();
     }
-    label = parts.join(' ');
+    label = cut.join(' ');
   }
 
   return label.trim() || trimmed;

@@ -34,10 +34,33 @@ describe('shortStepLabel', () => {
     expect(shortStepLabel('Chill for 30 min')).toBe('Chill for 30 min');
   });
 
-  it('caps a long comma-free label at ~6 words, trimming a dangling connective', () => {
-    expect(
-      shortStepLabel('Beat the butter and sugar and eggs and vanilla until light'),
-    ).toBe('Beat the butter and sugar');
+  it('takes the first instruction clause, skipping an adverbial opener', () => {
+    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('cook the pasta');
+    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('flip the fish');
+    expect(shortStepLabel('Carefully, lower the eggs into the water')).toBe(
+      'lower the eggs into the water',
+    );
+  });
+
+  it('keeps a seconds/days tail — the subLabel never re-shows those', () => {
+    expect(shortStepLabel('Blanch the beans for 90 seconds')).toBe(
+      'Blanch the beans for 90 seconds',
+    );
+    expect(shortStepLabel('Cure the salmon for 2 days')).toBe('Cure the salmon for 2 days');
+  });
+
+  it('keeps a moderately long clause whole rather than truncate into a fragment', () => {
+    expect(shortStepLabel('Dredge the shrimp in the seasoned flour')).toBe(
+      'Dredge the shrimp in the seasoned flour',
+    );
+  });
+
+  it('caps only a runaway run-on, never ending on a dangling connective', () => {
+    const out = shortStepLabel(
+      'Mix the flour and the sugar and the salt and the soda together well',
+    );
+    expect(out.split(' ').length).toBeLessThanOrEqual(9);
+    expect(/\b(?:and|or|with|the|to|for|of|in|until)$/i.test(out)).toBe(false);
   });
 
   it('prefers the comma clause even when a "for" tail follows the comma', () => {
