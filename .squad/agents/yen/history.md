@@ -27,3 +27,11 @@ Tester / QA. Owns test coverage across all packages. API tests: `globals: false`
 ### 2026-07-28T10:15:00-04:00 — #218 grocery grouping coverage audit
 
 Audited the new grocery grouping behavior for #218, independently re-ran the suite, and added 7 edge-case tests in commit `5e214ec`. Verdict: PASS, with 588 tests passing and no bugs found in the audited grouping coverage.
+
+### 2026-08-03T11:00:32-04:00 — Phase-1 tabular "Grid" recipe view integration verification
+
+Verified the three-agent parallel landing (Saul schema, Livingston shared/api/mcp, Linus web) integrates. Real results: build PASS, lint PASS (0 errors; 6 pre-existing unrelated `any` warnings), test PASS **1807** (added 15 of mine). No integration bugs found. Ran offline via corepack pnpm cache (`~/.cache/node/corepack/v1/pnpm/9.15.4`) + node v22.14.0.
+
+Contract seams checked, not trusted: DTO shape is a single shared type (`TabularRecipeMealDTO`) → compile-time parity; `InstructionKind` byte-identical to shared `INSTRUCTION_KINDS`; ingredient ordering defended at every layer (Prisma `orderBy position`, api `applyRecipeMatrix` re-sort, web `buildTabularRecipe` re-sort). Added regression guards: export/CSV-round-trip ordering (`mealsExportOrdering.test.ts`), enum drift (`instructionKindParity.test.ts`), untested `useMediaQuery` hook, and an end-to-end derive→serve→render pipeline test (`TabularRecipeView.pipeline.test.tsx`) using the po'boy.
+
+Flagged one latent Phase-2 landmine (authored spanFrom is a `position` but web treats it as an array index — safe only while positions stay dense 0-based, which Phase 1 guarantees). Judged Livingston's 3 heuristic weaknesses: none blocks Phase 1 (List view is the lossless backstop); (b) min..max token-span is the highest Phase-2 priority. Captured 4 real-component screenshots (desktop/tablet × light/dark) to session-state `files/`. **Verdict: SHIP Phase 1.**
