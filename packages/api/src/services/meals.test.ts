@@ -756,12 +756,12 @@ describe("meals service", () => {
       };
 
       expect(result.matrixSource).toBe("derived");
-      // Effective group label = authored groupLabel (none) ?? category. Contiguous
-      // equal categories form one group: rows 0–1 "pantry", row 2 "dairy".
+      // P1-9: derived meals are UNGROUPED — category (grocery aisle) is never
+      // used as a group pill, so every effective groupLabel is null.
       expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
-        "pantry",
-        "pantry",
-        "dairy",
+        null,
+        null,
+        null,
       ]);
       // Leading setup verb naming no ingredient → SETUP band, temp subLabel.
       expect(result.instructions[0]).toMatchObject({
@@ -829,10 +829,11 @@ describe("meals service", () => {
       };
 
       expect(result.matrixSource).toBe("authored");
-      // Authored groupLabel wins over category ("Dry", not "pantry").
+      // Authored groupLabel is used ("Dry"); the row with no authored label
+      // stays null — category ("dairy") is never used as a group (P1-9).
       expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
         "Dry",
-        "dairy",
+        null,
       ]);
       // Authored fields pass through verbatim — no re-derivation.
       expect(result.instructions[0]).toMatchObject({

@@ -27,9 +27,11 @@ export type MatrixSource = "authored" | "derived";
 
 /**
  * The subset of a persisted `MealIngredient` that `deriveRecipeMatrix` needs.
- * `groupLabel` is the authored group pill (`null` → derive from `category` at
- * read time); `category` is the free-form grocery aisle used as the derived
- * group. `position` is the durable 0-based row order.
+ * `groupLabel` is the authored group pill and the ONLY source of effective
+ * grouping (`null` → ungrouped; no derived fallback — see below). `category` is
+ * the grocery-aisle vocabulary; it is retained here as part of the persisted
+ * row but is deliberately NOT used to derive groups (grouping by shopping aisle
+ * fights the format). `position` is the durable 0-based row order.
  */
 export interface TabularRecipeIngredientInput {
   position: number;
@@ -60,8 +62,10 @@ export interface TabularRecipeInstructionInput {
 /** Effective group metadata for one ingredient row, ordered by `position`. */
 export interface TabularRecipeIngredientMatrix {
   position: number;
-  /** Effective group pill label: authored `groupLabel`, else `category`, else
-   *  `null` (ungrouped). Contiguous rows with an equal value form one group. */
+  /** Effective group pill label: the authored `groupLabel`, else `null`
+   *  (ungrouped). There is NO derived fallback — `category` (grocery aisle) is
+   *  never used as a group, so derived meals render ungrouped until Phase-2
+   *  authoring. Contiguous rows with an equal non-null value form one group. */
   groupLabel: string | null;
 }
 

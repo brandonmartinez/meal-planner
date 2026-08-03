@@ -46,14 +46,16 @@ describe("deriveRecipeMatrix — ordering", () => {
 });
 
 describe("deriveRecipeMatrix — group runs (effective groupLabel)", () => {
-  it("uses category as the effective group when no authored groupLabel", () => {
+  it("does NOT derive a group from category — a derived meal is ungrouped (all null)", () => {
+    // `category` is the grocery-aisle vocabulary; it must never become a group
+    // pill (P1-9 ruling). With no authored groupLabel the row is ungrouped.
     const matrix = deriveRecipeMatrix(
       [ing(0, "shrimp", "seafood"), ing(1, "flour", "pantry")],
       [],
     );
     expect(matrix.ingredients).toEqual([
-      { position: 0, groupLabel: "seafood" },
-      { position: 1, groupLabel: "pantry" },
+      { position: 0, groupLabel: null },
+      { position: 1, groupLabel: null },
     ]);
   });
 
@@ -62,7 +64,7 @@ describe("deriveRecipeMatrix — group runs (effective groupLabel)", () => {
     expect(matrix.ingredients[0].groupLabel).toBeNull();
   });
 
-  it("authored groupLabel wins over category", () => {
+  it("uses an authored groupLabel (the only source of grouping) and ignores category", () => {
     const matrix = deriveRecipeMatrix(
       [ing(0, "shrimp", "seafood", "Shrimp Mix")],
       [],
@@ -70,21 +72,23 @@ describe("deriveRecipeMatrix — group runs (effective groupLabel)", () => {
     expect(matrix.ingredients[0].groupLabel).toBe("Shrimp Mix");
   });
 
-  it("keeps contiguous same-category runs as repeated labels (renderer builds runs)", () => {
+  it("passes authored group labels through per row; unauthored rows stay null (renderer builds runs)", () => {
+    // Grouping now comes only from authored labels. Category is present on every
+    // row but is intentionally ignored, so unlabeled rows are ungrouped.
     const matrix = deriveRecipeMatrix(
       [
-        ing(0, "beef", "meat"),
-        ing(1, "chicken", "meat"),
+        ing(0, "beef", "meat", "Filling"),
+        ing(1, "chicken", "meat", "Filling"),
         ing(2, "lettuce", "produce"),
-        ing(3, "pork", "meat"),
+        ing(3, "pork", "meat", "Filling"),
       ],
-      [],
+      [step(0, "Combine the filling", { spanFrom: 0, spanTo: 3 })],
     );
     expect(matrix.ingredients.map((i) => i.groupLabel)).toEqual([
-      "meat",
-      "meat",
-      "produce",
-      "meat",
+      "Filling",
+      "Filling",
+      null,
+      "Filling",
     ]);
   });
 });
@@ -325,13 +329,13 @@ describe("deriveRecipeMatrix — provenance & authored passthrough (never clobbe
     });
   });
 
-  it("authored mode still fills a null ingredient groupLabel from category (non-clobbering)", () => {
+  it("authored mode leaves a null ingredient groupLabel null (no category fallback)", () => {
     const matrix = deriveRecipeMatrix(
       [ing(0, "shrimp", "seafood", null), ing(1, "flour", "pantry", "Breading")],
       [step(0, "Coat", { spanFrom: 0, spanTo: 1 })],
     );
     expect(matrix.ingredients).toEqual([
-      { position: 0, groupLabel: "seafood" },
+      { position: 0, groupLabel: null },
       { position: 1, groupLabel: "Breading" },
     ]);
   });

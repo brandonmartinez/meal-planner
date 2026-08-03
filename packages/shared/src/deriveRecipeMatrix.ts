@@ -127,13 +127,19 @@ export function deriveRecipeMatrix(
     (a, b) => a.position - b.position,
   );
 
-  // Effective group label is mode-independent: authored groupLabel, else the
-  // grocery category, else null. Filling a null from category never clobbers
-  // authored data (it was null) and is display-only.
+  // Effective group label: ONLY an authored `groupLabel`. We deliberately do
+  // NOT fall back to `category` — in this app `category` is the grocery-aisle
+  // vocabulary (produce, dairy, pantry, …), so deriving group pills from it
+  // would group ingredients by shopping aisle instead of by order/section of
+  // use, actively fighting the Cooking-for-Engineers format (Chu groups by
+  // recipe section: "Breading", "Remoulade"). So derived meals render with NO
+  // group pills (all null) — the COMMON case on real data until Phase-2
+  // authoring ships. `groupLabel` is display-only and never persisted (spec
+  // §3.4 rule 2; Rusty ruling P1-9, option ii).
   const ingredientMatrix: TabularRecipeIngredientMatrix[] = sortedIngredients.map(
     (ing) => ({
       position: ing.position,
-      groupLabel: ing.groupLabel ?? ing.category ?? null,
+      groupLabel: ing.groupLabel ?? null,
     }),
   );
 
