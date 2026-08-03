@@ -3,8 +3,14 @@ import {
   MEAL_PLACEHOLDER_KINDS,
   MEAL_PLACEHOLDERS,
   PLACEHOLDER_NAMES_LOWER,
+  deriveRecipeMatrix,
 } from "@meal-planner/shared";
-import type { Difficulty, MealListResponseDTO } from "@meal-planner/shared";
+import type {
+  Difficulty,
+  MealListResponseDTO,
+  TabularRecipeIngredientDTO,
+  TabularRecipeInstructionDTO,
+} from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
 import { syncMealTaxonomy } from "./taxonomy.js";
@@ -19,11 +25,12 @@ const MEAL_TAXONOMY_INCLUDE = {
   collections: { include: { recipeCollection: true } },
 } satisfies Prisma.MealInclude;
 
-/** Full detail `include` for single-meal read paths: ingredients, ordered
- *  instructions (issue #100), and taxonomy join rows. Instructions are always
- *  returned in ascending `position` order so callers get a stable step order. */
+/** Full detail `include` for single-meal read paths: ingredients (ordered by
+ *  the durable `position` — the tabular Grid view is order-sensitive and
+ *  instruction spans reference ingredient rows by that order, so a stable order
+ *  is mandatory), ordered instructions (issue #100), and taxonomy join rows. */
 const MEAL_DETAIL_INCLUDE = {
-  ingredients: true,
+  ingredients: { orderBy: { position: "asc" } },
   instructions: { orderBy: { position: "asc" } },
   ...MEAL_TAXONOMY_INCLUDE,
 } satisfies Prisma.MealInclude;
@@ -37,6 +44,30 @@ function mapInstructionCreates(
   return (instructions ?? []).map((step, i) => ({
     text: step.text,
     timerMinutes: step.timerMinutes ?? null,
+    position: i,
+  }));
+}
+
+/** Map ordered ingredient inputs to Prisma create rows, assigning a dense,
+ *  0-based `position` from array index — exactly mirroring
+ *  {@link mapInstructionCreates}. The tabular Grid view is order-sensitive, so
+ *  the input array order (which REST and MCP both already convey) becomes the
+ *  durable row order. Per spec §3.2 this needs no new *input* field. Authored
+ *  layout columns (`groupLabel`) are never written here — they are Phase-2
+ *  editor-only, and `null` means "derive at read time". */
+function mapIngredientCreates(
+  ingredients?: {
+    name: string;
+    quantity?: string;
+    unit?: string;
+    category?: string;
+  }[],
+) {
+  return (ingredients ?? []).map((ing, i) => ({
+    name: ing.name,
+    quantity: ing.quantity,
+    unit: ing.unit,
+    category: ing.category,
     position: i,
   }));
 }
@@ -75,6 +106,113 @@ function mapTaxonomy(meal: TaxonomyJoinRows) {
 /** Return a meal with its join rows replaced by flat taxonomy arrays. */
 function flattenMeal<T extends TaxonomyJoinRows>(meal: T) {
   return { ...meal, ...mapTaxonomy(meal) };
+}
+
+/** The persisted ingredient/instruction shapes this projection reads. */
+type MatrixIngredientRow = {
+  id: string;
+  name: string;
+  quantity: string | null;
+  unit: string | null;
+  category: string | null;
+  mealId: string;
+  position: number;
+  groupLabel: string | null;
+};
+type MatrixInstructionRow = {
+  id: string;
+  mealId: string;
+  position: number;
+  text: string;
+  timerMinutes: number | null;
+  kind: TabularRecipeInstructionDTO["kind"];
+  subLabel: string | null;
+  spanFrom: number | null;
+  spanTo: number | null;
+};
+
+/**
+ * Enrich a detail meal with its tabular ("Grid") recipe DTO shape: `matrixSource`
+ * plus EFFECTIVE per-ingredient `groupLabel` and per-instruction `kind`/
+ * `subLabel`/`spanFrom`/`spanTo`, computed by the pure `deriveRecipeMatrix`
+ * (spec §3.3).
+ *
+ * ANTI-STALENESS (load-bearing): the derived matrix is computed ON EVERY READ
+ * and NEVER written back to the DB — not here, not lazily. Provenance is
+ * structural (`deriveRecipeMatrix` reports `authored` iff any instruction has a
+ * non-null `spanFrom`), so an authored layout is passed through untouched and a
+ * derived one is recomputed each read. This is the deliberate answer to the
+ * grocery-provenance staleness lesson.
+ *
+ * Ingredients are returned ordered ascending by `position` — Linus's Grid
+ * renderer indexes `spanFrom`/`spanTo` into this array, so the order is
+ * load-bearing.
+ */
+function applyRecipeMatrix<
+  M extends {
+    ingredients: MatrixIngredientRow[];
+    instructions: MatrixInstructionRow[];
+  },
+>(meal: M) {
+  const sortedIngredients = [...meal.ingredients].sort(
+    (a, b) => a.position - b.position,
+  );
+  const sortedInstructions = [...meal.instructions].sort(
+    (a, b) => a.position - b.position,
+  );
+
+  const matrix = deriveRecipeMatrix(
+    sortedIngredients.map((ing) => ({
+      position: ing.position,
+      name: ing.name,
+      category: ing.category,
+      groupLabel: ing.groupLabel,
+    })),
+    sortedInstructions.map((ins) => ({
+      position: ins.position,
+      text: ins.text,
+      kind: ins.kind,
+      subLabel: ins.subLabel,
+      spanFrom: ins.spanFrom,
+      spanTo: ins.spanTo,
+    })),
+  );
+
+  // deriveRecipeMatrix returns both arrays sorted ascending by position, so they
+  // align by index with the locally position-sorted rows.
+  const ingredients: TabularRecipeIngredientDTO[] = sortedIngredients.map(
+    (ing, i) => ({
+      id: ing.id,
+      name: ing.name,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      category: ing.category,
+      mealId: ing.mealId,
+      position: ing.position,
+      groupLabel: matrix.ingredients[i].groupLabel,
+    }),
+  );
+
+  const instructions: TabularRecipeInstructionDTO[] = sortedInstructions.map(
+    (ins, i) => ({
+      id: ins.id,
+      mealId: ins.mealId,
+      position: ins.position,
+      text: ins.text,
+      timerMinutes: ins.timerMinutes,
+      kind: matrix.instructions[i].kind,
+      subLabel: matrix.instructions[i].subLabel,
+      spanFrom: matrix.instructions[i].spanFrom,
+      spanTo: matrix.instructions[i].spanTo,
+    }),
+  );
+
+  return {
+    ...meal,
+    matrixSource: matrix.matrixSource,
+    ingredients,
+    instructions,
+  };
 }
 
 /** Calendar-date label (YYYY-MM-DD) of a stored DayPlan/WeekPlan date. Week and
@@ -388,7 +526,7 @@ export async function getMealById(mealId: string, familyId: string) {
     where: { id: mealId, familyId },
     include: MEAL_DETAIL_INCLUDE,
   });
-  return meal ? flattenMeal(meal) : null;
+  return meal ? applyRecipeMatrix(flattenMeal(meal)) : null;
 }
 
 export async function createMeal(
@@ -432,7 +570,7 @@ export async function createMeal(
         rating: data.rating,
         familyId,
         ingredients: data.ingredients?.length
-          ? { create: data.ingredients }
+          ? { create: mapIngredientCreates(data.ingredients) }
           : undefined,
         instructions: data.instructions?.length
           ? { create: mapInstructionCreates(data.instructions) }
@@ -445,7 +583,7 @@ export async function createMeal(
       where: { id: meal.id },
       include: MEAL_DETAIL_INCLUDE,
     });
-    return flattenMeal(withTaxonomy);
+    return applyRecipeMatrix(flattenMeal(withTaxonomy));
   });
 }
 
@@ -514,7 +652,7 @@ export async function updateMeal(
         rating: data.rating,
         ingredients:
           data.ingredients !== undefined
-            ? { create: data.ingredients }
+            ? { create: mapIngredientCreates(data.ingredients) }
             : undefined,
         instructions:
           data.instructions !== undefined
@@ -528,7 +666,7 @@ export async function updateMeal(
       where: { id: mealId },
       include: MEAL_DETAIL_INCLUDE,
     });
-    return flattenMeal(meal);
+    return applyRecipeMatrix(flattenMeal(meal));
   });
 }
 
@@ -639,7 +777,7 @@ export async function importMeals(
               favorite: data.favorite,
               rating: data.rating,
               ingredients: data.ingredients?.length
-                ? { create: data.ingredients }
+                ? { create: mapIngredientCreates(data.ingredients) }
                 : undefined,
               instructions: data.instructions?.length
                 ? { create: mapInstructionCreates(data.instructions) }
@@ -667,7 +805,7 @@ export async function importMeals(
             rating: data.rating,
             familyId,
             ingredients: data.ingredients?.length
-              ? { create: data.ingredients }
+              ? { create: mapIngredientCreates(data.ingredients) }
               : undefined,
             instructions: data.instructions?.length
               ? { create: mapInstructionCreates(data.instructions) }
@@ -700,6 +838,7 @@ export async function exportMeals(familyId: string) {
     where: { familyId, placeholderKind: null },
     include: {
       ingredients: {
+        orderBy: { position: "asc" },
         select: { name: true, quantity: true, unit: true, category: true },
       },
       instructions: {
