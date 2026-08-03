@@ -48,7 +48,7 @@ function step(
 }
 
 function meal(overrides: Partial<TabularRecipeMealDTO> = {}): TabularRecipeMealDTO {
-  return {
+  const base: TabularRecipeMealDTO = {
     id: 'm-1',
     name: 'Cookies',
     placeholderKind: null,
@@ -64,7 +64,15 @@ function meal(overrides: Partial<TabularRecipeMealDTO> = {}): TabularRecipeMealD
     matrixSource: 'derived',
     ingredients: [],
     instructions: [],
+    ingredientDisplayOrder: [],
     ...overrides,
+  };
+  // Default to identity (Grid order == position order) unless a test pins its
+  // own display order, so pre-use-ordering fixtures render exactly as before.
+  return {
+    ...base,
+    ingredientDisplayOrder:
+      overrides.ingredientDisplayOrder ?? base.ingredients.map((_, i) => i),
   };
 }
 
@@ -281,5 +289,64 @@ describe('TabularRecipeView', () => {
       expect(th.className).not.toContain('border-l-blue-500');
       expect(th.className).not.toContain('border-l-amber-500');
     }
+  });
+
+  it('notes the Grid use-order for derived meals, but not authored ones', () => {
+    const { rerender } = render(
+      <TabularRecipeView
+        meal={meal({
+          matrixSource: 'derived',
+          ingredients: [ing(0, 'Butter'), ing(1, 'Sugar')],
+          instructions: [step(0, 'cream', 'PROCESS', 0, 1)],
+        })}
+      />,
+    );
+    expect(
+      screen.getByText(/listed in the order the recipe uses them/i),
+    ).toBeInTheDocument();
+
+    // Authored meals render in position order (== List), so no divergence note.
+    rerender(
+      <TabularRecipeView
+        meal={meal({
+          matrixSource: 'authored',
+          ingredients: [ing(0, 'Butter'), ing(1, 'Sugar')],
+          instructions: [step(0, 'cream', 'PROCESS', 0, 1)],
+        })}
+      />,
+    );
+    expect(
+      screen.queryByText(/listed in the order the recipe uses them/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders rows in ingredientDisplayOrder and links spans to display rows', () => {
+    render(
+      <TabularRecipeView
+        meal={meal({
+          ingredients: [ing(0, 'Apple'), ing(1, 'Butter'), ing(2, 'Cocoa')],
+          // Display order re-sorts rows to Cocoa, Apple, Butter (use-order).
+          ingredientDisplayOrder: [2, 0, 1],
+          // Span is in DISPLAY coords: display rows 0–1 (Cocoa, Apple).
+          instructions: [step(0, 'melt together', 'PROCESS', 0, 1)],
+        })}
+      />,
+    );
+
+    const rowHeaders = screen.getAllByRole('rowheader');
+    expect(rowHeaders.map((th) => th.textContent)).toEqual([
+      expect.stringContaining('Cocoa'),
+      expect.stringContaining('Apple'),
+      expect.stringContaining('Butter'),
+    ]);
+
+    // The step cell spans the first two DISPLAY rows and its a11y `headers`
+    // reference the consecutive display row ids (row-0, row-1), never position.
+    const cell = screen.getByRole('cell', { name: /melt together/i });
+    expect(cell).toHaveAttribute('rowspan', '2');
+    const headers = cell.getAttribute('headers') ?? '';
+    expect(headers).toContain('tabular-m-1-row-0');
+    expect(headers).toContain('tabular-m-1-row-1');
+    expect(headers).not.toContain('tabular-m-1-row-2');
   });
 });

@@ -7,6 +7,18 @@
  * them. This is the port of the prototype's `buildColumnCells()` plus the
  * column-assignment the prototype hand-authored.
  *
+ * Row order (Grid use-order, contract `ad63eb8`): the k-th Grid row is
+ * `ingredients[ingredientDisplayOrder[k]]`, top→bottom. Derived meals get a
+ * first-use permutation (so a step brackets only the ingredients it names);
+ * authored meals get the identity permutation (display == position). We walk
+ * `ingredientDisplayOrder` and index into the canonical, `position`-ordered
+ * `ingredients` array — we never re-sort `ingredients`, because it is the shared
+ * coordinate system for List / Grocery / Cooking-Mode / `MealDetailModal`.
+ * `spanFrom`/`spanTo` are already in DISPLAY coordinates (indices into
+ * `ingredientDisplayOrder`), so the rowspan/cascade math below is unchanged —
+ * `TabularRow.rowIndex` is the display walk index `k`, which keeps every step
+ * cell's `headers`/`scope` a11y linkage referencing consecutive display rows.
+ *
  * Column assignment (the cascade): PROCESS steps are visited in `position`
  * order. Each step sits one column to the RIGHT of the right-most EARLIER step
  * whose ingredient-row range it overlaps — because a later stage acts on the
@@ -96,6 +108,26 @@ function overlaps(a: { from: number; to: number }, b: { from: number; to: number
 }
 
 /**
+ * Resolve the Grid display order to a trusted permutation of `0..n-1`. The
+ * contract guarantees `ingredientDisplayOrder` is exactly that, but we validate
+ * defensively: a missing, wrong-length, or non-permutation value (e.g. an older
+ * API that predates `ad63eb8`, or a malformed fixture) falls back to the
+ * identity order so the Grid degrades to `position` order instead of dropping or
+ * duplicating rows. Under identity, display == position and behaviour is
+ * unchanged from before the use-ordering contract.
+ */
+function resolveDisplayOrder(order: number[] | undefined, n: number): number[] {
+  const identity = Array.from({ length: n }, (_, i) => i);
+  if (!order || order.length !== n) return identity;
+  const seen = new Array(n).fill(false);
+  for (const idx of order) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= n || seen[idx]) return identity;
+    seen[idx] = true;
+  }
+  return order;
+}
+
+/**
  * Port of the prototype's `buildColumnCells`: paint each row with its owning
  * segment, then compress contiguous equal owners into cells. Returns a map from
  * a starting row index to the cell that begins there (rows with no entry are
@@ -125,11 +157,17 @@ function buildColumnCells(segments: PlacedStep[], n: number): Map<number, Tabula
 }
 
 export function buildTabularRecipe(
-  meal: Pick<TabularRecipeMealDTO, 'ingredients' | 'instructions'>,
+  meal: Pick<TabularRecipeMealDTO, 'ingredients' | 'instructions'> & {
+    ingredientDisplayOrder?: number[];
+  },
 ): TabularRecipeLayout {
-  const ingredients = [...meal.ingredients].sort((a, b) => a.position - b.position);
+  // `ingredients` is the canonical, position-ordered coordinate system shared
+  // with List/Grocery/Cooking-Mode — never re-sort it. The Grid row order comes
+  // from `ingredientDisplayOrder`; spans already index into that display order.
+  const { ingredients } = meal;
   const instructions = [...meal.instructions].sort((a, b) => a.position - b.position);
   const n = ingredients.length;
+  const displayOrder = resolveDisplayOrder(meal.ingredientDisplayOrder, n);
 
   const setup = instructions.filter((i) => i.kind === 'SETUP');
   const finish = instructions.filter((i) => i.kind === 'FINISH');
@@ -159,12 +197,15 @@ export function buildTabularRecipe(
     columnStartCells.push(buildColumnCells(placed.filter((p) => p.column === c), n));
   }
 
-  // Group = contiguous run of equal, non-null groupLabel. A null breaks a run,
-  // so an equal label after a gap starts a fresh (recoloured) run.
+  // Group = contiguous run of equal, non-null groupLabel — contiguous in the
+  // DISPLAY order the cook actually sees, so runs and colour rotation follow the
+  // rendered rows, not position. A null breaks a run, so an equal label after a
+  // gap starts a fresh (recoloured) run.
   let runIndex = -1;
   let prevLabel: string | null = null;
 
-  const rows: TabularRow[] = ingredients.map((ingredient, r) => {
+  const rows: TabularRow[] = displayOrder.map((ingredientIndex, r) => {
+    const ingredient = ingredients[ingredientIndex];
     const label = ingredient.groupLabel;
     const isGroupStart = label != null && label !== prevLabel;
     if (isGroupStart) runIndex++;

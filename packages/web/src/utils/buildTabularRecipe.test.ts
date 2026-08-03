@@ -224,13 +224,96 @@ describe('buildTabularRecipe', () => {
     ]);
   });
 
-  it('sorts ingredients and instructions by position before laying out', () => {
+  it('orders setup bands and finish notes by instruction position', () => {
     const layout = buildTabularRecipe({
-      ingredients: [ing(1, 'second'), ing(0, 'first')],
-      instructions: [step(0, 'mix', 'PROCESS', 0, 1)],
+      ingredients: [ing(0, 'A')],
+      instructions: [
+        step(3, 'setup B', 'SETUP'),
+        step(1, 'setup A', 'SETUP'),
+        step(4, 'finish', 'FINISH'),
+      ],
     });
 
-    expect(layout.rows.map((r) => r.ingredient.name)).toEqual(['first', 'second']);
+    // Instructions are still normalised to position order for setup/finish and
+    // the PROCESS cascade, independent of the ingredient display order.
+    expect(layout.setup.map((s) => s.text)).toEqual(['setup A', 'setup B']);
+    expect(layout.finish.map((s) => s.text)).toEqual(['finish']);
+  });
+
+  it('walks ingredientDisplayOrder to order Grid rows (Birria use-order fix)', () => {
+    // Ingredients are stored in shopping (position) order; the Grid renders them
+    // in use order so a step brackets only the rows it names. Names encode the
+    // source position so the permutation is visible.
+    const ingredients = Array.from({ length: 8 }, (_, i) => ing(i, `pos-${i}`));
+    const layout = buildTabularRecipe({
+      ingredients,
+      ingredientDisplayOrder: [1, 2, 3, 0, 6, 4, 5, 7],
+      instructions: [step(0, 'Braise', 'PROCESS', 0, 4)],
+    });
+
+    // Grid rows follow the display permutation, not position.
+    expect(layout.rows.map((r) => r.ingredient.name)).toEqual([
+      'pos-1',
+      'pos-2',
+      'pos-3',
+      'pos-0',
+      'pos-6',
+      'pos-4',
+      'pos-5',
+      'pos-7',
+    ]);
+    // rowIndex is the consecutive display walk index — the a11y `headers` wiring
+    // in TabularRecipeView references ingRowId(rowIndex + i) across a rowspan.
+    expect(layout.rows.map((r) => r.rowIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    // The braise spans display rows 0..4 (its used ingredients); the trailing
+    // rows (the shopping-order tail it never mentions) fall outside the bracket.
+    expect(columnCells(layout, 0)).toEqual([
+      { row: 0, span: 5, label: 'Braise' },
+      { row: 5, span: 3, label: 'GAP' },
+    ]);
+  });
+
+  it('falls back to position order when ingredientDisplayOrder is absent (authored/identity)', () => {
+    const ingredients = Array.from({ length: 3 }, (_, i) => ing(i, `pos-${i}`));
+    const layout = buildTabularRecipe({
+      ingredients,
+      instructions: [step(0, 'mix', 'PROCESS', 0, 2)],
+    });
+
+    expect(layout.rows.map((r) => r.ingredient.name)).toEqual(['pos-0', 'pos-1', 'pos-2']);
+    expect(columnCells(layout, 0)).toEqual([{ row: 0, span: 3, label: 'mix' }]);
+  });
+
+  it('falls back to identity for a malformed (non-permutation) display order', () => {
+    const ingredients = Array.from({ length: 3 }, (_, i) => ing(i, `pos-${i}`));
+    for (const bad of [[0, 1], [0, 1, 1], [0, 1, 3], [2, 1, 0, 2]]) {
+      const layout = buildTabularRecipe({
+        ingredients,
+        ingredientDisplayOrder: bad,
+        instructions: [],
+      });
+      expect(layout.rows.map((r) => r.ingredient.name)).toEqual(['pos-0', 'pos-1', 'pos-2']);
+    }
+  });
+
+  it('computes group runs over the display order, not position', () => {
+    // Positions interleave two groups; the display order de-interleaves them, so
+    // the pills must form two contiguous runs in the rendered (display) order.
+    const layout = buildTabularRecipe({
+      ingredients: [
+        ing(0, 'A', 'Sauce'),
+        ing(1, 'B', 'Rub'),
+        ing(2, 'C', 'Sauce'),
+        ing(3, 'D', 'Rub'),
+      ],
+      ingredientDisplayOrder: [0, 2, 1, 3],
+      instructions: [],
+    });
+
+    expect(layout.rows.map((r) => r.ingredient.name)).toEqual(['A', 'C', 'B', 'D']);
+    expect(layout.rows.map((r) => r.groupLabel)).toEqual(['Sauce', 'Sauce', 'Rub', 'Rub']);
+    expect(layout.rows.map((r) => r.isGroupStart)).toEqual([true, false, true, false]);
+    expect(layout.rows.map((r) => r.groupIndex)).toEqual([0, 0, 1, 1]);
   });
 
   it('returns an empty layout for a recipe with no ingredients', () => {

@@ -292,6 +292,7 @@ describe('CookingModePage — List/Grid toggle', () => {
         },
       ],
       matrixSource: 'derived',
+      ingredientDisplayOrder: [0, 1],
     });
   }
 

@@ -155,6 +155,7 @@ function serve(rawIngredients: RawRow[], rawSteps: string[]): TabularRecipeMealD
     matrixSource: matrix.matrixSource,
     ingredients,
     instructions,
+    ingredientDisplayOrder: matrix.ingredientDisplayOrder,
   };
 }
 

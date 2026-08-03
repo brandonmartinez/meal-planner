@@ -157,6 +157,13 @@ export default function TabularRecipeView({ meal }: { meal: TabularRecipeMealDTO
         </table>
       </div>
 
+      {meal.matrixSource === 'derived' && (
+        <p className="mt-2 px-1 text-xs text-gray-500 dark:text-gray-400">
+          Ingredients are listed in the order the recipe uses them, so this order
+          can differ from the List view.
+        </p>
+      )}
+
       {finish.length > 0 && (
         <div className="mt-3 space-y-1 px-1 text-sm text-gray-600 dark:text-gray-300">
           {finish.map((note) => (

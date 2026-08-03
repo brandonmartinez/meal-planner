@@ -87,3 +87,26 @@ Brandon found "Cook the spaghetti in a large pot of salted" in the Marinara rend
 **Width check:** process `<td>` is `min-w-[6rem]` with NO `max-w` / NO `whitespace-nowrap`, inside `overflow-x-auto`. Longer full-text labels wrap vertically (taller cell), never a horizontal matrix blowout. Worst realistic case "Cook the spaghetti in a large pot of salted water" wraps to ~3 lines. Acceptable — the err-long cost is a little row height.
 
 Commit `<pending>`. Validated: web build ✓, lint 0 ✓, tests **700** ✓ (shortStepLabel 28 + adversarial 20, whole web suite green).
+
+### 2026-08-03T16:12:04-04:00 — Grid ingredient use-ordering (web half of `ad63eb8`)
+
+Livingston shipped the shared/API half (`ad63eb8`): new **non-nullable** `ingredientDisplayOrder: number[]` on `TabularRecipeMealDTO`, a permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row. `spanFrom`/`spanTo` now index into the DISPLAY order, not `position`. Motivation: measured against Brandon's real 74-meal library, 43% of PROCESS steps over-bracketed because ingredients are stored in *shopping* order; Chu's format needs *use* order (Birria braise was bracketing tortillas + cheese).
+
+**`buildTabularRecipe.ts`:**
+- Deleted the ingredient `position`-sort (now *actively wrong* — it fought the display order). `ingredients` is used as-is: the canonical, `position`-ordered coordinate system shared with List/Grocery/Cooking-Mode/`MealDetailModal`, never re-sorted here.
+- Added `resolveDisplayOrder(order, n)`: validates a true permutation of `0..n-1`; missing/wrong-length/non-permutation → identity fallback (degrades to `position` order — covers an older API pre-`ad63eb8` or a malformed fixture without dropping/duplicating rows).
+- Row loop walks `displayOrder.map((ingredientIndex, r) => …)` indexing `ingredients[ingredientIndex]`, `rowIndex: r` = the consecutive display walk index. Spans are already display coords, so the cascade/rowspan math AND the view's `headers`/`scope` a11y linkage (`ingRowId(row.rowIndex + i)`) are unchanged — zero renderer logic change.
+- Group runs now computed over DISPLAY order (what the cook sees). Instruction `position`-sort kept (PROCESS cascade order is independent of display order).
+- Function param widened to `…& { ingredientDisplayOrder?: number[] }` (optional at the boundary for the 10 legacy unit tests + defensive fallback; the required-field DTO stays assignable).
+
+**`TabularRecipeView.tsx` (only change beyond leaving it untouched):** added a small visible note for `matrixSource === 'derived'` — "Ingredients are listed in the order the recipe uses them, so this order can differ from the List view." Rusty ruled the List/Grid order divergence acceptable but wanted it stated; a mid-recipe toggle shouldn't read as "ingredients vanished". Authored meals (identity == List order) get NO note.
+
+**UX call:** shown only for derived meals, muted `text-xs` footnote directly under the grid. Authored = identity = same as List, so no note needed there.
+
+**Cross-step reuse over-bracketing is intrinsic** (a rowspan table renders a tree; genuine reuse is a DAG) — NOT fixed in web, NO test asserts zero over-bracketing (would assert something false). Only Phase-2 authored spans close it.
+
+**Regression confirmation:** all seven short-label defect families still green (`shortStepLabel` 28 + adversarial 35 untouched); column assignment, gap compression, and rowspan `headers`/`scope` a11y wiring intact (new view test asserts rows render in `ingredientDisplayOrder` and a span's `headers` reference consecutive DISPLAY row ids, never position). Pipeline test now wires the real `matrix.ingredientDisplayOrder` end-to-end (po'boy derives to identity, so its render assertions hold).
+
+**Tests:** `buildTabularRecipe.test.ts` +5 (Birria `[1,2,3,0,6,4,5,7]` braise `0..4` walk; identity fallback; malformed-permutation fallback; group runs over display order; instruction-position sort). `TabularRecipeView.test.tsx` +2 (use-order note derived/authored; display-order render + a11y linkage). Fixtures updated for the required DTO field (pipeline `serve()`, `meal()` factory identity default, `CookingModePage` fixture).
+
+Commit `<pending>`. Validated: web build ✓, lint 0 ✓, tests **706** ✓ (was 700; +5 build +2 view −1 obsolete).
