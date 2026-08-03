@@ -300,6 +300,84 @@ describe("deriveRecipeMatrix — phrase-specificity matching (token collisions)"
   });
 });
 
+describe("deriveRecipeMatrix — ingredient-side specificity (full-consumption)", () => {
+  /** Mirror of the phrase-specificity helper: display span → ingredient names. */
+  function spannedNames(
+    matrix: ReturnType<typeof deriveRecipeMatrix>,
+    ingredients: TabularRecipeIngredientInput[],
+    i: number,
+  ): string[] {
+    const ins = matrix.instructions[i];
+    if (ins.spanFrom == null || ins.spanTo == null) return [];
+    const byPosition = [...ingredients].sort((a, b) => a.position - b.position);
+    return matrix.ingredientDisplayOrder
+      .slice(ins.spanFrom, ins.spanTo + 1)
+      .map((r) => byPosition[r].name);
+  }
+
+  it("a bare token prefers the fully-consumed name ('olives' → Olives, not Olive oil)", () => {
+    // The mirror of the phrase-specificity case: here the disambiguation lives on
+    // the INGREDIENT side. "olives" fully accounts for `Olives` but leaves the core
+    // token `oil` unmatched in `Olive oil`, so Olives wins and Olive oil is suppressed.
+    const ingredients = [
+      ing(0, "Feta"),
+      ing(1, "Olives"),
+      ing(2, "Olive oil"),
+    ];
+    const instructions = [step(0, "Toss the feta and olives together")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    const names = spannedNames(matrix, ingredients, 0);
+    expect(names).toContain("Olives");
+    expect(names).not.toContain("Olive oil");
+  });
+
+  it("the compound still matches via its own distinct token ('olive oil' → Olive oil)", () => {
+    const ingredients = [ing(0, "Olives"), ing(1, "Olive oil")];
+    const instructions = [step(0, "Drizzle with olive oil")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual(["Olive oil"]);
+  });
+
+  it("a lone compound is NEVER suppressed — a bare token still matches it (no under-matching)", () => {
+    // The regression the ruling explicitly warned about: a recipe with ONLY
+    // "Onion powder" (no plain onion) and a step saying "onion" must still match.
+    // Full-consumption only evicts when a fully-consumed CO-COVERING candidate
+    // exists at the same position; a lone candidate always matches.
+    const ingredients = [ing(0, "Onion powder"), ing(1, "Paprika")];
+    const instructions = [step(0, "Season with onion and paprika")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toContain("Onion powder");
+  });
+
+  it("keeps BOTH when neither compound is fully consumed by the reference (no guessing)", () => {
+    // "tomato" leaves a core token unaccounted-for in each name, so nothing is
+    // strictly more specific. We do not guess a winner — both stay, per the
+    // established "prefer the error that doesn't state something false" principle.
+    const ingredients = [ing(0, "Tomato paste"), ing(1, "Tomato sauce")];
+    const instructions = [step(0, "Stir in the tomato")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    const names = spannedNames(matrix, ingredients, 0);
+    expect(names).toContain("Tomato paste");
+    expect(names).toContain("Tomato sauce");
+  });
+
+  it("leftover MODIFIER tokens do not penalize a candidate ('basil' → both Basil and Fresh basil)", () => {
+    // Only leftover CORE tokens weaken a candidate. "Fresh basil" has core {basil},
+    // which "basil" fully consumes, so it is not evicted by the plain "Basil".
+    const ingredients = [ing(0, "Basil"), ing(1, "Fresh basil")];
+    const instructions = [step(0, "Top with basil")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    const names = spannedNames(matrix, ingredients, 0);
+    expect(names).toContain("Basil");
+    expect(names).toContain("Fresh basil");
+  });
+});
+
 describe("deriveRecipeMatrix — degenerate no-match case", () => {
   it("a PROCESS step naming no ingredient spans ALL rows (intentional, not a bug)", () => {
     const ingredients = [ing(0, "flour"), ing(1, "sugar"), ing(2, "eggs")];

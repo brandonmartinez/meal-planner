@@ -275,16 +275,41 @@ function deriveInstructions(
    *   2. For each ingredient, find every maximal run of step tokens that all
    *      belong to that ingredient AND are truly adjacent (no gap); a run is a
    *      candidate "occurrence" iff it contains ≥1 CORE token (a modifier alone
-   *      can't anchor). Occurrence specificity = number of DISTINCT ingredient
-   *      tokens in it.
-   *   3. Each step position is won by the max-specificity occurrence covering it.
-   *      An ingredient matches iff it has an occurrence that ties the winning
-   *      specificity at ≥1 of its positions.
+   *      can't anchor). Each occurrence records:
+   *        - `spec`          = number of DISTINCT ingredient tokens matched
+   *                            (STEP-side specificity — a longer adjacent phrase
+   *                            in the step is stronger evidence);
+   *        - `unmatchedCore` = number of the ingredient's CORE tokens NOT in the
+   *                            run (INGREDIENT-side specificity — how much of the
+   *                            name is left unaccounted for; leftover *modifiers*
+   *                            never count, so "Fresh basil" isn't penalised vs
+   *                            "Basil").
+   *   3. Each step position is won by the occurrence with the highest `spec`,
+   *      then — among those — by whether it FULLY consumes its name
+   *      (`unmatchedCore === 0`). An ingredient matches iff it has an occurrence
+   *      that ties the winning keys at ≥1 of its positions.
    *
-   * Ties (equal max specificity — genuine ambiguity, e.g. "combine the flours"
-   * with two `… flour` rows, or Birria's scattered "beef … broth") resolve to
-   * "match both": we only ever DROP a match when a strictly more specific phrase
-   * explains the exact region — never on a guess. This follows the established
+   * The two tiebreaks are mirror images:
+   *   - `spec` fixes "Ground beef" vs "Beef broth" on a step saying "ground beef"
+   *     (the longer phrase in the STEP wins the shared "beef");
+   *   - full-consumption fixes "Olives" vs "Olive oil" on a step saying "olives"
+   *     ("olives" fully consumes `Olives` but leaves `oil` unmatched in
+   *     `Olive oil`, so the fully-consumed NAME wins).
+   *
+   * Full-consumption is deliberately BINARY (leftover core vs none), not a count.
+   * A count would wrongly suppress the correct-but-longer referent: in Birria
+   * "braise the beef …" the "beef" token fits both `beef chuck roast` (2 leftover
+   * core) and `beef broth` (1 leftover) — neither is fully consumed, so both must
+   * stay. Only a candidate that leaves NOTHING unaccounted for may evict others.
+   *
+   * Neither tiebreak is a guess: both are objective, and full-consumption only
+   * evicts when a co-covering occurrence consumes its whole name — a lone
+   * candidate always matches regardless of leftover core, so a recipe with only
+   * "Onion powder" still matches a step saying "onion". Remaining true ties
+   * (equal spec, and none fully consumed — e.g. "combine the flours" with two
+   * `… flour` rows, or Birria's scattered "beef … broth") resolve to "match
+   * both". We only ever DROP a match when something strictly more specific
+   * explains the region — never on a guess. This follows the established
    * principle from the label work: prefer the error that doesn't state something
    * false. A wrongly-suppressed match under-brackets; a wrongly-added one
    * corrupts the first-use permutation and over-brackets.
@@ -298,6 +323,8 @@ function deriveInstructions(
       start: number;
       end: number;
       spec: number;
+      /** True when the run matches ALL of the ingredient's core tokens. */
+      fullyConsumed: boolean;
     }
 
     const occurrences: Occ[][] = ingredientSets.map(({ all, core }) => {
@@ -316,18 +343,37 @@ function deriveInstructions(
           if (core.has(step[e].t)) hasCore = true;
           e++;
         }
-        if (hasCore) occs.push({ start: s, end: e - 1, spec: seen.size });
+        if (hasCore) {
+          let fullyConsumed = true;
+          for (const c of core) {
+            if (!seen.has(c)) {
+              fullyConsumed = false;
+              break;
+            }
+          }
+          occs.push({ start: s, end: e - 1, spec: seen.size, fullyConsumed });
+        }
         s = e;
       }
       return occs;
     });
 
-    // Winning (max) specificity claimed at each step position.
+    // Winning keys at each step position: highest `spec`, then — among the spec
+    // winners — whether any of them is fully consumed.
     const bestSpec = new Array<number>(m).fill(0);
     for (const occs of occurrences) {
       for (const o of occs) {
         for (let p = o.start; p <= o.end; p++) {
           if (o.spec > bestSpec[p]) bestSpec[p] = o.spec;
+        }
+      }
+    }
+    const hasFull = new Array<boolean>(m).fill(false);
+    for (const occs of occurrences) {
+      for (const o of occs) {
+        if (!o.fullyConsumed) continue;
+        for (let p = o.start; p <= o.end; p++) {
+          if (o.spec === bestSpec[p]) hasFull[p] = true;
         }
       }
     }
@@ -337,7 +383,9 @@ function deriveInstructions(
       let claims = false;
       for (const o of occurrences[r]) {
         for (let p = o.start; p <= o.end; p++) {
-          if (o.spec === bestSpec[p]) {
+          // Claim p iff we tie the winning spec AND (either no co-covering
+          // occurrence fully consumes its name, or we do too).
+          if (o.spec === bestSpec[p] && (!hasFull[p] || o.fullyConsumed)) {
             claims = true;
             break;
           }
