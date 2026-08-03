@@ -1,20 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getMeal } from '../api/meals';
+import { getTabularMeal } from '../api/meals';
 import { useFamily } from '../hooks/useFamily';
-import type { Meal, MealIngredient, MealInstruction } from '@meal-planner/shared';
+import { useRecipeViewMode } from '../hooks/useRecipeViewMode';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import type { MealInstruction, TabularRecipeMealDTO } from '@meal-planner/shared';
 import LoadingSpinner from '../components/LoadingSpinner';
 import CookTimer from '../components/CookTimer';
+import RecipeViewToggle from '../components/RecipeViewToggle';
+import TabularRecipeView from '../components/TabularRecipeView';
+import { formatIngredient } from '../utils/formatIngredient';
 
-type LoadedMeal = Meal & { ingredients: MealIngredient[] };
-
-/** Format an ingredient row into a single readable line (e.g. "2 cups flour"). */
-function formatIngredient(ingredient: MealIngredient): string {
-  return [ingredient.quantity, ingredient.unit, ingredient.name]
-    .map(part => part?.trim())
-    .filter(Boolean)
-    .join(' ');
-}
+type LoadedMeal = TabularRecipeMealDTO;
 
 /** Toggle a value's membership in a Set, returning a new Set (immutable update). */
 function toggleInSet(set: Set<string>, id: string): Set<string> {
@@ -41,6 +38,10 @@ export default function CookingModePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const { viewMode, setViewMode } = useRecipeViewMode();
+  // Below `sm` a rowspan grid is unusable, so Grid degrades to List (spec §8).
+  const isWideViewport = useMediaQuery('(min-width: 640px)');
+
   const [checkedIngredients, setCheckedIngredients] = useState<Set<string>>(new Set());
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
 
@@ -48,7 +49,7 @@ export default function CookingModePage() {
     if (!familyId || !mealId) return;
     setLoading(true);
     setError('');
-    getMeal(familyId, mealId)
+    getTabularMeal(familyId, mealId)
       .then(setMeal)
       .catch(() => setError('Failed to load recipe'))
       .finally(() => setLoading(false));
@@ -118,6 +119,10 @@ export default function CookingModePage() {
   const toggleStep = (id: string) =>
     setCompletedSteps(prev => toggleInSet(prev, id));
 
+  // Grid is only legible with room to spread; on phones we always show List even
+  // when Grid is the persisted preference (the toggle still reflects it).
+  const showGrid = viewMode === 'grid' && isWideViewport;
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-4">
@@ -129,15 +134,36 @@ export default function CookingModePage() {
         </Link>
       </div>
 
-      <header>
-        <h1 className="text-3xl font-bold">{meal.name}</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Cooking mode — check off ingredients and steps as you go. Timers run on
-          this device only.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">{meal.name}</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Cooking mode — check off ingredients and steps as you go. Timers run on
+            this device only.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <RecipeViewToggle value={viewMode} onChange={setViewMode} />
+          {viewMode === 'grid' && !isWideViewport && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Grid view opens on larger screens.
+            </p>
+          )}
+        </div>
       </header>
 
-      <section className="mt-8" aria-labelledby="cook-ingredients-heading">
+      {showGrid ? (
+        <section className="mt-8" aria-labelledby="cook-grid-heading">
+          <h2 id="cook-grid-heading" className="text-xl font-semibold">
+            Recipe grid
+          </h2>
+          <div className="mt-3">
+            <TabularRecipeView meal={meal} />
+          </div>
+        </section>
+      ) : (
+        <>
+          <section className="mt-8" aria-labelledby="cook-ingredients-heading">
         <h2 id="cook-ingredients-heading" className="text-xl font-semibold">
           Ingredients
         </h2>
@@ -236,6 +262,8 @@ export default function CookingModePage() {
           </p>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

@@ -69,3 +69,16 @@ Moved the Week Plan header actions (Grocery List, Repeat a previous week, Apply 
 ### 2026-07-28T13:55:00-04:00 — Week Plan header action row edge cases
 
 Week Plan title/date now own the first header row, while Grocery List and parent actions live in a dedicated `role="group"` Week actions row below. Past weeks omit the row entirely; non-parent viewers still get Grocery List only. Tests should assert row membership and the absence of the action-row heading in omitted cases.
+
+### 2026-08-03T11:00:32-04:00 — Tabular "Grid" recipe view (P1-6/7/8)
+
+Shipped the visible half of the Cooking-for-Engineers Grid mode, web-only, against Livingston's pinned `@meal-planner/shared` DTOs (`TabularRecipeMealDTO`).
+- `useRecipeViewMode` hook — `localStorage['recipeViewMode']` (`'list'|'grid'`, default `'list'`), SSR-guarded + try/catch, mirrors `ThemeContext`.
+- `useMediaQuery` hook — powers the sub-`sm` degrade-to-List (§8).
+- `utils/buildTabularRecipe.ts` — presentation layout (ported `buildColumnCells` + gap compression). **Column assignment = cascade:** each PROCESS step (position order) sits one column right of the right-most EARLIER step whose row range it overlaps; non-overlapping steps share col 0. Proven to reproduce the prototype's cookies/aglio/po'boy columns exactly and to leave no empty columns.
+- `TabularRecipeView` — real `<table>` with `<caption>`, `<th scope="row">` sticky ingredient column, SETUP `<th scope="colgroup">` bands, rowspan step `<td>`s `headers`-linked to their column + spanned ingredient rows, gap cells `aria-hidden`, group pills once per contiguous `groupLabel` run (rotating border colours), FINISH note below. Tailwind tokens (blue accent + gray surfaces), not the prototype's raw `--cp-*`.
+- `RecipeViewToggle` — labelled button group with `aria-pressed`, controlled by the page.
+- Wired into `CookingModePage`: List (existing checklist) vs Grid, toggle in header, degrade hint on phones. Lifted `formatIngredient` to `utils/`. Switched the page's load to a new `getTabularMeal()` client (same meal-detail endpoint, wider DTO).
+
+Verify: web build ✓, lint 0 ✓, tests 623 ✓ (37 new across 5 files).
+Stub note: `getTabularMeal` casts the meal-detail response to `TabularRecipeMealDTO`; when Livingston's derive-on-read path isn't yet serving the new fields the Grid degrades gracefully (List always correct). Tests drive the real shape via MSW fixtures.
