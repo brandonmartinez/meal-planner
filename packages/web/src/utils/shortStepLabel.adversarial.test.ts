@@ -107,3 +107,49 @@ describe('shortStepLabel — Defect 2: no mid-phrase fragments', () => {
     }
   });
 });
+
+/**
+ * FIFTH FAMILY (Yen, 2026-08-03 sweep after d467f29) — the same root cause as
+ * DEFECT 1, one layer deeper. The opener skip only recognizes adverbial *words*
+ * (`OPENERS`) and only inspects the clause's FIRST token, so a leading
+ * comma-clause that is a PREPOSITIONAL phrase ("In a large bowl", "For the
+ * sauce", "Off the heat", "To finish", "With the mixer running") or a NUMERIC /
+ * timing phrase ("2 minutes before serving", "30 seconds later", "5 minutes in")
+ * is treated as the instruction and PROMOTED to the whole label — dropping the
+ * real imperative that follows. These are extremely common recipe openers, and
+ * every one renders a Grid cell that reads as a non-instruction.
+ *
+ * Suggested fix (Linus): in isOpenerClause, also treat a clause as a non-
+ * instruction opener when its lead token is a preposition (in/for/to/with/on/
+ * at/from/of/off/over/under/by) or a digit/measurement — i.e. skip any leading
+ * clause not headed by a verb, then fall back to full text if all are skipped.
+ *
+ * Written as `it.fails`: green today (does not break the shared worktree/CI),
+ * flips RED when fixed — at which point drop `.fails` and keep the assertion.
+ */
+describe('shortStepLabel — FIFTH FAMILY: prepositional / numeric openers (it.fails)', () => {
+  it.fails('"In a large bowl, whisk the eggs" must keep the imperative', () => {
+    expect(shortStepLabel('In a large bowl, whisk the eggs')).toMatch(/whisk/i);
+  });
+
+  it.fails('"For the sauce, melt the butter" must keep the imperative', () => {
+    expect(shortStepLabel('For the sauce, melt the butter')).toMatch(/melt/i);
+  });
+
+  it.fails('"Off the heat, stir in the cheese" must keep the imperative', () => {
+    expect(shortStepLabel('Off the heat, stir in the cheese')).toMatch(/stir/i);
+  });
+
+  it.fails('"To finish, drizzle with olive oil" must keep the imperative', () => {
+    expect(shortStepLabel('To finish, drizzle with olive oil')).toMatch(/drizzle/i);
+  });
+
+  it.fails('"2 minutes before serving, stir in the butter" must not read as a timer', () => {
+    // Currently -> "2 minutes before serving": the imperative "stir" is dropped.
+    expect(shortStepLabel('2 minutes before serving, stir in the butter')).toMatch(/stir/i);
+  });
+
+  it.fails('"30 seconds later, add the garlic" must keep the imperative', () => {
+    expect(shortStepLabel('30 seconds later, add the garlic')).toMatch(/add/i);
+  });
+});
