@@ -51,12 +51,17 @@ describe('shortStepLabel', () => {
     expect(shortStepLabel('cream the butter')).toBe('cream the butter');
   });
 
-  it('backs a runaway cap off a severed "to/and <verb>" continuation', () => {
+  it('cuts a trailing purpose clause at a real "to <verb>" boundary', () => {
     expect(
       shortStepLabel('Stir the mayonnaise and dill pickles together to make the remoulade sauce'),
     ).toBe('Stir the mayonnaise and dill pickles together');
+  });
+
+  it('keeps a coordinated "and <verb>" clause whole — "and" is not a safe cut boundary', () => {
+    // Cutting at "and" risks a fragment (it coordinates nouns as often as verbs),
+    // so the boundary rule leaves it whole. Whole beats a fragment.
     expect(shortStepLabel('Warm the olive oil in a saucepan and sauté the diced onions')).toBe(
-      'Warm the olive oil in a saucepan',
+      'Warm the olive oil in a saucepan and sauté the diced onions',
     );
   });
 
@@ -73,12 +78,22 @@ describe('shortStepLabel', () => {
     );
   });
 
-  it('caps only a runaway run-on, never ending on a dangling connective', () => {
+  it('keeps a run-on whole when it has no boundary to cut at (whole beats a fragment)', () => {
+    // No comma, no subordinate boundary — only "and"-coordination — so the
+    // boundary rule emits the full text rather than truncate mid-phrase.
     const out = shortStepLabel(
       'Mix the flour and the sugar and the salt and the soda together well',
     );
-    expect(out.split(' ').length).toBeLessThanOrEqual(9);
+    expect(out).toBe('Mix the flour and the sugar and the salt and the soda together well');
     expect(/\b(?:and|or|with|the|to|for|of|in|until)$/i.test(out)).toBe(false);
+  });
+
+  it('keeps a long prepositional phrase whole rather than cut mid-phrase (the "salted water" case)', () => {
+    // The original D2 fragment ("…of salted") the boundary rewrite was built for:
+    // no comma and no subordinate boundary, so the whole clause survives intact.
+    expect(shortStepLabel('Cook the spaghetti in a large pot of salted water')).toBe(
+      'Cook the spaghetti in a large pot of salted water',
+    );
   });
 
   it('prefers the comma clause even when a "for" tail follows the comma', () => {
@@ -98,6 +113,34 @@ describe('shortStepLabel', () => {
 
   it('returns an empty string for empty input', () => {
     expect(shortStepLabel('   ')).toBe('');
+  });
+});
+
+describe('shortStepLabel — boundary shortening', () => {
+  it('cuts a trailing "until <doneness>" clause at its boundary', () => {
+    expect(shortStepLabel('Sear the steak until deeply browned')).toBe('Sear the steak');
+  });
+
+  it('cuts a trailing "while <gerund>" clause at its boundary', () => {
+    expect(shortStepLabel('Whisk the egg yolks while stirring constantly')).toBe(
+      'Whisk the egg yolks',
+    );
+  });
+
+  it('cuts a sequenced "then <verb>" clause at its boundary', () => {
+    expect(shortStepLabel('Whisk the eggs then fold in the sifted flour')).toBe('Whisk the eggs');
+  });
+
+  it('does NOT cut "to <determiner>" — that is a complement, not a clause', () => {
+    expect(shortStepLabel('Reduce the sauce to a thick glaze')).toBe('Reduce the sauce to a thick glaze');
+    expect(shortStepLabel('Blend the mixture to a smooth puree')).toBe(
+      'Blend the mixture to a smooth puree',
+    );
+  });
+
+  it('never cuts below the 2-word floor at a boundary', () => {
+    expect(shortStepLabel('Cook until tender')).toBe('Cook until tender');
+    expect(shortStepLabel('Stir to combine')).toBe('Stir to combine');
   });
 });
 

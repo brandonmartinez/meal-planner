@@ -66,3 +66,24 @@ Yen found 2 adversarial defects; Brandon flagged 1 off the screenshot. All three
 - Commit `d467f29`. Validated: web build ✓, lint 0 ✓, tests 670 ✓ (shortStepLabel 19, adversarial 14).
 
 📌 Team update (2026-08-03T11:00:32-04:00): Yen's final **SHIP Phase 1** verdict confirmed after all 3 adversarial short-label defects fixed and `it.fails` converted to passing (commit `d467f29`). 1840 total tests passing (web 665). Phase 1 complete. — decided by Yen
+
+### 2026-08-03T13:27:37-04:00 — Short-label: structural boundary rewrite (retire the word cap)
+
+Brandon found "Cook the spaghetti in a large pot of salted" in the Marinara render — the D2 fragment class AGAIN (8th defect family). Root cause ruling: truncating natural language at a word count cannot be made safe — every trim rule patches the instance and leaves the class. Mandated a **structural** fix.
+
+**The boundary rule (`dropTrailingClause`):** never cut mid-phrase. Cut ONLY at a real syntactic boundary — a subordinator (`to`/`until`/`while`/`then`) that introduces a droppable trailing clause — else emit FULL TEXT. A long label is a layout inconvenience; a fragment is a wrong instruction.
+- Guards so a cut can never leave a fragment: keep ≥2 words (floor); the subordinator's next word must be a **content word** (so "to a boil"/"to 165°F"/"to a glaze" — determiner/number complements — are NOT clauses and stay whole); the head must not end on a glue/connective word; and `parts[i-2]` must not be a coordinator (blocks "…and fry | until golden" → bare-verb). Scans from the end → drops only the outermost clause, keeping the most text. Trailing comma/`;`/`:` stripped from a cut head.
+- **Excluded `and`/`or` from cut boundaries** (Brandon's example list included them): they ambiguously coordinate nouns vs clauses and can't be POS-disambiguated in-browser, so cutting there risks a fragment or dropping a co-equal action. Steps whose only join is "and"/"or" are emitted whole. **Flagged deviation.**
+
+**Deleted:** the word cap (`MAX_WORDS=9`), the trailing-glue trim, the dangling-verb positional back-off, and `CUT_CONNECTIVES`. **Kept untouched:** opener-skip + `skippedOpener` capitalization (`c46855b`), the redundant-measurement `to/for` strip (mirrors shared `extractSubLabel`: temp + min/hr only), the 2-word floor, `isRedundantSubLabel`.
+
+**Assertions changed (each renders MORE completely or a clean cut — none loosened):**
+- unit "…severed to/and <verb>" → split: "Stir…to make the remoulade sauce" still → "Stir the mayonnaise and dill pickles together" (cut at `to make`); "Warm the olive oil…and sauté…" now → **full text** (no `and` cut).
+- unit "caps a runaway run-on" → "Mix the flour and… soda together well" now → **full text** (no boundary; was capped ≤9).
+- adversarial SEVENTH FAMILY: "and sauté" → full text; "Combine…and bring it to a boil" → **full text** (was truncated "…bring it"); rewrote the invariant test to: output is EITHER verbatim input OR a boundary-cut head ending on a content word.
+- adversarial 8th sweep: "or"/"and" lists → full text (were truncated); "Over medium heat until golden" → "Over medium heat" (cut at `until`); mis-detected "Sting the sauce with lime, then taste…" → "Sting the sauce with lime" (then-clause cut, comma cleaned).
+- Added a `boundary shortening` unit block (until/while/then cuts; "to <determiner>" no-cut; floor).
+
+**Width check:** process `<td>` is `min-w-[6rem]` with NO `max-w` / NO `whitespace-nowrap`, inside `overflow-x-auto`. Longer full-text labels wrap vertically (taller cell), never a horizontal matrix blowout. Worst realistic case "Cook the spaghetti in a large pot of salted water" wraps to ~3 lines. Acceptable — the err-long cost is a little row height.
+
+Commit `<pending>`. Validated: web build ✓, lint 0 ✓, tests **700** ✓ (shortStepLabel 28 + adversarial 20, whole web suite green).

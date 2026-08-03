@@ -184,8 +184,10 @@ describe('shortStepLabel — sixth-family guard (structural opener rule)', () =>
     expect(out).toMatch(/whisk the eggs/i);
   });
 
-  it('keeps the full text when the step is all opener and no imperative', () => {
-    expect(shortStepLabel('Over medium heat until golden')).toBe('Over medium heat until golden');
+  it('cuts an imperative-less all-opener step at its subordinate boundary', () => {
+    // No verb anywhere; the "until golden" clause is a real subordinate boundary,
+    // so it is dropped cleanly (title/List keep the doneness). Not misleading.
+    expect(shortStepLabel('Over medium heat until golden')).toBe('Over medium heat');
   });
 
   it('skips consecutive openers to reach the instruction clause', () => {
@@ -195,91 +197,96 @@ describe('shortStepLabel — sixth-family guard (structural opener rule)', () =>
 
 /**
  * SEVENTH FAMILY (Brandon, from the shipping screenshot) — the D2 fragment
- * defect reaching a trailing VERB. The runaway cap severs a "to <verb>" or
- * "and <verb>" continuation and the glue-word trim (articles/preps/conjunctions
- * only) leaves the bare objectless verb standing: "…together to make", "…and
- * sauté". "sauté" WHAT? Half an instruction — abbreviated is fine, incomplete is
- * not. The cap now backs off past a severed "<connective> <head>" tail.
+ * defect reaching a trailing VERB. The runaway word cap severed a "to <verb>" or
+ * "and <verb>" continuation and left the bare objectless verb standing:
+ * "…together to make", "…and sauté". "sauté" WHAT? Half an instruction. The word
+ * cap has since been DELETED entirely (see the boundary rewrite): shortening now
+ * happens only at real syntactic boundaries, so the label is EITHER the verbatim
+ * input OR a clean head clause ending on a content word — never a severed head.
  */
 describe('shortStepLabel — SEVENTH FAMILY: no dangling severed verb', () => {
-  it('backs off a severed "to <verb>" tail from a runaway cap', () => {
+  it('cuts a "to <verb>" purpose clause at its boundary, leaving a complete head', () => {
     expect(
       shortStepLabel('Stir the mayonnaise and dill pickles together to make the remoulade'),
     ).toBe('Stir the mayonnaise and dill pickles together');
   });
 
-  it('backs off a severed "and <verb>" tail from a runaway cap', () => {
+  it('keeps a coordinated "and <verb>" clause whole — "and" is not a safe boundary', () => {
+    // The boundary rule refuses to cut at "and" (ambiguous noun vs clause join),
+    // so the whole step survives rather than producing a "…and sauté" fragment.
     expect(shortStepLabel('Warm the olive oil in a saucepan and sauté the diced onions')).toBe(
-      'Warm the olive oil in a saucepan',
+      'Warm the olive oil in a saucepan and sauté the diced onions',
     );
   });
 
-  it('never ends a capped label on a bare connective-severed head', () => {
+  it('the output is EITHER the verbatim input OR a clean-cut head — never a fragment', () => {
     const samples = [
       'Stir the mayonnaise and dill pickles together to make the remoulade',
       'Warm the olive oil in a saucepan and sauté the diced onions',
       'Combine the flour and the sugar and the eggs and then whisk vigorously',
       'Pat the chicken thighs completely dry and season and then sear',
+      'Cook the spaghetti in a large pot of salted water',
     ];
+    const dangling = /\b(?:to|and|or|but|nor|then|plus|the|a|an|with|for|in|of|until|while)$/i;
     for (const s of samples) {
       const out = shortStepLabel(s);
-      const last = out.split(' ').slice(-2); // [connective?, head]
-      // The second-to-last token must not be a phrase-introducing connective
-      // left dangling after the cut.
-      expect(/^(?:to|and|or|but|nor|then|plus)$/i.test(last[0] ?? '')).toBe(false);
+      // Either untouched, or a strict prefix (a boundary cut) of the original.
+      expect(s === out || s.startsWith(out)).toBe(true);
+      // Never ends on a dangling connective / glue word.
+      expect(dangling.test(out)).toBe(false);
       // And the label still starts with the original imperative verb.
       expect(out.toLowerCase().startsWith(s.split(' ')[0].toLowerCase())).toBe(true);
     }
   });
 
-  it('does not over-trim a COMPLETE "to <object>" tail that fits the cap', () => {
-    // "to a boil" is complete (to + article + noun); the connective is not the
-    // second-to-last token, so nothing is stripped.
+  it('keeps a COMPLETE "to <object>" tail whole — "to a boil" is not a droppable clause', () => {
+    // "to a boil" is a prepositional complement (to + article + noun), not a
+    // subordinate clause, so there is no boundary to cut and the step stays whole.
     expect(shortStepLabel('Combine everything in the stockpot and bring it to a boil')).toBe(
-      'Combine everything in the stockpot and bring it',
+      'Combine everything in the stockpot and bring it to a boil',
     );
   });
 });
 
 /**
- * EIGHTH-FAMILY SWEEP (Yen, 2026-08-03, after c46855b + c358937). Adversarial
- * pass targeting the two cleverest new rules — the positional connective back-off
- * and the -ing participle detection — per Brandon's request. VERDICT: no genuine
- * eighth family. Both rules are err-safe on realistic recipe prose: the worst
- * case is an already-heavily-abbreviated (>9-word) label losing a rowspan-shown
- * ingredient tail, never a flip to a DIFFERENT instruction. These characterize
- * and lock in that safe behavior so a future edit cannot silently regress it.
+ * EIGHTH-FAMILY SWEEP (Yen, 2026-08-03; updated for the boundary rewrite).
+ * Adversarial pass targeting the -ing participle detection and the handling of
+ * "and"/"or"-joined steps. VERDICT: no genuine eighth family. Under the boundary
+ * rule "and"/"or" are never cut (they ambiguously join nouns vs clauses), so such
+ * steps emit FULL TEXT — err-long, never a flip to a DIFFERENT instruction. These
+ * characterize and lock in that safe behavior so a future edit cannot regress it.
  */
-describe('shortStepLabel — eighth-family sweep: connective back-off is err-safe, never wrong', () => {
-  it('a determiner-less "and"-list strips to the floor without dangling (== comma abbreviation)', () => {
-    // Equivalent to the accepted "Season with salt, pepper, and cumin" -> "Season
-    // with salt": the dropped items are shown by the rowspan, and the label still
-    // leads with the real verb + first object. Never a different instruction.
+describe('shortStepLabel — eighth-family sweep: "and"/"or" joins stay whole, never wrong', () => {
+  it('an "and"-joined list stays whole and never dangles on a connective', () => {
+    // "and" is not a safe cut boundary, so the step is emitted whole rather than
+    // truncated. Err-long: the label still leads with the real verb + object.
     for (const s of [
       'Mix salt and pepper and garlic and paprika and cayenne and cumin',
       'Combine flour and sugar and eggs and milk and butter and vanilla',
     ]) {
       const out = shortStepLabel(s);
-      expect(out.split(' ').length).toBeGreaterThanOrEqual(2); // floor honored
+      expect(out).toBe(s); // whole, not truncated
       expect(/\b(?:and|or|to|then|plus|but|nor)$/i.test(out)).toBe(false); // no dangle
       expect(out.toLowerCase().startsWith(s.split(' ')[0].toLowerCase())).toBe(true); // real verb kept
     }
   });
 
-  it('keeps a legitimate "or <alt>" tail when its object is complete at the boundary', () => {
+  it('keeps an "or <alt>" step whole — "or" is not a safe cut boundary', () => {
+    // Like "and", "or" ambiguously joins nouns vs clauses, so the boundary rule
+    // does not cut there; the full alternative survives (whole beats a fragment).
     expect(shortStepLabel('Grill the chicken over high heat or pan-fry it in a hot skillet')).toBe(
-      'Grill the chicken over high heat or pan-fry it',
+      'Grill the chicken over high heat or pan-fry it in a hot skillet',
     );
   });
 });
 
 describe('shortStepLabel — eighth-family sweep: -ing rule fails safe, never promotes a wrong clause', () => {
-  it('a non-cooking -ing head missing from ING_BASE_VERBS falls back to full text, not a wrong clause', () => {
-    // "Sting"/"Swing" are not cooking imperatives; even mis-detected as participial
-    // adjuncts they only fall back to full (safe) text because the trailing clause
-    // is itself an opener ("then ..."). No real cooking imperative is missing.
+  it('a non-cooking -ing head missing from ING_BASE_VERBS abbreviates safely, not to a wrong clause', () => {
+    // "Sting" is not a cooking imperative; even mis-detected as a participial
+    // adjunct the fallback is SAFE — the sequenced "then …" clause is cut at its
+    // boundary, giving an abbreviated (not wrong) label led by the same word.
     expect(shortStepLabel('Sting the sauce with lime, then taste for seasoning')).toBe(
-      'Sting the sauce with lime, then taste for seasoning',
+      'Sting the sauce with lime',
     );
   });
 

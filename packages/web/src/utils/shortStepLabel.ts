@@ -32,12 +32,21 @@
  * determiner, or temporal/manner adverb, all closed classes) or a number. Do NOT
  * "fix" a missed opener by appending the specific phrase; if it slips through it
  * means its head belongs in NON_VERB_HEADS (or is a number) — generalize there.
+ *
+ * SHORTENING HAPPENS ONLY AT REAL SYNTACTIC BOUNDARIES — NEVER A WORD COUNT.
+ * A prior version capped the label at N words and trimmed the ragged end. That
+ * cannot be made safe: any sentence longer than the cap reproduces the fragment
+ * at the new cap forever ("…the seasoned", "…of salted"), so every trim rule
+ * patched an instance and left the class (seven defect families). We now cut
+ * only where language actually permits: at a comma (clause selection) or by
+ * dropping a trailing subordinate/purpose clause introduced by "to <verb>",
+ * "until", "while", or "then". If the sentence has no such boundary, it is
+ * emitted WHOLE. A long label is a layout inconvenience; a fragment is a wrong
+ * instruction — and we have established which error is the cheaper one.
  */
 
-/** Runaway guard only — most labels are far shorter after clause selection.
- *  Deliberately generous: a complete 7–8 word phrase beats a terse fragment. */
-const MAX_WORDS = 9;
-/** Never abbreviate down to a bare verb — "Bring"/"Cook" alone are meaningless. */
+/** Never abbreviate down to a bare verb — "Bring"/"Cook" alone are meaningless.
+ *  Also the minimum head a boundary cut may leave behind. */
 const MIN_LABEL_WORDS = 2;
 
 /**
@@ -87,8 +96,9 @@ const ING_BASE_VERBS = new Set([
   'spring', 'ping',
 ]);
 
-/** Closed set of "glue" words a label must never END on — an article,
- *  preposition, or conjunction trailing after truncation reads as unfinished. */
+/** Closed set of "glue" words a completed head must never END on — an article,
+ *  preposition, or conjunction left trailing reads as unfinished. Used to reject
+ *  a boundary cut whose head would end raggedly, not to trim one into shape. */
 const WEAK_ENDINGS = new Set([
   'the', 'a', 'an', 'and', 'or', 'but', 'with', 'to', 'for', 'in', 'of',
   'into', 'onto', 'on', 'at', 'by', 'from', 'over', 'under', 'until', 'then',
@@ -96,15 +106,16 @@ const WEAK_ENDINGS = new Set([
 ]);
 
 /**
- * Connectives that introduce a NEW phrase/clause. When the runaway cap severs
- * such a phrase after only its head — "…together to make", "…and sauté" — the
- * trailing head is left objectless and reads as half an instruction (the D2
- * fragment family, now hitting trailing VERBS the glue-word trim doesn't catch).
- * A completed "to/and <phrase>" pushes the connective back from the last token
- * (e.g. "to a boil": last token is "boil", not "to"); a severed one leaves the
- * connective at exactly the second-to-last slot, which is the signal we key on.
+ * Subordinators that RELIABLY introduce a trailing subordinate / purpose /
+ * sequence clause we can drop as a whole ("… to make the sauce", "… until
+ * golden", "… while stirring", "… then sear"). Coordinating "and"/"or" are
+ * deliberately EXCLUDED: they ambiguously join nouns ("salt and pepper", "dill
+ * pickles and mayonnaise") as often as clauses, and we can't tell which without
+ * POS tagging — so cutting there risks a fragment. If a sentence's only join is
+ * "and", we keep it whole rather than guess.
  */
-const CUT_CONNECTIVES = new Set(['to', 'and', 'or', 'but', 'nor', 'then', 'plus']);
+const SUBORDINATORS = new Set(['to', 'until', 'while', 'then']);
+const COORDINATORS = new Set(['and', 'or', 'nor']);
 
 function words(value: string): string[] {
   return value.split(/\s+/).filter(Boolean);
@@ -113,6 +124,17 @@ function words(value: string): string[] {
 /** Lowercase and strip surrounding punctuation for set membership tests. */
 function normWord(word: string): string {
   return word.toLowerCase().replace(/[^a-z°]/g, '');
+}
+
+function startsWithDigit(word: string): boolean {
+  return /^[\d¼½¾⅓⅔⅛]/.test(word);
+}
+
+/** A "content" word can head the clause a subordinator introduces (i.e. a verb
+ *  or its object) — as opposed to a determiner/number that makes the phrase a
+ *  prepositional complement to KEEP ("to a boil", "to 165°F", "to the pan"). */
+function isContentWord(word: string): boolean {
+  return !startsWithDigit(word) && !NON_VERB_HEADS.has(normWord(word));
 }
 
 /** Sentence-case the first character (used after an opener clause is skipped,
@@ -138,13 +160,40 @@ function isParticipleHead(head: string): boolean {
  */
 function isOpenerClause(clause: string): boolean {
   const first = words(clause)[0] ?? '';
-  if (/^[\d¼½¾⅓⅔⅛]/.test(first)) return true;
+  if (startsWithDigit(first)) return true;
   const head = normWord(first);
   return NON_VERB_HEADS.has(head) || isParticipleHead(head);
 }
 
 function isStrippableMeasurement(tail: string): boolean {
   return STRIPPABLE_TEMPERATURE.test(tail) || STRIPPABLE_DURATION.test(tail);
+}
+
+/**
+ * Shorten by dropping a trailing subordinate/purpose clause, but ONLY at a
+ * genuine boundary — a SUBORDINATOR that introduces a droppable clause. Scans
+ * from the end so only the LAST (outermost) clause is dropped, keeping the most
+ * text. A candidate boundary at index i is taken only when it cannot leave a
+ * fragment behind:
+ *   - the head keeps at least MIN_LABEL_WORDS words;
+ *   - the subordinator introduces a clause (its next word is a content word, not
+ *     a determiner/number — so "to a boil" / "to 165°F" stay intact);
+ *   - the head does not end on a glue word or connective; and
+ *   - the head does not end on a coordinated verb ("… and fry | until golden"),
+ *     which would drop that verb's object.
+ * If nothing qualifies, the label is returned unchanged (whole > fragment).
+ */
+function dropTrailingClause(label: string): string {
+  const parts = words(label);
+  for (let i = parts.length - 2; i >= MIN_LABEL_WORDS; i -= 1) {
+    if (!SUBORDINATORS.has(normWord(parts[i]))) continue;
+    if (!isContentWord(parts[i + 1])) continue;
+    const prev = normWord(parts[i - 1]);
+    if (WEAK_ENDINGS.has(prev) || SUBORDINATORS.has(prev) || COORDINATORS.has(prev)) continue;
+    if (COORDINATORS.has(normWord(parts[i - 2] ?? ''))) continue;
+    return parts.slice(0, i).join(' ').replace(/[\s,;:]+$/, '');
+  }
+  return label;
 }
 
 /**
@@ -159,10 +208,10 @@ function isStrippableMeasurement(tail: string): boolean {
  *      and at least MIN_LABEL_WORDS survive — so "Heat the oil to 350°F" becomes
  *      "Heat the oil", while "Bring to a boil", "Cook to 165°F" (floor), and
  *      "Blanch the beans for 90 seconds" (seconds aren't re-shown) keep the tail;
- *   3. only as a runaway guard, cap at MAX_WORDS words, backing off to a clean
- *      phrase boundary so a truncated label never ends mid-phrase — on a glue
- *      word ("and"/"the") OR on a severed "<connective> <head>" continuation
- *      ("… to make", "… and sauté") whose object the cut dropped;
+ *   3. drop a trailing subordinate/purpose clause at a genuine boundary
+ *      ("… to make the sauce", "… until golden") — never mid-phrase; a sentence
+ *      with no such boundary ("Cook the spaghetti in a large pot of salted
+ *      water") is kept WHOLE;
  *   4. if an opener clause was skipped, sentence-case the promoted continuation
  *      so it matches the capitalized grid column ("cook the pasta" → "Cook …").
  * Falls back to the trimmed original if the heuristic empties the string.
@@ -187,29 +236,8 @@ export function shortStepLabel(text: string): string {
     }
   }
 
-  // (3) Runaway guard, backing off to a clean phrase boundary so a truncated
-  //     label never ends mid-phrase — neither on a trailing glue word ("…and")
-  //     nor on a severed "<connective> <head>" continuation ("…to make",
-  //     "…and sauté") whose object the cut dropped. Never fall below the floor.
-  const parts = words(label);
-  if (parts.length > MAX_WORDS) {
-    const cut = parts.slice(0, MAX_WORDS);
-    for (;;) {
-      if (cut.length <= MIN_LABEL_WORDS) break;
-      if (WEAK_ENDINGS.has(normWord(cut[cut.length - 1]))) {
-        cut.pop();
-        continue;
-      }
-      const prev = cut.length >= 2 ? normWord(cut[cut.length - 2]) : '';
-      if (cut.length >= MIN_LABEL_WORDS + 2 && CUT_CONNECTIVES.has(prev)) {
-        cut.pop(); // the objectless head ("make" / "sauté")
-        cut.pop(); // the connective that introduced it ("to" / "and")
-        continue;
-      }
-      break;
-    }
-    label = cut.join(' ');
-  }
+  // (3) Drop a trailing subordinate clause at a real boundary, or keep whole.
+  label = dropTrailingClause(label);
 
   label = label.trim() || trimmed;
   return skippedOpener ? capitalizeFirst(label) : label;
