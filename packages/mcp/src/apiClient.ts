@@ -356,9 +356,10 @@ export class MealPlannerApiClient {
 
   /** Create a meal in the family the key resolves to (no family in the path).
    *  The returned meal carries the tabular ("Grid") recipe read fields
-   *  (`matrixSource`, per-ingredient `position`/`groupLabel`, per-instruction
-   *  effective `kind`/`subLabel`/`spanFrom`/`spanTo`) derived on read — Phase-1
-   *  MCP read parity. No matrix authoring input is accepted yet (Phase 2). */
+   *  (`matrixSource`, `ingredientDisplayOrder`, per-ingredient
+   *  `position`/`groupLabel`, per-instruction effective
+   *  `kind`/`subLabel`/`spanFrom`/`spanTo`) derived on read — Phase-1 MCP read
+   *  parity. No matrix authoring input is accepted yet (Phase 2). */
   createMeal(input: CreateMealInput): Promise<TabularRecipeMealDTO> {
     return this.request<TabularRecipeMealDTO>("POST", `/api/agent/meals`, {
       body: input,

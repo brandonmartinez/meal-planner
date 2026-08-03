@@ -113,8 +113,9 @@ function extractSubLabel(text: string): string | null {
  *
  * @param ingredients persisted ingredients (any order; sorted here by `position`).
  * @param instructions persisted instructions (any order; sorted here by `position`).
- * @returns provenance + effective per-row / per-step matrix semantics, both
- *          arrays ordered ascending by `position`.
+ * @returns provenance, effective per-row / per-step matrix semantics (both arrays
+ *          ordered ascending by `position`), and `ingredientDisplayOrder` — the
+ *          Grid row order into which `spanFrom`/`spanTo` index.
  */
 export function deriveRecipeMatrix(
   ingredients: TabularRecipeIngredientInput[],
@@ -147,7 +148,9 @@ export function deriveRecipeMatrix(
   const authored = sortedInstructions.some((i) => i.spanFrom != null);
 
   if (authored) {
-    // Never re-derive an authored layout: pass every authored field through.
+    // Never re-derive an authored layout: pass every authored field through, and
+    // hand back the IDENTITY display order so display == position and the
+    // editor-written spans (already position-indexed) stay valid unchanged.
     const instructionMatrix: TabularRecipeInstructionMatrix[] =
       sortedInstructions.map((ins) => ({
         position: ins.position,
@@ -160,25 +163,44 @@ export function deriveRecipeMatrix(
       matrixSource: "authored",
       ingredients: ingredientMatrix,
       instructions: instructionMatrix,
+      ingredientDisplayOrder: sortedIngredients.map((_, i) => i),
     };
   }
 
+  const { ingredientDisplayOrder, instructions: derivedInstructions } =
+    deriveInstructions(sortedInstructions, sortedIngredients);
   return {
     matrixSource: "derived",
     ingredients: ingredientMatrix,
-    instructions: deriveInstructions(sortedInstructions, sortedIngredients),
+    instructions: derivedInstructions,
+    ingredientDisplayOrder,
   };
 }
 
 /**
- * Classify and span the instructions of an unauthored meal (spec §3.4.3–6):
- * leading SETUP band, trailing FINISH note, remaining PROCESS steps spanning the
- * ingredient rows they name (unmatched → full-span degenerate case).
+ * Classify + span the instructions of an unauthored meal AND compute the Grid
+ * row order (spec §3.4.2–6):
+ *   - leading SETUP band, trailing FINISH note, remaining PROCESS steps;
+ *   - `ingredientDisplayOrder` = first-use permutation: rows ordered by the index
+ *     of the first step that names them; rows named by no step are parked at the
+ *     END in position order (Rusty: the single biggest win — it pulls unrelated
+ *     rows out from between co-used ones); ties broken by position (stable);
+ *   - each PROCESS step spans min/max of its matched rows' DISPLAY indices
+ *     (contiguous by construction). A step naming no ingredient spans ALL display
+ *     rows (the explicit degenerate case); a meal with no ingredients → null span.
+ *
+ * NOTE this fixes the majority over-bracket cause but NOT cross-step reuse: a row
+ * used in steps 1 and 4 sorts to step 1, so step 4's min..max still reaches over
+ * it. That residual is intrinsic (a rowspan table renders a tree; genuine reuse
+ * is a DAG) and only Phase-2 authored spans close it.
  */
 function deriveInstructions(
   sortedInstructions: TabularRecipeInstructionInput[],
   sortedIngredients: TabularRecipeIngredientInput[],
-): TabularRecipeInstructionMatrix[] {
+): {
+  ingredientDisplayOrder: number[];
+  instructions: TabularRecipeInstructionMatrix[];
+} {
   const n = sortedInstructions.length;
   const rowCount = sortedIngredients.length;
 
@@ -187,7 +209,7 @@ function deriveInstructions(
     significantTokens(ing.name),
   );
 
-  /** Row indices whose ingredient name is mentioned by the step text. */
+  /** Position-row indices whose ingredient name is mentioned by the step text. */
   const mentionedRows = (text: string): number[] => {
     const stepTokens = new Set(significantTokens(text));
     const rows: number[] = [];
@@ -200,15 +222,19 @@ function deriveInstructions(
     return rows;
   };
 
-  const namesNoIngredient = (text: string): boolean =>
-    mentionedRows(text).length === 0;
+  // Cache each step's matched position-rows (used for both first-use and spans).
+  const stepRows: number[][] = sortedInstructions.map((ins) =>
+    mentionedRows(ins.text),
+  );
+
+  const namesNoIngredient = (i: number): boolean => stepRows[i].length === 0;
 
   // Leading contiguous SETUP band: setup verb + names no ingredient.
   let setupEnd = 0;
   while (
     setupEnd < n &&
     matchesAny(SETUP_PATTERNS, sortedInstructions[setupEnd].text) &&
-    namesNoIngredient(sortedInstructions[setupEnd].text)
+    namesNoIngredient(setupEnd)
   ) {
     setupEnd++;
   }
@@ -219,16 +245,41 @@ function deriveInstructions(
   while (
     finishStart - 1 >= setupEnd &&
     matchesAny(FINISH_PATTERNS, sortedInstructions[finishStart - 1].text) &&
-    namesNoIngredient(sortedInstructions[finishStart - 1].text)
+    namesNoIngredient(finishStart - 1)
   ) {
     finishStart--;
   }
 
-  return sortedInstructions.map((ins, i) => {
+  // First-use step index per position-row (min matching-step index). Rows named
+  // by no step get the sentinel `n` (> every real step index) so they sort last.
+  // Setup/finish steps match nothing, so iterating all steps is equivalent to
+  // iterating only PROCESS steps here.
+  const firstUse = new Array<number>(rowCount).fill(n);
+  for (let i = 0; i < n; i++) {
+    for (const r of stepRows[i]) {
+      if (i < firstUse[r]) firstUse[r] = i;
+    }
+  }
+
+  // Display order = rows sorted by (first-use step, then position). Stable via
+  // the explicit position tie-break; unreferenced rows (sentinel `n`) land at the
+  // end, ordered among themselves by position.
+  const ingredientDisplayOrder = Array.from({ length: rowCount }, (_, r) => r);
+  ingredientDisplayOrder.sort(
+    (a, b) => firstUse[a] - firstUse[b] || a - b,
+  );
+
+  // Inverse permutation: display index of each position-row.
+  const displayIndexOf = new Array<number>(rowCount);
+  ingredientDisplayOrder.forEach((r, k) => {
+    displayIndexOf[r] = k;
+  });
+
+  const instructions = sortedInstructions.map((ins, i) => {
     if (i < setupEnd) {
       return {
         position: ins.position,
-        kind: "SETUP",
+        kind: "SETUP" as const,
         subLabel: extractSubLabel(ins.text),
         spanFrom: null,
         spanTo: null,
@@ -237,21 +288,22 @@ function deriveInstructions(
     if (i >= finishStart) {
       return {
         position: ins.position,
-        kind: "FINISH",
+        kind: "FINISH" as const,
         subLabel: extractSubLabel(ins.text),
         spanFrom: null,
         spanTo: null,
       };
     }
 
-    // PROCESS: span the min/max mentioned row. Unmatched → span ALL rows (the
-    // explicit degenerate case), or null spans when the meal has no ingredients.
-    const rows = mentionedRows(ins.text);
+    // PROCESS: span the min/max DISPLAY index of the matched rows. Unmatched →
+    // span ALL display rows (the degenerate case); no ingredients → null span.
+    const rows = stepRows[i];
     let spanFrom: number | null;
     let spanTo: number | null;
     if (rows.length > 0) {
-      spanFrom = rows[0];
-      spanTo = rows[rows.length - 1];
+      const displayIdx = rows.map((r) => displayIndexOf[r]);
+      spanFrom = Math.min(...displayIdx);
+      spanTo = Math.max(...displayIdx);
     } else if (rowCount > 0) {
       spanFrom = 0;
       spanTo = rowCount - 1;
@@ -262,10 +314,12 @@ function deriveInstructions(
 
     return {
       position: ins.position,
-      kind: "PROCESS",
+      kind: "PROCESS" as const,
       subLabel: extractSubLabel(ins.text),
       spanFrom,
       spanTo,
     };
   });
+
+  return { ingredientDisplayOrder, instructions };
 }

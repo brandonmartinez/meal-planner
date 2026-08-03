@@ -71,10 +71,10 @@ export interface TabularRecipeIngredientMatrix {
 
 /**
  * Effective matrix classification for one instruction, keyed by `position`.
- * `spanFrom`/`spanTo` are inclusive 0-based indices into the ingredients array
- * sorted ascending by `position` (i.e. row indices, not `MealIngredient.id`s),
- * and are non-null only for `PROCESS` steps. `SETUP`/`FINISH` steps carry
- * `null` spans (they are bands/notes, not row-spanning cells).
+ * `spanFrom`/`spanTo` are inclusive 0-based indices into `ingredientDisplayOrder`
+ * (i.e. Grid DISPLAY rows, NOT `position` indices), and are non-null only for
+ * `PROCESS` steps. `SETUP`/`FINISH` steps carry `null` spans (they are
+ * bands/notes, not row-spanning cells).
  */
 export interface TabularRecipeInstructionMatrix {
   position: number;
@@ -85,13 +85,23 @@ export interface TabularRecipeInstructionMatrix {
 }
 
 /**
- * The result of `deriveRecipeMatrix`: the meal's provenance plus the effective
- * per-ingredient and per-instruction matrix semantics. Both arrays are ordered
- * ascending by `position`. This is the semantic seam the API read path merges
- * back onto the persisted rows to build {@link TabularRecipeMealDTO}.
+ * The result of `deriveRecipeMatrix`: the meal's provenance, the effective
+ * per-ingredient and per-instruction matrix semantics, and the Grid row order.
+ *
+ * `ingredients`/`instructions` stay ordered ascending by `position` (the
+ * canonical coordinate system — never reordered). `ingredientDisplayOrder` is a
+ * permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the
+ * k-th Grid row; instruction `spanFrom`/`spanTo` index into it. Derived meals get
+ * a first-use permutation (ingredients ordered by the first step that uses them,
+ * unreferenced parked at the end in position order); authored meals get the
+ * IDENTITY permutation so display == position and authored spans stay valid with
+ * zero re-indexing. Computed on read, never persisted (spec §3.4; Rusty ruling).
+ * This is the semantic seam the API read path merges back onto the persisted rows
+ * to build {@link TabularRecipeMealDTO}.
  */
 export interface TabularRecipeMatrix {
   matrixSource: MatrixSource;
   ingredients: TabularRecipeIngredientMatrix[];
   instructions: TabularRecipeInstructionMatrix[];
+  ingredientDisplayOrder: number[];
 }

@@ -747,6 +747,7 @@ describe("meals service", () => {
       const result = (await getMealById("m-1", "fam-1")) as unknown as {
         matrixSource: string;
         ingredients: { position: number; groupLabel: string | null }[];
+        ingredientDisplayOrder: number[];
         instructions: {
           kind: string;
           subLabel: string | null;
@@ -756,6 +757,9 @@ describe("meals service", () => {
       };
 
       expect(result.matrixSource).toBe("derived");
+      // flour(0)+sugar(1) are first-used in step 1, butter(2) in step 2 → the
+      // display order is already the identity permutation here.
+      expect(result.ingredientDisplayOrder).toEqual([0, 1, 2]);
       // P1-9: derived meals are UNGROUPED — category (grocery aisle) is never
       // used as a group pill, so every effective groupLabel is null.
       expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
@@ -820,6 +824,7 @@ describe("meals service", () => {
       const result = (await getMealById("m-1", "fam-1")) as unknown as {
         matrixSource: string;
         ingredients: { groupLabel: string | null }[];
+        ingredientDisplayOrder: number[];
         instructions: {
           kind: string;
           subLabel: string | null;
@@ -829,6 +834,9 @@ describe("meals service", () => {
       };
 
       expect(result.matrixSource).toBe("authored");
+      // Authored matrices are never reordered: the display order is the identity
+      // permutation, so the authored spans keep indexing the same rows.
+      expect(result.ingredientDisplayOrder).toEqual([0, 1]);
       // Authored groupLabel is used ("Dry"); the row with no authored label
       // stays null — category ("dairy") is never used as a group (P1-9).
       expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
@@ -849,9 +857,11 @@ describe("meals service", () => {
       });
     });
 
-    it("returns ingredients ordered by position, so spanFrom/spanTo index correctly even when rows arrive unordered", async () => {
-      // Simulate rows arriving out of position order; applyRecipeMatrix must sort
-      // by position before indexing. "cheese" is row 2 after sorting.
+    it("keeps ingredients in canonical position order but indexes spans into ingredientDisplayOrder", async () => {
+      // Rows arrive out of position order; applyRecipeMatrix sorts by position.
+      // After sorting: pasta=0, tomato=1, cheese=2. The step names pasta+cheese
+      // (not tomato), so use-ordering parks tomato LAST in the display order and
+      // the span indexes into that display order — NOT into position.
       prismaMock.meal.findFirst.mockResolvedValue({
         id: "m-1",
         ingredients: [
@@ -865,16 +875,22 @@ describe("meals service", () => {
 
       const result = (await getMealById("m-1", "fam-1")) as unknown as {
         ingredients: { position: number; name: string }[];
+        ingredientDisplayOrder: number[];
         instructions: { spanFrom: number | null; spanTo: number | null }[];
       };
 
+      // The canonical ingredients array stays in position order — it is the
+      // coordinate system for List/Grocery/Cooking-Mode and is NEVER reordered.
       expect(result.ingredients.map((i) => i.name)).toEqual([
         "pasta",
         "tomato",
         "cheese",
       ]);
-      // pasta = row 0, cheese = row 2 → span 0..2.
-      expect(result.instructions[0]).toMatchObject({ spanFrom: 0, spanTo: 2 });
+      // Grid rows: pasta (0) and cheese (2) are first-used, tomato (1) parked last.
+      expect(result.ingredientDisplayOrder).toEqual([0, 2, 1]);
+      // pasta = display 0, cheese = display 1 → span 0..1, contiguous. tomato,
+      // which the step never names, is no longer swept between them.
+      expect(result.instructions[0]).toMatchObject({ spanFrom: 0, spanTo: 1 });
     });
 
     it("spans ALL rows for a PROCESS step that names no ingredient (intentional degenerate case)", async () => {

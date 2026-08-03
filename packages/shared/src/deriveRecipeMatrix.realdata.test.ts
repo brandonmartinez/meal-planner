@@ -10,23 +10,24 @@ import type {
  * live dev DB: 74 meals / 365 ingredients / 61 instructions, all `derived`).
  *
  * These fixtures are trimmed copies of ACTUAL meals in that database. They pin
- * the two behaviours the whole "ship derived vs. wait for the Phase-2 authoring
- * editor" decision turns on, so a future change to the heuristic can't silently
- * shift them:
+ * how derived Grid ordering behaves on real, shopping-ordered ingredient lists:
  *
- *   1. OVER-INCLUSIVE SPANS (the min..max sweep). A derived PROCESS step spans
- *      from its first matched ingredient to its last, so when co-used ingredients
- *      are NOT adjacent in the list the bracket sweeps in ingredients the step
- *      never names. Measured across the real library: 26 of 61 PROCESS steps
- *      (43%) over-bracket; 15 of the 16 meals that have any instructions render
- *      at least one over-inclusive span. Only recipes whose ingredient list is
- *      already in use-order (e.g. Miso-Glazed Cod) render clean.
+ *   1. USE-ORDERING (`ingredientDisplayOrder`). Ingredients are stored in
+ *      SHOPPING order, but Chu's Grid needs USE order. The derivation sorts rows
+ *      by first-use step (ties by position) and parks never-named rows at the
+ *      end. Measured before this change: 26 of 61 PROCESS steps (43%) over-
+ *      bracketed and 15 of 16 instruction-bearing meals showed a sweep, because
+ *      min..max spanned everything between non-adjacent co-used rows. Use-ordering
+ *      pulls unrelated rows out from between co-used ones (e.g. Birria's braise no
+ *      longer brackets corn tortillas / oaxaca cheese).
  *
- *   2. The CLEAN case still works, so the format is sound when the data lines up.
+ *   2. The RESIDUAL is intrinsic, not a bug. A rowspan table renders a tree while
+ *      genuine ingredient reuse is a DAG: a row first-used early but reused by a
+ *      later step still falls inside that later step's min..max. Only Phase-2
+ *      authored spans close it. These tests pin the win AND the residual so a
+ *      regression in either direction is caught.
  *
- * This is expected, documented derived behaviour (Livingston's flagged weakness
- * (b)), NOT a bug — the test asserts the CURRENT truth so the product decision is
- * anchored to numbers, and so a regression that widens/narrows it is caught.
+ *   3. The CLEAN case (already in use order) is unaffected — spans stay exact.
  */
 
 function ing(
@@ -79,40 +80,48 @@ describe("deriveRecipeMatrix — real-data over-bracketing (Birria Tacos)", () =
     expect(m.ingredients.every((i) => i.groupLabel === null)).toBe(true);
   });
 
-  it('over-brackets: "Braise the beef ... and broth" sweeps in tortillas & cheese it never names', () => {
+  it("use-ordering pulls corn tortillas & oaxaca cheese OUT of the braise bracket", () => {
     const m = deriveRecipeMatrix(ingredients, instructions);
+
+    // First-use permutation: step0 uses chiles+onion, step1 adds beef+broth,
+    // step3 adds tortillas+cheese; cilantro (named by nothing) is parked last.
+    expect(m.ingredientDisplayOrder).toEqual([1, 2, 3, 0, 6, 4, 5, 7]);
+
     const braise = m.instructions[1];
     expect(braise.kind).toBe("PROCESS");
-    // beef@0 .. broth@6 — spans the whole middle of the list.
+    // Spans index into ingredientDisplayOrder. Braise matches beef(0), the two
+    // chiles(1,2) and broth(6) → display rows {3,0,1,4} ⇒ 0..4.
     expect(braise.spanFrom).toBe(0);
-    expect(braise.spanTo).toBe(6);
-    // The step names only beef and broth; rows 1-5 are swept in unnamed.
-    const swept = sweptInRows(braise, [0, 6]);
-    expect(swept).toEqual([1, 2, 3, 4, 5]);
-    // Concretely: corn tortillas (4) and oaxaca cheese (5) — you do not braise them.
-    expect(swept).toContain(4);
-    expect(swept).toContain(5);
+    expect(braise.spanTo).toBe(4);
+
+    const displayIndexOf = new Map(
+      m.ingredientDisplayOrder.map((r, k) => [r, k] as const),
+    );
+    // corn tortillas (pos 4) and oaxaca cheese (pos 5) now sit at display rows
+    // 5 and 6 — OUTSIDE the braise span. The prior 0..6 sweep is gone.
+    expect(displayIndexOf.get(4)).toBeGreaterThan(braise.spanTo!);
+    expect(displayIndexOf.get(5)).toBeGreaterThan(braise.spanTo!);
   });
 
-  it("renders at least one over-inclusive PROCESS span (matches the measured 15/16 meals)", () => {
+  it("cilantro (named by no step) is parked at the END of the display order", () => {
     const m = deriveRecipeMatrix(ingredients, instructions);
-    const named = (t: string): number[] => {
-      // faithful mirror of the matcher: any shared significant token
-      const norm = (p: string) =>
-        p.toLowerCase().split(/[^a-z]+/).filter(Boolean).map((w) =>
-          w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w,
-        );
-      const stop = new Set(["of","the","a","an","and","or","to","with","into","for","in","on","dried","fresh","large","small"]);
-      const stepTk = new Set(norm(t).filter((w) => !stop.has(w)));
-      return ingredients
-        .map((i, r) => ({ r, tk: norm(i.name).filter((w) => !stop.has(w)) }))
-        .filter(({ tk }) => tk.some((w) => stepTk.has(w)))
-        .map(({ r }) => r);
-    };
-    const anyOver = m.instructions.some(
-      (s) => s.kind === "PROCESS" && sweptInRows(s, named(instructions[s.position].text)).length > 0,
+    const order = m.ingredientDisplayOrder;
+    expect(order[order.length - 1]).toBe(7); // cilantro @ position 7
+  });
+
+  it("residual cross-step reuse still over-brackets onion (intrinsic, not a bug)", () => {
+    const m = deriveRecipeMatrix(ingredients, instructions);
+    const braise = m.instructions[1];
+    const displayIndexOf = new Map(
+      m.ingredientDisplayOrder.map((r, k) => [r, k] as const),
     );
-    expect(anyOver).toBe(true);
+    // white onion (pos 3) is first-used in step0 with the chiles, but the braise
+    // reuses the chiles, so onion lands at display row 2 — inside the braise
+    // span 0..4 though the braise never names it. Only authored spans close this.
+    const onionDisplay = displayIndexOf.get(3)!;
+    expect(onionDisplay).toBe(2);
+    expect(braise.spanFrom!).toBeLessThanOrEqual(onionDisplay);
+    expect(onionDisplay).toBeLessThanOrEqual(braise.spanTo!);
   });
 });
 

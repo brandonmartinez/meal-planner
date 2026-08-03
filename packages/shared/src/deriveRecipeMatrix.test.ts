@@ -233,6 +233,7 @@ describe("deriveRecipeMatrix — degenerate no-match case", () => {
       matrixSource: "derived",
       ingredients: [],
       instructions: [],
+      ingredientDisplayOrder: [],
     });
   });
 });
@@ -313,6 +314,9 @@ describe("deriveRecipeMatrix — provenance & authored passthrough (never clobbe
     const matrix = deriveRecipeMatrix(ingredients, instructions);
 
     expect(matrix.matrixSource).toBe("authored");
+    // Authored matrices are NEVER reordered: display order is the identity
+    // permutation, so authored spans (which index into it) stay valid unchanged.
+    expect(matrix.ingredientDisplayOrder).toEqual([0, 1, 2]);
     expect(matrix.instructions[0]).toEqual({
       position: 0,
       kind: "SETUP",
@@ -350,5 +354,72 @@ describe("deriveRecipeMatrix — provenance & authored passthrough (never clobbe
 
     expect(ingredients).toEqual(ingCopy);
     expect(instructions).toEqual(stepCopy);
+  });
+});
+
+describe("deriveRecipeMatrix — ingredientDisplayOrder (Grid use-ordering)", () => {
+  it("is a valid permutation of 0..n-1 (identity when nothing to reorder)", () => {
+    const matrix = deriveRecipeMatrix(
+      [ing(0, "a"), ing(1, "b"), ing(2, "c")],
+      [],
+    );
+    // No instructions: every row is unreferenced, so they stay in position order.
+    expect(matrix.ingredientDisplayOrder).toEqual([0, 1, 2]);
+    expect([...matrix.ingredientDisplayOrder].sort((x, y) => x - y)).toEqual([
+      0, 1, 2,
+    ]);
+  });
+
+  it("parks ingredients no step names at the END, in position order among themselves", () => {
+    // Shopping order: garnish (unused) sits BETWEEN two co-used rows.
+    const ingredients = [
+      ing(0, "chicken"),
+      ing(1, "parsley garnish"),
+      ing(2, "rice"),
+    ];
+    const instructions = [step(0, "Cook the chicken and rice together")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+
+    // chicken@0 and rice@2 are first-used at step 0 → lead in position order;
+    // parsley (named by nothing) is parked last.
+    expect(matrix.ingredientDisplayOrder).toEqual([0, 2, 1]);
+    // The step's span is now contiguous over its two named rows (display 0..1),
+    // no longer sweeping the parsley that used to sit between them.
+    expect(matrix.instructions[0]).toMatchObject({ spanFrom: 0, spanTo: 1 });
+  });
+
+  it("first use wins: a row's display slot follows the FIRST step that names it", () => {
+    // Ingredients listed in a non-use order; steps use them in a different order.
+    const ingredients = [
+      ing(0, "flour"), // first used in step 1
+      ing(1, "onion"), // first used in step 0
+      ing(2, "stock"), // first used in step 0
+    ];
+    const instructions = [
+      step(0, "Sweat the onion in the stock"),
+      step(1, "Whisk in the flour"),
+    ];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+
+    // step 0 rows (onion@1, stock@2) come first in position order, then flour@0.
+    expect(matrix.ingredientDisplayOrder).toEqual([1, 2, 0]);
+    // spanFrom/spanTo index into ingredientDisplayOrder (DISPLAY rows), not
+    // position: the flour step lands on display row 2, not position 0.
+    const displayIndexOf = new Map(
+      matrix.ingredientDisplayOrder.map((r, k) => [r, k] as const),
+    );
+    expect(matrix.instructions[1]).toMatchObject({ spanFrom: 2, spanTo: 2 });
+    expect(displayIndexOf.get(0)).toBe(2);
+  });
+
+  it("ties on first-use step break by position (stable)", () => {
+    const ingredients = [ing(0, "butter"), ing(1, "sugar"), ing(2, "flour")];
+    // All three named by the same single step → same first-use; order by position.
+    const instructions = [step(0, "Combine the butter, sugar and flour")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(matrix.ingredientDisplayOrder).toEqual([0, 1, 2]);
   });
 });

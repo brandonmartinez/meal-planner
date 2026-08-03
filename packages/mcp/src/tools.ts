@@ -848,10 +848,10 @@ export function registerTools(
         "name and, optionally, a description, a difficulty (EASY/MEDIUM/HARD), " +
         "and a list of ingredients. Requires the meal:write scope. The created " +
         "meal is returned with its tabular \"Grid\" recipe view fields " +
-        "(matrixSource plus per-ingredient position/groupLabel and " +
-        "per-instruction kind/subLabel/spanFrom/spanTo), derived on read for " +
-        "meals without an authored layout. Grid layout authoring is not yet " +
-        "accepted as input (a future phase).",
+        "(matrixSource, ingredientDisplayOrder, plus per-ingredient " +
+        "position/groupLabel and per-instruction kind/subLabel/spanFrom/spanTo), " +
+        "derived on read for meals without an authored layout. Grid layout " +
+        "authoring is not yet accepted as input (a future phase).",
       inputSchema: {
         name: z.string().min(1).describe("The meal's name (required)."),
         description: z
@@ -950,10 +950,11 @@ export function registerTools(
         "Passing `instructions` REPLACES the meal's instruction list. " +
         "Placeholder meals (e.g. Free Day, Leftovers) cannot be edited. " +
         "Requires the meal:write scope. The updated meal is returned with its " +
-        "tabular \"Grid\" recipe view fields (matrixSource plus per-ingredient " +
-        "position/groupLabel and per-instruction kind/subLabel/spanFrom/" +
-        "spanTo), derived on read for meals without an authored layout. Grid " +
-        "layout authoring is not yet accepted as input (a future phase).",
+        "tabular \"Grid\" recipe view fields (matrixSource, " +
+        "ingredientDisplayOrder, plus per-ingredient position/groupLabel and " +
+        "per-instruction kind/subLabel/spanFrom/spanTo), derived on read for " +
+        "meals without an authored layout. Grid layout authoring is not yet " +
+        "accepted as input (a future phase).",
       inputSchema: {
         mealId: z.string().min(1).describe("The id of the meal to edit."),
         name: z.string().min(1).optional().describe("New name."),

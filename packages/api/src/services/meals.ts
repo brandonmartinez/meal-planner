@@ -134,8 +134,8 @@ type MatrixInstructionRow = {
 /**
  * Enrich a detail meal with its tabular ("Grid") recipe DTO shape: `matrixSource`
  * plus EFFECTIVE per-ingredient `groupLabel` and per-instruction `kind`/
- * `subLabel`/`spanFrom`/`spanTo`, computed by the pure `deriveRecipeMatrix`
- * (spec §3.3).
+ * `subLabel`/`spanFrom`/`spanTo`, and `ingredientDisplayOrder` — all computed by
+ * the pure `deriveRecipeMatrix` (spec §3.3).
  *
  * ANTI-STALENESS (load-bearing): the derived matrix is computed ON EVERY READ
  * and NEVER written back to the DB — not here, not lazily. Provenance is
@@ -144,9 +144,11 @@ type MatrixInstructionRow = {
  * derived one is recomputed each read. This is the deliberate answer to the
  * grocery-provenance staleness lesson.
  *
- * Ingredients are returned ordered ascending by `position` — Linus's Grid
- * renderer indexes `spanFrom`/`spanTo` into this array, so the order is
- * load-bearing.
+ * Ingredients are returned in canonical ascending `position` order (the shared
+ * coordinate system for List/Grocery/Cooking-Mode/authored spans — never
+ * reordered). Grid ROW order is carried separately by `ingredientDisplayOrder`
+ * (`ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row), and
+ * `spanFrom`/`spanTo` index into it — so the display order is load-bearing.
  */
 function applyRecipeMatrix<
   M extends {
@@ -212,6 +214,7 @@ function applyRecipeMatrix<
     matrixSource: matrix.matrixSource,
     ingredients,
     instructions,
+    ingredientDisplayOrder: matrix.ingredientDisplayOrder,
   };
 }
 
