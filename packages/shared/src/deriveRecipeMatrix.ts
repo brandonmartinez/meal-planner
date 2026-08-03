@@ -49,18 +49,48 @@ const FINISH_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Quantity / measure / filler words stripped before name matching so that an
- * instruction like "1/2 cup of the butter" still matches the "butter" row.
- * Numbers and fractions vanish for free — we tokenize on non-letters.
+ * Quantity / measure / grammatical filler words removed entirely before name
+ * matching so that an instruction like "1/2 cup of the butter" still matches the
+ * "butter" row. Numbers and fractions vanish for free — we tokenize on
+ * non-letters.
  */
-const STOP_WORDS: ReadonlySet<string> = new Set([
+const QUANTITY_STOP: ReadonlySet<string> = new Set([
   "of", "the", "a", "an", "and", "or", "to", "with", "into", "for", "in", "on",
   "cup", "tablespoon", "tbsp", "teaspoon", "tsp", "ounce", "oz", "gram", "g",
   "kg", "kilogram", "pound", "lb", "ml", "milliliter", "liter", "l", "pinch",
   "dash", "clove", "slice", "can", "package", "pkg", "stick", "piece",
+]);
+
+/**
+ * Descriptor words. Unlike `QUANTITY_STOP` these are KEPT as tokens, but tagged
+ * as *modifiers*. A modifier adds specificity to a phrase ("ground beef" is more
+ * specific than "beef") yet can NEVER anchor a match on its own — an ingredient
+ * only matches a step through a CORE (non-modifier) token. This is what lets
+ * "Ground beef" claim the "beef" region over "Beef broth" without letting a bare
+ * "diced"/"fresh" in a step falsely match every diced/fresh ingredient.
+ *
+ * (Historically these lived in the stop list and were discarded, which erased
+ * the very signal that disambiguates e.g. "Ground beef" from "Beef broth".)
+ */
+const MODIFIER_WORDS: ReadonlySet<string> = new Set([
   "large", "small", "medium", "fresh", "dried", "ground", "chopped", "minced",
   "diced", "some", "extra",
 ]);
+
+/** A significant token plus modifier/adjacency metadata used by the matcher. */
+interface MatchToken {
+  t: string;
+  /** True when this is a descriptor (can add specificity, never anchors). */
+  mod: boolean;
+  /**
+   * True when the previous significant token was NOT immediately adjacent in the
+   * source text (something — a stop word or punctuation — sat between them). A
+   * multi-token phrase may only merge across tokens with `gapBefore === false`,
+   * so "chicken in broth" does NOT collapse into the compound "chicken broth"
+   * (the connective "in" fabricates no adjacency), while "ground beef" does.
+   */
+  gapBefore: boolean;
+}
 
 /** Lowercase, drop a single trailing plural "s" (spec §3.4.5 normalization). */
 function singularize(word: string): string {
@@ -71,17 +101,35 @@ function singularize(word: string): string {
 }
 
 /**
- * Split a phrase into significant lowercase tokens: singularized, with quantity
- * words and pure numbers removed. Applied identically to ingredient names and
- * instruction text so the two sides match consistently.
+ * Split a phrase into ordered significant tokens: singularized, with quantity
+ * words and pure numbers removed, descriptors tagged as modifiers, and each
+ * token flagged with whether it is truly adjacent to the previous significant
+ * token. Applied identically to ingredient names and instruction text so the two
+ * sides match consistently. Only whitespace counts as adjacency — a dropped stop
+ * word or any punctuation between two words marks a gap.
  */
-function significantTokens(phrase: string): string[] {
-  return phrase
-    .toLowerCase()
-    .split(/[^a-z]+/)
-    .filter((t) => t.length > 0)
-    .map(singularize)
-    .filter((t) => t.length > 0 && !STOP_WORDS.has(t));
+function tokenize(phrase: string): MatchToken[] {
+  const lower = phrase.toLowerCase();
+  const re = /[a-z]+/g;
+  const out: MatchToken[] = [];
+  let prevSigEnd = -1;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(lower)) !== null) {
+    const word = singularize(match[0]);
+    if (word.length === 0 || QUANTITY_STOP.has(word)) {
+      // Non-significant: leave `prevSigEnd` untouched so the next significant
+      // token sees this dropped word as a gap.
+      continue;
+    }
+    const between = prevSigEnd >= 0 ? lower.slice(prevSigEnd, match.index) : "";
+    out.push({
+      t: word,
+      mod: MODIFIER_WORDS.has(word),
+      gapBefore: prevSigEnd >= 0 && between !== " ",
+    });
+    prevSigEnd = match.index + match[0].length;
+  }
+  return out;
 }
 
 function matchesAny(patterns: RegExp[], text: string): boolean {
@@ -204,20 +252,99 @@ function deriveInstructions(
   const n = sortedInstructions.length;
   const rowCount = sortedIngredients.length;
 
-  // Precompute each ingredient row's significant tokens for name matching.
-  const ingredientTokens: string[][] = sortedIngredients.map((ing) =>
-    significantTokens(ing.name),
-  );
+  // Precompute each ingredient row's token sequence + its token sets for name
+  // matching. `all` = every token (core + modifier); `core` = anchoring tokens
+  // only (a modifier can never establish a match by itself).
+  const ingredientSets = sortedIngredients.map((ing) => {
+    const all = new Set<string>();
+    const core = new Set<string>();
+    for (const { t, mod } of tokenize(ing.name)) {
+      all.add(t);
+      if (!mod) core.add(t);
+    }
+    return { all, core };
+  });
 
-  /** Position-row indices whose ingredient name is mentioned by the step text. */
+  /**
+   * Position-row indices whose ingredient name is mentioned by the step text,
+   * resolved by *phrase specificity* so that a shared token ("beef" in both
+   * "Ground beef" and "Beef broth") is claimed by the longer contiguous phrase.
+   *
+   * Algorithm (spec §3.4.5):
+   *   1. Tokenize the step into an ordered list of significant tokens.
+   *   2. For each ingredient, find every maximal run of step tokens that all
+   *      belong to that ingredient AND are truly adjacent (no gap); a run is a
+   *      candidate "occurrence" iff it contains ≥1 CORE token (a modifier alone
+   *      can't anchor). Occurrence specificity = number of DISTINCT ingredient
+   *      tokens in it.
+   *   3. Each step position is won by the max-specificity occurrence covering it.
+   *      An ingredient matches iff it has an occurrence that ties the winning
+   *      specificity at ≥1 of its positions.
+   *
+   * Ties (equal max specificity — genuine ambiguity, e.g. "combine the flours"
+   * with two `… flour` rows, or Birria's scattered "beef … broth") resolve to
+   * "match both": we only ever DROP a match when a strictly more specific phrase
+   * explains the exact region — never on a guess. This follows the established
+   * principle from the label work: prefer the error that doesn't state something
+   * false. A wrongly-suppressed match under-brackets; a wrongly-added one
+   * corrupts the first-use permutation and over-brackets.
+   */
   const mentionedRows = (text: string): number[] => {
-    const stepTokens = new Set(significantTokens(text));
-    const rows: number[] = [];
-    for (let r = 0; r < ingredientTokens.length; r++) {
-      const tokens = ingredientTokens[r];
-      if (tokens.length > 0 && tokens.some((t) => stepTokens.has(t))) {
-        rows.push(r);
+    const step = tokenize(text);
+    const m = step.length;
+    if (m === 0) return [];
+
+    interface Occ {
+      start: number;
+      end: number;
+      spec: number;
+    }
+
+    const occurrences: Occ[][] = ingredientSets.map(({ all, core }) => {
+      const occs: Occ[] = [];
+      let s = 0;
+      while (s < m) {
+        if (!all.has(step[s].t)) {
+          s++;
+          continue;
+        }
+        let e = s;
+        const seen = new Set<string>();
+        let hasCore = false;
+        while (e < m && all.has(step[e].t) && (e === s || !step[e].gapBefore)) {
+          seen.add(step[e].t);
+          if (core.has(step[e].t)) hasCore = true;
+          e++;
+        }
+        if (hasCore) occs.push({ start: s, end: e - 1, spec: seen.size });
+        s = e;
       }
+      return occs;
+    });
+
+    // Winning (max) specificity claimed at each step position.
+    const bestSpec = new Array<number>(m).fill(0);
+    for (const occs of occurrences) {
+      for (const o of occs) {
+        for (let p = o.start; p <= o.end; p++) {
+          if (o.spec > bestSpec[p]) bestSpec[p] = o.spec;
+        }
+      }
+    }
+
+    const rows: number[] = [];
+    for (let r = 0; r < occurrences.length; r++) {
+      let claims = false;
+      for (const o of occurrences[r]) {
+        for (let p = o.start; p <= o.end; p++) {
+          if (o.spec === bestSpec[p]) {
+            claims = true;
+            break;
+          }
+        }
+        if (claims) break;
+      }
+      if (claims) rows.push(r);
     }
     return rows;
   };

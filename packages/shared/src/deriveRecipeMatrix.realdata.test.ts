@@ -154,6 +154,46 @@ describe("deriveRecipeMatrix — real-data clean case (Miso-Glazed Cod with Bok 
   });
 });
 
+describe("deriveRecipeMatrix — real-data token collision (Weeknight Thai Green Curry)", () => {
+  // Verbatim from the live DB. This is the ONE real meal whose derived matrix
+  // changed when phrase-specificity matching landed: "Thai basil" and "Thai
+  // eggplant" share the "thai" token, so the old any-token matcher falsely
+  // matched Thai eggplant to the finishing step "Finish with Thai basil …",
+  // widening that step's bracket. The adjacent phrase "Thai basil" now claims
+  // the "thai" region and the false match is gone.
+  const ingredients = [
+    ing(0, "chicken breast", "meat"),
+    ing(1, "green curry paste", "condiments"),
+    ing(2, "coconut milk", "pantry"),
+    ing(3, "Thai eggplant", "produce"),
+    ing(4, "fish sauce", "condiments"),
+    ing(5, "brown sugar", "pantry"),
+    ing(6, "Thai basil", "produce"),
+    ing(7, "jasmine rice", "pantry"),
+  ];
+  const instructions = [
+    step(0, "Fry the curry paste in a splash of coconut cream until aromatic."),
+    step(1, "Add chicken and sear, then pour in remaining coconut milk."),
+    step(2, "Simmer with eggplant, fish sauce, and sugar."),
+    step(3, "Finish with Thai basil and serve over jasmine rice."),
+  ];
+
+  it("does not false-match 'Thai eggplant' to the 'Thai basil' finishing step", () => {
+    const m = deriveRecipeMatrix(ingredients, instructions);
+    const finish = m.instructions[3];
+    // The step brackets ONLY Thai basil + jasmine rice (display rows 6,7).
+    expect(finish.spanFrom).toBe(6);
+    expect(finish.spanTo).toBe(7);
+
+    const displayIndexOf = new Map(
+      m.ingredientDisplayOrder.map((r, k) => [r, k] as const),
+    );
+    // Thai eggplant (pos 3, first-used by the simmer step) sits OUTSIDE the
+    // finishing bracket — the shared "thai" token no longer drags it in.
+    expect(displayIndexOf.get(3)!).toBeLessThan(finish.spanFrom!);
+  });
+});
+
 describe("deriveRecipeMatrix — real-data dominant shape (no instructions)", () => {
   // 58 of 74 real meals (78%) have ZERO instructions: the Grid is an ingredient
   // column with no process cells. Renders without error, but adds nothing over

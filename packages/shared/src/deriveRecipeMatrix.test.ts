@@ -210,6 +210,96 @@ describe("deriveRecipeMatrix — name matching & spans", () => {
   });
 });
 
+describe("deriveRecipeMatrix — phrase-specificity matching (token collisions)", () => {
+  /**
+   * Position-row indices covered by instruction `i`'s DISPLAY span, mapped back
+   * to ingredient names. Asserts the actual served shape (span + displayOrder),
+   * which is what a Grid consumer reads.
+   */
+  function spannedNames(
+    matrix: ReturnType<typeof deriveRecipeMatrix>,
+    ingredients: TabularRecipeIngredientInput[],
+    i: number,
+  ): string[] {
+    const ins = matrix.instructions[i];
+    if (ins.spanFrom == null || ins.spanTo == null) return [];
+    const byPosition = [...ingredients].sort((a, b) => a.position - b.position);
+    return matrix.ingredientDisplayOrder
+      .slice(ins.spanFrom, ins.spanTo + 1)
+      .map((r) => byPosition[r].name);
+  }
+
+  it("a longer contiguous phrase claims a shared token ('ground beef' beats 'beef broth')", () => {
+    // The historical defect: "beef" matched BOTH rows, sweeping unrelated rows
+    // between them into the span. "Ground beef" is a true adjacent phrase, so it
+    // wins the "beef" region and "Beef broth" is suppressed here.
+    const ingredients = [ing(0, "Ground beef"), ing(1, "Beef broth")];
+    const instructions = [step(0, "Add the ground beef and brown it")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual(["Ground beef"]);
+  });
+
+  it("the OTHER row still matches via its own distinct token ('broth' → Beef broth, not Ground beef)", () => {
+    const ingredients = [ing(0, "Ground beef"), ing(1, "Beef broth")];
+    const instructions = [step(0, "Pour in the broth and simmer")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual(["Beef broth"]);
+  });
+
+  it("a scattered shared token (not adjacent) still matches BOTH rows — no false suppression", () => {
+    // Birria's real case: "beef … broth" with words between. Neither is a more
+    // specific phrase at the "beef" position, so both legitimately match.
+    const ingredients = [ing(0, "beef chuck roast"), ing(1, "beef broth")];
+    const instructions = [step(0, "Braise the beef in the sauce and broth")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual([
+      "beef chuck roast",
+      "beef broth",
+    ]);
+  });
+
+  it("a stop word between tokens does NOT fabricate a phrase ('chicken in broth' matches both)", () => {
+    // "chicken in broth" must not collapse into the compound "chicken broth":
+    // the connective "in" marks a gap, so both the protein and the broth match.
+    const ingredients = [ing(0, "chicken thighs"), ing(1, "chicken broth")];
+    const instructions = [step(0, "Poach chicken in broth")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual([
+      "chicken thighs",
+      "chicken broth",
+    ]);
+  });
+
+  it("a modifier alone never anchors a match ('fresh' does not drag in 'fresh basil')", () => {
+    const ingredients = [ing(0, "fresh basil"), ing(1, "fresh mozzarella")];
+    const instructions = [step(0, "Add the fresh mozzarella")];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    expect(spannedNames(matrix, ingredients, 0)).toEqual(["fresh mozzarella"]);
+  });
+
+  it("suppresses a real-data false match ('Thai basil' phrase blocks 'Thai eggplant')", () => {
+    const ingredients = [
+      ing(0, "Thai eggplant"),
+      ing(1, "Thai basil"),
+      ing(2, "jasmine rice"),
+    ];
+    const instructions = [
+      step(0, "Finish with Thai basil and serve over jasmine rice"),
+    ];
+
+    const matrix = deriveRecipeMatrix(ingredients, instructions);
+    const names = spannedNames(matrix, ingredients, 0);
+    expect(names).toContain("Thai basil");
+    expect(names).toContain("jasmine rice");
+    expect(names).not.toContain("Thai eggplant");
+  });
+});
+
 describe("deriveRecipeMatrix — degenerate no-match case", () => {
   it("a PROCESS step naming no ingredient spans ALL rows (intentional, not a bug)", () => {
     const ingredients = [ing(0, "flour"), ing(1, "sugar"), ing(2, "eggs")];
