@@ -95,6 +95,17 @@ const WEAK_ENDINGS = new Set([
   'as', 'up', 'off', 'about', 'through',
 ]);
 
+/**
+ * Connectives that introduce a NEW phrase/clause. When the runaway cap severs
+ * such a phrase after only its head — "…together to make", "…and sauté" — the
+ * trailing head is left objectless and reads as half an instruction (the D2
+ * fragment family, now hitting trailing VERBS the glue-word trim doesn't catch).
+ * A completed "to/and <phrase>" pushes the connective back from the last token
+ * (e.g. "to a boil": last token is "boil", not "to"); a severed one leaves the
+ * connective at exactly the second-to-last slot, which is the signal we key on.
+ */
+const CUT_CONNECTIVES = new Set(['to', 'and', 'or', 'but', 'nor', 'then', 'plus']);
+
 function words(value: string): string[] {
   return value.split(/\s+/).filter(Boolean);
 }
@@ -102,6 +113,12 @@ function words(value: string): string[] {
 /** Lowercase and strip surrounding punctuation for set membership tests. */
 function normWord(word: string): string {
   return word.toLowerCase().replace(/[^a-z°]/g, '');
+}
+
+/** Sentence-case the first character (used after an opener clause is skipped,
+ *  so a promoted lowercase continuation matches the capitalized grid column). */
+function capitalizeFirst(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
 /** A present-participle head ("Using…", "Working…", "Stirring…") marks a
@@ -142,8 +159,12 @@ function isStrippableMeasurement(tail: string): boolean {
  *      and at least MIN_LABEL_WORDS survive — so "Heat the oil to 350°F" becomes
  *      "Heat the oil", while "Bring to a boil", "Cook to 165°F" (floor), and
  *      "Blanch the beans for 90 seconds" (seconds aren't re-shown) keep the tail;
- *   3. only as a runaway guard, cap at MAX_WORDS words, trimming trailing glue
- *      words so a rare very long label never ends mid-phrase on "and"/"the".
+ *   3. only as a runaway guard, cap at MAX_WORDS words, backing off to a clean
+ *      phrase boundary so a truncated label never ends mid-phrase — on a glue
+ *      word ("and"/"the") OR on a severed "<connective> <head>" continuation
+ *      ("… to make", "… and sauté") whose object the cut dropped;
+ *   4. if an opener clause was skipped, sentence-case the promoted continuation
+ *      so it matches the capitalized grid column ("cook the pasta" → "Cook …").
  * Falls back to the trimmed original if the heuristic empties the string.
  */
 export function shortStepLabel(text: string): string {
@@ -153,6 +174,7 @@ export function shortStepLabel(text: string): string {
   // (1) First clause that is a real instruction, not an adverbial opener.
   const clauses = trimmed.split(',').map((c) => c.trim()).filter(Boolean);
   const instruction = clauses.find((c) => !isOpenerClause(c));
+  const skippedOpener = instruction !== undefined && instruction !== clauses[0];
   let label = instruction ?? trimmed;
 
   // (2) Redundant-measurement tail strip (greedy head → strip the LAST tail).
@@ -165,17 +187,32 @@ export function shortStepLabel(text: string): string {
     }
   }
 
-  // (3) Runaway guard, on a clean boundary.
+  // (3) Runaway guard, backing off to a clean phrase boundary so a truncated
+  //     label never ends mid-phrase — neither on a trailing glue word ("…and")
+  //     nor on a severed "<connective> <head>" continuation ("…to make",
+  //     "…and sauté") whose object the cut dropped. Never fall below the floor.
   const parts = words(label);
   if (parts.length > MAX_WORDS) {
     const cut = parts.slice(0, MAX_WORDS);
-    while (cut.length > MIN_LABEL_WORDS && WEAK_ENDINGS.has(normWord(cut[cut.length - 1]))) {
-      cut.pop();
+    for (;;) {
+      if (cut.length <= MIN_LABEL_WORDS) break;
+      if (WEAK_ENDINGS.has(normWord(cut[cut.length - 1]))) {
+        cut.pop();
+        continue;
+      }
+      const prev = cut.length >= 2 ? normWord(cut[cut.length - 2]) : '';
+      if (cut.length >= MIN_LABEL_WORDS + 2 && CUT_CONNECTIVES.has(prev)) {
+        cut.pop(); // the objectless head ("make" / "sauté")
+        cut.pop(); // the connective that introduced it ("to" / "and")
+        continue;
+      }
+      break;
     }
     label = cut.join(' ');
   }
 
-  return label.trim() || trimmed;
+  label = label.trim() || trimmed;
+  return skippedOpener ? capitalizeFirst(label) : label;
 }
 
 /**

@@ -44,11 +44,11 @@ describe('shortStepLabel — defects fixed (Yen adversarial, converted from it.f
   // before the first comma was returned verbatim, DROPPING the imperative that
   // follows. Now such openers are skipped and the instruction clause survives.
   it('"Meanwhile, cook the pasta" keeps the imperative', () => {
-    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('cook the pasta');
+    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('Cook the pasta');
   });
 
   it('"After 5 minutes, flip the fish" keeps the action, not the timer', () => {
-    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('flip the fish');
+    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('Flip the fish');
   });
 
   it('"Once boiling, add the pasta" keeps the imperative', () => {
@@ -123,29 +123,29 @@ describe('shortStepLabel — Defect 2: no mid-phrase fragments', () => {
  */
 describe('shortStepLabel — FIFTH FAMILY: prepositional / numeric openers (fixed)', () => {
   it('"In a large bowl, whisk the eggs" must keep the imperative', () => {
-    expect(shortStepLabel('In a large bowl, whisk the eggs')).toBe('whisk the eggs');
+    expect(shortStepLabel('In a large bowl, whisk the eggs')).toBe('Whisk the eggs');
   });
 
   it('"For the sauce, melt the butter" must keep the imperative', () => {
-    expect(shortStepLabel('For the sauce, melt the butter')).toBe('melt the butter');
+    expect(shortStepLabel('For the sauce, melt the butter')).toBe('Melt the butter');
   });
 
   it('"Off the heat, stir in the cheese" must keep the imperative', () => {
-    expect(shortStepLabel('Off the heat, stir in the cheese')).toBe('stir in the cheese');
+    expect(shortStepLabel('Off the heat, stir in the cheese')).toBe('Stir in the cheese');
   });
 
   it('"To finish, drizzle with olive oil" must keep the imperative', () => {
-    expect(shortStepLabel('To finish, drizzle with olive oil')).toBe('drizzle with olive oil');
+    expect(shortStepLabel('To finish, drizzle with olive oil')).toBe('Drizzle with olive oil');
   });
 
   it('"2 minutes before serving, stir in the butter" must not read as a timer', () => {
     expect(shortStepLabel('2 minutes before serving, stir in the butter')).toBe(
-      'stir in the butter',
+      'Stir in the butter',
     );
   });
 
   it('"30 seconds later, add the garlic" must keep the imperative', () => {
-    expect(shortStepLabel('30 seconds later, add the garlic')).toBe('add the garlic');
+    expect(shortStepLabel('30 seconds later, add the garlic')).toBe('Add the garlic');
   });
 });
 
@@ -160,9 +160,9 @@ describe('shortStepLabel — FIFTH FAMILY: prepositional / numeric openers (fixe
 describe('shortStepLabel — sixth-family guard (structural opener rule)', () => {
   it('generalizes participial-adjunct openers beyond "using"', () => {
     expect(shortStepLabel('Using a slotted spoon, transfer to a plate')).toMatch(/^transfer/i);
-    expect(shortStepLabel('Working in batches, fry the shrimp')).toBe('fry the shrimp');
+    expect(shortStepLabel('Working in batches, fry the shrimp')).toBe('Fry the shrimp');
     expect(shortStepLabel('Stirring constantly, cook until thickened')).toBe(
-      'cook until thickened',
+      'Cook until thickened',
     );
   });
 
@@ -189,6 +189,54 @@ describe('shortStepLabel — sixth-family guard (structural opener rule)', () =>
   });
 
   it('skips consecutive openers to reach the instruction clause', () => {
-    expect(shortStepLabel('In a large bowl, meanwhile, whisk the eggs')).toBe('whisk the eggs');
+    expect(shortStepLabel('In a large bowl, meanwhile, whisk the eggs')).toBe('Whisk the eggs');
+  });
+});
+
+/**
+ * SEVENTH FAMILY (Brandon, from the shipping screenshot) — the D2 fragment
+ * defect reaching a trailing VERB. The runaway cap severs a "to <verb>" or
+ * "and <verb>" continuation and the glue-word trim (articles/preps/conjunctions
+ * only) leaves the bare objectless verb standing: "…together to make", "…and
+ * sauté". "sauté" WHAT? Half an instruction — abbreviated is fine, incomplete is
+ * not. The cap now backs off past a severed "<connective> <head>" tail.
+ */
+describe('shortStepLabel — SEVENTH FAMILY: no dangling severed verb', () => {
+  it('backs off a severed "to <verb>" tail from a runaway cap', () => {
+    expect(
+      shortStepLabel('Stir the mayonnaise and dill pickles together to make the remoulade'),
+    ).toBe('Stir the mayonnaise and dill pickles together');
+  });
+
+  it('backs off a severed "and <verb>" tail from a runaway cap', () => {
+    expect(shortStepLabel('Warm the olive oil in a saucepan and sauté the diced onions')).toBe(
+      'Warm the olive oil in a saucepan',
+    );
+  });
+
+  it('never ends a capped label on a bare connective-severed head', () => {
+    const samples = [
+      'Stir the mayonnaise and dill pickles together to make the remoulade',
+      'Warm the olive oil in a saucepan and sauté the diced onions',
+      'Combine the flour and the sugar and the eggs and then whisk vigorously',
+      'Pat the chicken thighs completely dry and season and then sear',
+    ];
+    for (const s of samples) {
+      const out = shortStepLabel(s);
+      const last = out.split(' ').slice(-2); // [connective?, head]
+      // The second-to-last token must not be a phrase-introducing connective
+      // left dangling after the cut.
+      expect(/^(?:to|and|or|but|nor|then|plus)$/i.test(last[0] ?? '')).toBe(false);
+      // And the label still starts with the original imperative verb.
+      expect(out.toLowerCase().startsWith(s.split(' ')[0].toLowerCase())).toBe(true);
+    }
+  });
+
+  it('does not over-trim a COMPLETE "to <object>" tail that fits the cap', () => {
+    // "to a boil" is complete (to + article + noun); the connective is not the
+    // second-to-last token, so nothing is stripped.
+    expect(shortStepLabel('Combine everything in the stockpot and bring it to a boil')).toBe(
+      'Combine everything in the stockpot and bring it',
+    );
   });
 });

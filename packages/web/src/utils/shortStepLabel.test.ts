@@ -35,10 +35,28 @@ describe('shortStepLabel', () => {
   });
 
   it('takes the first instruction clause, skipping an adverbial opener', () => {
-    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('cook the pasta');
-    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('flip the fish');
+    expect(shortStepLabel('Meanwhile, cook the pasta')).toBe('Cook the pasta');
+    expect(shortStepLabel('After 5 minutes, flip the fish')).toBe('Flip the fish');
     expect(shortStepLabel('Carefully, lower the eggs into the water')).toBe(
-      'lower the eggs into the water',
+      'Lower the eggs into the water',
+    );
+  });
+
+  it('sentence-cases the promoted clause after an opener is skipped', () => {
+    // Grid columns are capitalized; a stripped opener must not leave it lowercase.
+    expect(shortStepLabel('meanwhile, cook the pasta in well-salted water')).toBe(
+      'Cook the pasta in well-salted water',
+    );
+    // No opener skipped → original casing preserved (author wrote it lowercase).
+    expect(shortStepLabel('cream the butter')).toBe('cream the butter');
+  });
+
+  it('backs a runaway cap off a severed "to/and <verb>" continuation', () => {
+    expect(
+      shortStepLabel('Stir the mayonnaise and dill pickles together to make the remoulade sauce'),
+    ).toBe('Stir the mayonnaise and dill pickles together');
+    expect(shortStepLabel('Warm the olive oil in a saucepan and sauté the diced onions')).toBe(
+      'Warm the olive oil in a saucepan',
     );
   });
 

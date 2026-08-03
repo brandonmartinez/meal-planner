@@ -122,3 +122,13 @@ Yen's sweep on d467f29 found the D1 root cause one layer deeper: `isOpenerClause
 - Converted Yen's 6 `it.fails` → passing; added a self-adversarial sixth-family guard (participles beyond "using", the -ing base-verb exception, no-comma prepositional phrase → keep full text, all-opener → keep full text, consecutive openers). All-opener/no-comma cases fall back to full text (err long, never misleading), per the module's unifying rule.
 
 Verify: web build ✓, lint 0 ✓, tests 682 ✓ (shortStepLabel 19, adversarial 26).
+
+### 2026-08-03T13:07:07-04:00 — Short-label: dangling-verb fragments + opener capitalization
+
+Brandon reversed the earlier "…to make" err-long call after seeing two cells end mid-phrase on a bare verb in one screenshot ("…together to make", "…and sauté"). Same D2 fragment principle, reaching trailing VERBS the glue-word trim didn't catch. Plus a cosmetic: opener-stripped labels rendered lowercase against a capitalized column.
+- **Dangling-verb trim (structural, no POS tagging).** The runaway cap now backs off past a severed "<connective> <head>" tail: after the existing weak-ending pop, if the second-to-last token is a phrase-introducing connective (`to/and/or/but/nor/then/plus`) it drops both that connective and its objectless head, then loops. Keyed on POSITION: a COMPLETE "to a boil" leaves "to" at n-2 (safe), a severed "to make" leaves "to" at n-1 (stripped) — so it distinguishes them without knowing parts of speech. Floored at MIN_LABEL_WORDS.
+- **Capitalization.** `skippedOpener` = the chosen instruction clause isn't `clauses[0]`; when true, sentence-case the first char ("cook the pasta" → "Cook the pasta"). Non-opener clauses keep the author's original casing, so terse-verb/lowercase-authored labels are untouched.
+- **Self-adversarial probe (seventh family):** coordinated verbs ("…and season and then sear"), triple-and run-ons, and a complete "…bring it to a boil" that must NOT be over-trimmed. All land on a complete word and still start with the original imperative.
+- Left ℃/℉ glyphs and "1½" alone per Brandon (genuinely out of scope).
+
+Verify: web build ✓, lint 0 ✓, tests 688 ✓ (shortStepLabel 21, adversarial 30).
