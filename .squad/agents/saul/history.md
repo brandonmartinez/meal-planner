@@ -59,3 +59,30 @@ Rusty/Livingston to confirm backfill on first `migrate deploy`.
 position-from-index writes, REST/MCP read shaping (outside my fence, untouched).
 
 📌 Team update (2026-08-03T11:00:32-04:00): Rusty reviewed and **APPROVED** P1-1 schema migration (`27e94a3`). Backfill SQL verified correct (0-based, ctid ordering acceptable), strictly additive, doc comments meet Brandon's anti-staleness requirement. Yen gave **SHIP Phase 1** verdict after full integration verification: 1840 tests passing, build/lint clean. Phase 1 complete. — decided by Rusty, Yen
+
+## 2026-08-03T13:30:00-04:00 — Recipe-matrix migration VERIFIED against real data
+
+Docker turned out to be available (PATH quirk: macOS GUI apps launch without
+`/usr/local/bin`). Ran the migration the production way (`prisma migrate deploy`)
+against Brandon's REAL local dev volume `devcontainer_postgres-data` (74 meals,
+365 ingredients, 61 instructions) — which sat exactly one migration behind mine.
+pg_dump safety backup taken to `~/saul-scratch/` first (.dump + .sql).
+
+**Empirical backfill result: VERIFIED.**
+- `migrate deploy` applied exactly `20260803110032_add_recipe_matrix_layout`; a
+  2nd run was a clean no-op; `migrate status` = "up to date". Idempotent.
+- `MealIngredient.position` is dense, 0-based, gap-free, dup-free in ALL 68 meals
+  with ingredients (range 0..7).
+- **Order fidelity: 0/365 mismatches** — position exactly equals the pre-migration
+  `ctid` rank captured before the DDL. Because the old service read ingredients
+  with NO `orderBy` (heap/ctid order), position now reproduces the EXACT order the
+  app always displayed; the Grid introduces no new divergence. Spot-checked meals
+  (Birria Tacos, Butternut Squash Risotto, Chicken Alfredo) read as coherent
+  human-entered orders (protein/base first).
+- Zero content mutation: name/mealId unchanged for every row, 0 rows lost/added.
+- All five authored-layout columns NULL; `MealInstruction.kind` = PROCESS for all
+  61 rows; instruction `position` untouched. Column nullability/defaults as designed.
+
+`ctid` proxy validated empirically, not just by reasoning. Left Postgres running
+on localhost:5432 (container `saul-mealdb`, postgres/postgres, db meal_planner)
+for Yen's e2e. No code change needed — backfill required no fix.
