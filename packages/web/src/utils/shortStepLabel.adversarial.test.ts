@@ -110,46 +110,85 @@ describe('shortStepLabel — Defect 2: no mid-phrase fragments', () => {
 
 /**
  * FIFTH FAMILY (Yen, 2026-08-03 sweep after d467f29) — the same root cause as
- * DEFECT 1, one layer deeper. The opener skip only recognizes adverbial *words*
- * (`OPENERS`) and only inspects the clause's FIRST token, so a leading
- * comma-clause that is a PREPOSITIONAL phrase ("In a large bowl", "For the
- * sauce", "Off the heat", "To finish", "With the mixer running") or a NUMERIC /
- * timing phrase ("2 minutes before serving", "30 seconds later", "5 minutes in")
- * is treated as the instruction and PROMOTED to the whole label — dropping the
- * real imperative that follows. These are extremely common recipe openers, and
- * every one renders a Grid cell that reads as a non-instruction.
+ * DEFECT 1, one layer deeper. The opener skip used to recognize adverbial *words*
+ * only and inspect the clause's FIRST token, so a leading comma-clause that is a
+ * PREPOSITIONAL phrase ("In a large bowl", "For the sauce", "Off the heat", "To
+ * finish") or a NUMERIC / timing phrase ("2 minutes before serving", "30 seconds
+ * later") was treated as the instruction and PROMOTED to the whole label —
+ * dropping the real imperative that follows.
  *
- * Suggested fix (Linus): in isOpenerClause, also treat a clause as a non-
- * instruction opener when its lead token is a preposition (in/for/to/with/on/
- * at/from/of/off/over/under/by) or a digit/measurement — i.e. skip any leading
- * clause not headed by a verb, then fall back to full text if all are skipped.
- *
- * Written as `it.fails`: green today (does not break the shared worktree/CI),
- * flips RED when fixed — at which point drop `.fails` and keep the assertion.
+ * Fixed structurally: an opener is now any leading clause NOT headed by a verb —
+ * a function-word / adverb head, a participial head, or a number — so the whole
+ * class is covered without enumerating phrases. Converted from `it.fails`.
  */
-describe('shortStepLabel — FIFTH FAMILY: prepositional / numeric openers (it.fails)', () => {
-  it.fails('"In a large bowl, whisk the eggs" must keep the imperative', () => {
-    expect(shortStepLabel('In a large bowl, whisk the eggs')).toMatch(/whisk/i);
+describe('shortStepLabel — FIFTH FAMILY: prepositional / numeric openers (fixed)', () => {
+  it('"In a large bowl, whisk the eggs" must keep the imperative', () => {
+    expect(shortStepLabel('In a large bowl, whisk the eggs')).toBe('whisk the eggs');
   });
 
-  it.fails('"For the sauce, melt the butter" must keep the imperative', () => {
-    expect(shortStepLabel('For the sauce, melt the butter')).toMatch(/melt/i);
+  it('"For the sauce, melt the butter" must keep the imperative', () => {
+    expect(shortStepLabel('For the sauce, melt the butter')).toBe('melt the butter');
   });
 
-  it.fails('"Off the heat, stir in the cheese" must keep the imperative', () => {
-    expect(shortStepLabel('Off the heat, stir in the cheese')).toMatch(/stir/i);
+  it('"Off the heat, stir in the cheese" must keep the imperative', () => {
+    expect(shortStepLabel('Off the heat, stir in the cheese')).toBe('stir in the cheese');
   });
 
-  it.fails('"To finish, drizzle with olive oil" must keep the imperative', () => {
-    expect(shortStepLabel('To finish, drizzle with olive oil')).toMatch(/drizzle/i);
+  it('"To finish, drizzle with olive oil" must keep the imperative', () => {
+    expect(shortStepLabel('To finish, drizzle with olive oil')).toBe('drizzle with olive oil');
   });
 
-  it.fails('"2 minutes before serving, stir in the butter" must not read as a timer', () => {
-    // Currently -> "2 minutes before serving": the imperative "stir" is dropped.
-    expect(shortStepLabel('2 minutes before serving, stir in the butter')).toMatch(/stir/i);
+  it('"2 minutes before serving, stir in the butter" must not read as a timer', () => {
+    expect(shortStepLabel('2 minutes before serving, stir in the butter')).toBe(
+      'stir in the butter',
+    );
   });
 
-  it.fails('"30 seconds later, add the garlic" must keep the imperative', () => {
-    expect(shortStepLabel('30 seconds later, add the garlic')).toMatch(/add/i);
+  it('"30 seconds later, add the garlic" must keep the imperative', () => {
+    expect(shortStepLabel('30 seconds later, add the garlic')).toBe('add the garlic');
+  });
+});
+
+/**
+ * SIXTH-FAMILY GUARD (Linus, self-adversarial after the FIFTH fix). Five passes
+ * have each surfaced something the last missed, so before shipping the structural
+ * "opener = not verb-headed" rule I probe its own failure modes: participial
+ * adjuncts beyond "using"; base-form verbs that end in -ing (must NOT be skipped);
+ * a leading prepositional phrase with NO comma; a clause with no imperative at
+ * all; and nested commas where clause 2 is also an opener.
+ */
+describe('shortStepLabel — sixth-family guard (structural opener rule)', () => {
+  it('generalizes participial-adjunct openers beyond "using"', () => {
+    expect(shortStepLabel('Using a slotted spoon, transfer to a plate')).toMatch(/^transfer/i);
+    expect(shortStepLabel('Working in batches, fry the shrimp')).toBe('fry the shrimp');
+    expect(shortStepLabel('Stirring constantly, cook until thickened')).toBe(
+      'cook until thickened',
+    );
+  });
+
+  it('does NOT skip a base-form verb that ends in -ing (Bring / String)', () => {
+    // The imperative must survive: never drop "Bring to a boil" for a later clause.
+    expect(shortStepLabel('Bring to a boil, then add the pasta')).toBe('Bring to a boil');
+    expect(shortStepLabel('String the beans, then blanch')).toBe('String the beans');
+  });
+
+  it('does NOT skip a real verb-headed leading clause', () => {
+    expect(shortStepLabel('Whisk the eggs, then fold in the flour')).toBe('Whisk the eggs');
+    expect(shortStepLabel('Season with salt, pepper, and cumin')).toBe('Season with salt');
+  });
+
+  it('keeps the full text when a leading prepositional phrase has no comma', () => {
+    // No clause boundary to split on: err long, but the imperative is still present.
+    const out = shortStepLabel('In a large bowl whisk the eggs');
+    expect(out).toBe('In a large bowl whisk the eggs');
+    expect(out).toMatch(/whisk the eggs/i);
+  });
+
+  it('keeps the full text when the step is all opener and no imperative', () => {
+    expect(shortStepLabel('Over medium heat until golden')).toBe('Over medium heat until golden');
+  });
+
+  it('skips consecutive openers to reach the instruction clause', () => {
+    expect(shortStepLabel('In a large bowl, meanwhile, whisk the eggs')).toBe('whisk the eggs');
   });
 });

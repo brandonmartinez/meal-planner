@@ -113,3 +113,12 @@ Yen found two adversarially, Brandon a third off the shipping screenshot — all
 - My own extra probe (assume a 4th): trailing "…and let" / determiner+adjective run-ons — covered by keeping moderate clauses whole + the glue-word trim; added a family asserting no label ends on a dangling article/prep/conjunction and always starts with the original verb.
 
 Verify: web build ✓, lint 0 ✓, tests 670 ✓ (shortStepLabel 19, adversarial 14).
+
+### 2026-08-03T13:00:10-04:00 — Short-label FIFTH family: prepositional/numeric openers
+
+Yen's sweep on d467f29 found the D1 root cause one layer deeper: `isOpenerClause` enumerated adverbial *words* and only saw the first token, so a leading clause that was a PREPOSITIONAL phrase ("In a large bowl, whisk the eggs" → "In a large bowl") or a NUMERIC/timing phrase ("2 minutes before serving, stir…" → "2 minutes before serving") was promoted to the label and the imperative dropped — misleading, not terse.
+- **Structural rewrite, not five more words.** Replaced the `OPENERS` word list with the inverse rule: a leading clause is an opener when it is NOT headed by a verb. `NON_VERB_HEADS` names closed grammatical classes (prepositions, conjunctions, determiners, temporal/manner adverbs); a `/^[\d…]/` head catches numeric/timing openers; and `isParticipleHead` treats an `-ing` head as a manner/means adjunct ("Using a slotted spoon,", "Working in batches,").
+- **The one trap in the participle rule:** base-form verbs that end in -ing ("Bring to a boil", "String the beans") are real imperatives. `ING_BASE_VERBS` exempts them so the imperative is never skipped for a later clause — guarded by an explicit "Bring to a boil, then add the pasta" → "Bring to a boil" test.
+- Converted Yen's 6 `it.fails` → passing; added a self-adversarial sixth-family guard (participles beyond "using", the -ing base-verb exception, no-comma prepositional phrase → keep full text, all-opener → keep full text, consecutive openers). All-opener/no-comma cases fall back to full text (err long, never misleading), per the module's unifying rule.
+
+Verify: web build ✓, lint 0 ✓, tests 682 ✓ (shortStepLabel 19, adversarial 26).

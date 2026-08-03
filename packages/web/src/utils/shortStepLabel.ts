@@ -12,14 +12,26 @@
  * the full text one hover away via a `title` attribute. Smart verb extraction
  * and user-authored labels are Phase 2 — this is the light heuristic only.
  *
- * THE UNIFYING RULE (we have relitigated this three times — please don't again):
+ * THE UNIFYING RULE (we have relitigated this five times — please don't again):
  * never emit a label that a cook would read as a DIFFERENT or INCOMPLETE
  * instruction. Abbreviate only by dropping genuinely REDUNDANT detail — detail
  * the rowspan bracket or the subLabel already conveys — never by truncating into
- * a fragment or by promoting a non-instruction (an adverbial/temporal opener) to
- * the whole label. When the heuristic cannot produce something clean, KEEP MORE
- * TEXT: erring long costs a little column width (the title/List carry the rest);
- * erring short costs correctness, and this is a recipe people cook from.
+ * a fragment or by promoting a non-instruction (an adverbial/temporal/spatial
+ * opener) to the whole label. When the heuristic cannot produce something clean,
+ * KEEP MORE TEXT: erring long costs a little column width (the title/List carry
+ * the rest); erring short costs correctness, and this is a recipe people cook
+ * from.
+ *
+ * OPENER DETECTION IS STRUCTURAL, NOT A WORD LIST. An English imperative step
+ * begins with a bare verb ("Whisk…", "Fold…", "Reduce…"). A leading comma-clause
+ * that does NOT begin with a verb is a scene-setter, not the instruction —
+ * whether it is adverbial ("Meanwhile,"), prepositional ("In a large bowl,",
+ * "For the sauce,", "Off the heat,"), or numeric/timing ("2 minutes before
+ * serving,"). We can't POS-tag in the browser, so we invert: a clause is an
+ * opener when its head is a NON-VERB — a function word (preposition, conjunction,
+ * determiner, or temporal/manner adverb, all closed classes) or a number. Do NOT
+ * "fix" a missed opener by appending the specific phrase; if it slips through it
+ * means its head belongs in NON_VERB_HEADS (or is a number) — generalize there.
  */
 
 /** Runaway guard only — most labels are far shorter after clause selection.
@@ -38,13 +50,41 @@ const MIN_LABEL_WORDS = 2;
 const STRIPPABLE_TEMPERATURE = /\d+\s*(?:°|degrees?\b)/i;
 const STRIPPABLE_DURATION = /\d+\s*(?:min(?:ute)?s?|h(?:ou)?rs?)\b/i;
 
-/** Adverbial / temporal / conditional openers that are NOT the instruction.
- *  A leading comma-clause starting with one of these is skipped so the actual
- *  imperative that follows becomes the label ("Meanwhile, cook the pasta"). */
-const OPENERS = new Set([
-  'meanwhile', 'once', 'after', 'before', 'while', 'when', 'whenever',
-  'carefully', 'gently', 'slowly', 'immediately', 'quickly', 'then', 'next',
-  'first', 'finally', 'using', 'if', 'as',
+/**
+ * Non-verb clause heads: an imperative step begins with a bare verb, so a
+ * leading comma-clause headed by one of these function words (or by a number —
+ * see `isOpenerClause`) is a scene-setter to skip, not the instruction. These
+ * are all CLOSED grammatical classes — prepositions, conjunctions, determiners,
+ * and a small set of temporal/manner adverbs — so this set names categories, it
+ * does not enumerate phrases. A missed opener means its head belongs here.
+ */
+const NON_VERB_HEADS = new Set([
+  // prepositions / spatial-temporal heads ("In a large bowl,", "Off the heat,")
+  'in', 'on', 'at', 'to', 'for', 'with', 'without', 'from', 'into', 'onto',
+  'over', 'under', 'by', 'of', 'off', 'up', 'down', 'after', 'before', 'during',
+  'through', 'throughout', 'around', 'about', 'above', 'below', 'beside',
+  'between', 'near', 'upon', 'within', 'across', 'along', 'toward', 'towards',
+  // determiners (cannot head an imperative)
+  'the', 'a', 'an', 'each', 'every',
+  // conjunctions / subordinators
+  'and', 'or', 'but', 'if', 'as', 'so', 'while', 'when', 'whenever', 'once',
+  'until', 'unless', 'because', 'since', 'though', 'although',
+  // temporal / manner / sequencing adverbs
+  'meanwhile', 'then', 'next', 'first', 'firstly', 'finally', 'later', 'soon',
+  'now', 'again', 'immediately', 'carefully', 'gently', 'slowly', 'quickly',
+  'lightly', 'evenly', 'well', 'just', 'always', 'never',
+]);
+
+/**
+ * Base-form imperative verbs that happen to END in "-ing" ("Bring to a boil",
+ * "String the beans", "Wring out the spinach"). The participle rule below treats
+ * an "-ing" head as a manner/means adjunct opener ("Using a slotted spoon,",
+ * "Working in batches,", "Stirring constantly,") — but these must be exempted so
+ * a real imperative is never mistaken for an adjunct and skipped.
+ */
+const ING_BASE_VERBS = new Set([
+  'bring', 'string', 'wring', 'ring', 'sing', 'cling', 'fling', 'sling',
+  'spring', 'ping',
 ]);
 
 /** Closed set of "glue" words a label must never END on — an article,
@@ -64,8 +104,26 @@ function normWord(word: string): string {
   return word.toLowerCase().replace(/[^a-z°]/g, '');
 }
 
+/** A present-participle head ("Using…", "Working…", "Stirring…") marks a
+ *  manner/means adjunct, not an imperative — except base-form verbs in
+ *  ING_BASE_VERBS ("Bring", "String"), which really are imperatives. */
+function isParticipleHead(head: string): boolean {
+  return head.length > 4 && head.endsWith('ing') && !ING_BASE_VERBS.has(head);
+}
+
+/**
+ * A leading clause is an opener (skip it) when it is NOT headed by a verb:
+ *   - a number / measurement head ("2 minutes before serving,", "30 seconds
+ *     later,") — imperatives never start with a digit;
+ *   - a function-word / adverb head from NON_VERB_HEADS; or
+ *   - a present-participle adjunct head ("Using a slotted spoon,").
+ * Everything else is assumed to be a verb-headed instruction and kept.
+ */
 function isOpenerClause(clause: string): boolean {
-  return OPENERS.has(normWord(words(clause)[0] ?? ''));
+  const first = words(clause)[0] ?? '';
+  if (/^[\d¼½¾⅓⅔⅛]/.test(first)) return true;
+  const head = normWord(first);
+  return NON_VERB_HEADS.has(head) || isParticipleHead(head);
 }
 
 function isStrippableMeasurement(tail: string): boolean {
@@ -75,8 +133,10 @@ function isStrippableMeasurement(tail: string): boolean {
 /**
  * Derive a terse display label from a full-sentence step:
  *   1. pick the first comma-clause that actually carries the instruction —
- *      skipping leading adverbial/temporal/conditional openers ("Meanwhile,",
- *      "After 5 minutes,", "Carefully,") so the imperative survives;
+ *      skipping any leading clause NOT headed by a verb: adverbial ("Meanwhile,",
+ *      "Carefully,"), prepositional ("In a large bowl,", "Off the heat,"),
+ *      numeric/timing ("2 minutes before serving,"), or participial ("Using a
+ *      slotted spoon,") — so the imperative survives;
  *   2. strip a trailing "to/for <detail>" tail ONLY when the tail is a
  *      redundant, subLabel-mirrored measurement (temperature or minutes/hours)
  *      and at least MIN_LABEL_WORDS survive — so "Heat the oil to 350°F" becomes
