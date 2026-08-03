@@ -26,87 +26,37 @@ Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handle
 
 ## Learnings
 
-### 2026-08-03T11:00:32-04:00 — Tabular "Grid" recipe view (P1-6/7/8)
+### 2026-08-03 (AM) — Grid view P1-6/7/8 through short-label rounds 1–3 (summary)
 
-Shipped the visible half of the Cooking-for-Engineers Grid mode against Livingston's pinned `@meal-planner/shared` DTOs.
-- `useRecipeViewMode` — `localStorage['recipeViewMode']` (`'list'|'grid'`, default `'list'`), SSR-guarded + try/catch.
-- `useMediaQuery` — powers sub-`sm` degrade-to-List.
-- `utils/buildTabularRecipe.ts` — pure layout (ported `buildColumnCells` + gap compression). Column cascade: each PROCESS step placed one column right of the right-most earlier step its row range overlaps. Proven: no empty columns, reproduces prototype exactly.
-- `TabularRecipeView` — real `<table>` + `<caption>`, `<th scope="row">` sticky ingredient column, SETUP `<th scope="colgroup">` bands, rowspan step `<td>`s `headers`-linked, gap cells `aria-hidden`. Tailwind tokens (blue accent), not prototype raw `--cp-*`.
-- `RecipeViewToggle` — `aria-pressed` button group.
-- Wired into `CookingModePage`. New `getTabularMeal()` client (same endpoint, wider DTO; other `getMeal` callers undisturbed). Lifted `formatIngredient` to `utils/`.
-- Commit `4d23572`. Validated: web build ✓, lint 0 ✓, tests 623 ✓ (37 new).
-- Note: `getTabularMeal` casts to `TabularRecipeMealDTO`; Grid degrades gracefully when API path isn't serving new fields yet.
-
-### 2026-08-03T12:16:22-04:00 — Grid content-shaping follow-ups (Rusty findings 1 & 2)
-
-Rusty APPROVED `4d23572` with two content-shaping follow-ups. Fixed together, web-only, presentation-only (`text` stays single semantic source, no #96/MCP impact):
-- New `utils/shortStepLabel.ts`: `shortStepLabel(text)` — leading clause up to first comma, ~6-word cap; strips trailing "to/for <detail>" tail; falls back to trimmed original. `isRedundantSubLabel(sub, label)` = case-insensitive substring.
-- `TabularRecipeView`: PROCESS cells render short label with full text in `title`; subLabel suppressed when substring of displayed label. SETUP bands also suppress redundant subLabel. List untouched (lossless).
-- No-groups degrade path (Livingston removed `?? ing.category`): verified no pills, no coloured borders, consistent transparent 4px left accent.
-- Commit `0a90fdb`. Validated: web build ✓, lint 0 ✓, tests 650 ✓.
-
-### 2026-08-03T12:24:12-04:00 — Short-label heuristic: principled to/for strip
-
-Rusty follow-up: positional "to/for tail" strip was misfiring ("Bring to a boil" → "Bring"; "Reduce to a simmer" → "Reduce"). Fixed:
-- Strip `to|for <tail>` ONLY when tail contains **temperature or duration** (units `extractSubLabel` re-shows — tied to the redundancy the strip exists to remove).
-- **2-word floor:** never strip to a bare verb.
-- Word cap trims trailing dangling connectives (and/with/the/until/…).
-- Guiding principle: short label must be *abbreviated*, never *wrong*; when in doubt keep more text.
-- Commit `118370c`. Validated: web build ✓, lint 0 ✓, tests 653 ✓.
-
-### 2026-08-03T12:43:32-04:00 — Short-label: three "misleading not abbreviated" defects
-
-Yen found 2 adversarial defects; Brandon flagged 1 off the screenshot. All three fixed:
-- **D1 (Yen DEFECT 1):** adverbial/conditional opener before first comma returned as whole label ("Meanwhile, cook the pasta" → "Meanwhile"). Fixed: skip clause if recognized opener (meanwhile/once/after/before/while/when/carefully/gently/using/…), use imperative clause → "cook the pasta".
-- **D2 (cap):** 6-word cap truncating mid-phrase. Fixed: raised to 9 words + glue-word trim (never ends on article/prep/conjunction).
-- **D3 (Yen DEFECT 2):** `to/for` strip removing seconds/days that `extractSubLabel` never re-shows (only emits min/hr/°). Fixed: strip vocabulary narrowed to temperature + minutes/hours ONLY.
-- Unified rule: never emit a label a cook reads as a DIFFERENT or INCOMPLETE instruction; abbreviate only by dropping redundant detail; when in doubt, KEEP MORE TEXT.
-- `it.fails` in `shortStepLabel.adversarial.test.ts` converted to passing + extended.
-- Commit `d467f29`. Validated: web build ✓, lint 0 ✓, tests 670 ✓ (shortStepLabel 19, adversarial 14).
-
-📌 Team update (2026-08-03T11:00:32-04:00): Yen's final **SHIP Phase 1** verdict confirmed after all 3 adversarial short-label defects fixed and `it.fails` converted to passing (commit `d467f29`). 1840 total tests passing (web 665). Phase 1 complete. — decided by Yen
+- Shipped `TabularRecipeView`, `RecipeViewToggle`, `buildTabularRecipe`, `useRecipeViewMode`, `useMediaQuery` in web. Real `<table>` + ARIA `scope`/`headers`. Column cascade assignment proven sound by induction. Sub-`sm` degrade-to-List safe (persisted `localStorage` preference never overwritten by viewport). Commit `4d23572`. Tests: 623 ✓.
+- Three rounds of short-label fixes. After round 3 (`d467f29`): skip leading adverbial/conditional openers (meanwhile/once/after/…) to reach the imperative; strip `to/for <measurement>` ONLY for temperature + minutes/hours (ties to `extractSubLabel`); 9-word cap with glue-word trim (never ends on article/prep/conj); 2-word floor. Full text in `title`; List always lossless. Guiding principle: never emit a label a cook would read as a different or incomplete instruction — abbreviate, never mislead. Yen's `it.fails` markers for all 3 defects converted to passing. Tests: 670 ✓.
+- Yen SHIP verdict (AM): 1840 tests PASS, build/lint clean. Phase 1 AM work complete.
 
 ### 2026-08-03T13:27:37-04:00 — Short-label: structural boundary rewrite (retire the word cap)
 
-Brandon found "Cook the spaghetti in a large pot of salted" in the Marinara render — the D2 fragment class AGAIN (8th defect family). Root cause ruling: truncating natural language at a word count cannot be made safe — every trim rule patches the instance and leaves the class. Mandated a **structural** fix.
+Brandon found "Cook the spaghetti in a large pot of salted" — the D2 fragment class again (8th round). Root cause ruling: truncating natural language at a word count cannot be made safe.
 
-**The boundary rule (`dropTrailingClause`):** never cut mid-phrase. Cut ONLY at a real syntactic boundary — a subordinator (`to`/`until`/`while`/`then`) that introduces a droppable trailing clause — else emit FULL TEXT. A long label is a layout inconvenience; a fragment is a wrong instruction.
-- Guards so a cut can never leave a fragment: keep ≥2 words (floor); the subordinator's next word must be a **content word** (so "to a boil"/"to 165°F"/"to a glaze" — determiner/number complements — are NOT clauses and stay whole); the head must not end on a glue/connective word; and `parts[i-2]` must not be a coordinator (blocks "…and fry | until golden" → bare-verb). Scans from the end → drops only the outermost clause, keeping the most text. Trailing comma/`;`/`:` stripped from a cut head.
-- **Excluded `and`/`or` from cut boundaries** (Brandon's example list included them): they ambiguously coordinate nouns vs clauses and can't be POS-disambiguated in-browser, so cutting there risks a fragment or dropping a co-equal action. Steps whose only join is "and"/"or" are emitted whole. **Flagged deviation.**
-
-**Deleted:** the word cap (`MAX_WORDS=9`), the trailing-glue trim, the dangling-verb positional back-off, and `CUT_CONNECTIVES`. **Kept untouched:** opener-skip + `skippedOpener` capitalization (`c46855b`), the redundant-measurement `to/for` strip (mirrors shared `extractSubLabel`: temp + min/hr only), the 2-word floor, `isRedundantSubLabel`.
-
-**Assertions changed (each renders MORE completely or a clean cut — none loosened):**
-- unit "…severed to/and <verb>" → split: "Stir…to make the remoulade sauce" still → "Stir the mayonnaise and dill pickles together" (cut at `to make`); "Warm the olive oil…and sauté…" now → **full text** (no `and` cut).
-- unit "caps a runaway run-on" → "Mix the flour and… soda together well" now → **full text** (no boundary; was capped ≤9).
-- adversarial SEVENTH FAMILY: "and sauté" → full text; "Combine…and bring it to a boil" → **full text** (was truncated "…bring it"); rewrote the invariant test to: output is EITHER verbatim input OR a boundary-cut head ending on a content word.
-- adversarial 8th sweep: "or"/"and" lists → full text (were truncated); "Over medium heat until golden" → "Over medium heat" (cut at `until`); mis-detected "Sting the sauce with lime, then taste…" → "Sting the sauce with lime" (then-clause cut, comma cleaned).
-- Added a `boundary shortening` unit block (until/while/then cuts; "to <determiner>" no-cut; floor).
-
-**Width check:** process `<td>` is `min-w-[6rem]` with NO `max-w` / NO `whitespace-nowrap`, inside `overflow-x-auto`. Longer full-text labels wrap vertically (taller cell), never a horizontal matrix blowout. Worst realistic case "Cook the spaghetti in a large pot of salted water" wraps to ~3 lines. Acceptable — the err-long cost is a little row height.
-
-Commit `<pending>`. Validated: web build ✓, lint 0 ✓, tests **700** ✓ (shortStepLabel 28 + adversarial 20, whole web suite green).
+**The boundary rule (`dropTrailingClause`):** never cut mid-phrase. Cut ONLY at a real syntactic boundary — a subordinator (`to`/`until`/`while`/`then`) that introduces a droppable trailing clause — else emit FULL TEXT.
+- Guards: ≥2 words floor; subordinator's next word must be a content word (so "to a boil"/"to 165°F" stay whole); head must not end on a glue/connective; `parts[i-2]` must not be a coordinator (blocks "…and fry | until golden" bare-verb strand); scans from the end → drops only outermost clause; trailing comma/`;`/`:` stripped from head.
+- **Excluded `and`/`or` from cut boundaries** — ambiguously coordinate nouns vs clauses with no POS signal in-browser; flagged deviation to Rusty.
+- Added `isParticipleHead` + `ING_BASE_VERBS` for `-ing`-led pseudo-imperatives; positional connective back-off (`c358937`) for >9-word labels ending with {to,and,or,…} at n−2.
+- Deleted: word cap, trailing-glue trim, dangling-verb back-off, `CUT_CONNECTIVES`. Kept untouched: opener-skip + capitalization, `to/for` strip (temp+min/hr only), 2-word floor, `isRedundantSubLabel`.
+- Width: `<td>` is `min-w-[6rem]` with no `max-w` / no `whitespace-nowrap`; longer labels wrap vertically, never a horizontal blowout.
+- Commits `f8a87f3`, `c46855b`, `c358937`. Tests: 700 ✓.
 
 ### 2026-08-03T16:12:04-04:00 — Grid ingredient use-ordering (web half of `ad63eb8`)
 
-Livingston shipped the shared/API half (`ad63eb8`): new **non-nullable** `ingredientDisplayOrder: number[]` on `TabularRecipeMealDTO`, a permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row. `spanFrom`/`spanTo` now index into the DISPLAY order, not `position`. Motivation: measured against Brandon's real 74-meal library, 43% of PROCESS steps over-bracketed because ingredients are stored in *shopping* order; Chu's format needs *use* order (Birria braise was bracketing tortillas + cheese).
+Livingston shipped `ad63eb8` (shared/API): new non-nullable `ingredientDisplayOrder: number[]` on `TabularRecipeMealDTO`, a permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row. `spanFrom`/`spanTo` index into the DISPLAY order, not `position`.
 
 **`buildTabularRecipe.ts`:**
-- Deleted the ingredient `position`-sort (now *actively wrong* — it fought the display order). `ingredients` is used as-is: the canonical, `position`-ordered coordinate system shared with List/Grocery/Cooking-Mode/`MealDetailModal`, never re-sorted here.
-- Added `resolveDisplayOrder(order, n)`: validates a true permutation of `0..n-1`; missing/wrong-length/non-permutation → identity fallback (degrades to `position` order — covers an older API pre-`ad63eb8` or a malformed fixture without dropping/duplicating rows).
-- Row loop walks `displayOrder.map((ingredientIndex, r) => …)` indexing `ingredients[ingredientIndex]`, `rowIndex: r` = the consecutive display walk index. Spans are already display coords, so the cascade/rowspan math AND the view's `headers`/`scope` a11y linkage (`ingRowId(row.rowIndex + i)`) are unchanged — zero renderer logic change.
-- Group runs now computed over DISPLAY order (what the cook sees). Instruction `position`-sort kept (PROCESS cascade order is independent of display order).
-- Function param widened to `…& { ingredientDisplayOrder?: number[] }` (optional at the boundary for the 10 legacy unit tests + defensive fallback; the required-field DTO stays assignable).
+- Deleted the ingredient `position`-sort (now actively wrong). `ingredients` used as-is (canonical coordinate system).
+- Added `resolveDisplayOrder(order, n)`: validates a true permutation of `0..n-1`; missing/wrong-length/non-permutation → identity fallback (degrades to position order — covers older API or malformed fixture without dropping rows).
+- Row loop walks `displayOrder.map((ingredientIndex, r) => …)`; `rowIndex: r` = consecutive display walk. Spans already in display coords; cascade/rowspan and `headers`/`scope` a11y linkage unchanged.
+- Group runs computed over DISPLAY order. Instruction `position`-sort independent.
+- Function param widened to `…& { ingredientDisplayOrder?: number[] }` for 10 legacy unit tests + defensive fallback.
 
-**`TabularRecipeView.tsx` (only change beyond leaving it untouched):** added a small visible note for `matrixSource === 'derived'` — "Ingredients are listed in the order the recipe uses them, so this order can differ from the List view." Rusty ruled the List/Grid order divergence acceptable but wanted it stated; a mid-recipe toggle shouldn't read as "ingredients vanished". Authored meals (identity == List order) get NO note.
+**`TabularRecipeView.tsx`:** added small visible note for `matrixSource === 'derived'` — "Ingredients are listed in the order the recipe uses them, so this order can differ from the List view." Authored meals (identity = List order) get no note.
 
-**UX call:** shown only for derived meals, muted `text-xs` footnote directly under the grid. Authored = identity = same as List, so no note needed there.
+Cross-step reuse over-bracketing is intrinsic (DAG-vs-tree) — NOT tested for zero over-bracketing. Tests: `buildTabularRecipe` +5 (Birria displayOrder walk, identity fallback, malformed fallback, group runs over display order, instruction-position sort), `TabularRecipeView` +2 (use-order note, display-order render + a11y linkage). Total: 706 ✓. Commit `d325227`.
 
-**Cross-step reuse over-bracketing is intrinsic** (a rowspan table renders a tree; genuine reuse is a DAG) — NOT fixed in web, NO test asserts zero over-bracketing (would assert something false). Only Phase-2 authored spans close it.
-
-**Regression confirmation:** all seven short-label defect families still green (`shortStepLabel` 28 + adversarial 35 untouched); column assignment, gap compression, and rowspan `headers`/`scope` a11y wiring intact (new view test asserts rows render in `ingredientDisplayOrder` and a span's `headers` reference consecutive DISPLAY row ids, never position). Pipeline test now wires the real `matrix.ingredientDisplayOrder` end-to-end (po'boy derives to identity, so its render assertions hold).
-
-**Tests:** `buildTabularRecipe.test.ts` +5 (Birria `[1,2,3,0,6,4,5,7]` braise `0..4` walk; identity fallback; malformed-permutation fallback; group runs over display order; instruction-position sort). `TabularRecipeView.test.tsx` +2 (use-order note derived/authored; display-order render + a11y linkage). Fixtures updated for the required DTO field (pipeline `serve()`, `meal()` factory identity default, `CookingModePage` fixture).
-
-Commit `<pending>`. Validated: web build ✓, lint 0 ✓, tests **706** ✓ (was 700; +5 build +2 view −1 obsolete).
+📌 Team update (2026-08-03T16:52:00-04:00): Yen's **SHIP** verdict (PM final pass): 1903 tests PASS (web 706); boundary-cut labels + displayOrder walk verified against real 94-meal DB. The word-cap `it.fails` from Yen's earlier fifth-family pass and all adversarial label families are green. Phase 1 fully complete. — decided by Yen, Rusty

@@ -128,3 +128,5 @@ modifiers; longer adjacent phrase wins a shared token). Undid my earlier workaro
 **Re-verified clean-span: 11/11 derived recipes match intended brackets** under the new
 matcher (intent-based harness, deleted before commit). 3 authored unchanged. Reseeded
 scratch (:5433) to confirm names persist + 11/3 split. `saul-mealdb` (:5432) untouched.
+
+📌 Team update (2026-08-03T16:52:00-04:00): Yen's **SHIP** verdict (PM final pass): 1903 tests PASS; Saul's "11/11 derived clean" independently confirmed by cross-validating real compiled `deriveRecipeMatrix` against 94 meals. Migration backfill (365 ingredients, 0 mismatches) and seed (11 derived, 3 authored) both verified by Yen. Phase 1 fully complete. — decided by Yen, Rusty
