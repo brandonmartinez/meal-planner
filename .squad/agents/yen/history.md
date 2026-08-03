@@ -69,3 +69,27 @@ Attacked the two new rules per Brandon's request:
 **No genuine eighth family.** Added 5 passing characterization tests (not `it.fails`) locking in the err-safe behavior of both rules. One cosmetic err-long observation (NOT a defect, NOT a blocker, inherent to the 9-word cap since it landed): any 10+ word sentence truncates on its 9th word, which can be a non-connective ("Cook the spaghetti in a large pot of salted" — "water" cut). Reads as the SAME instruction (never a different one), full text is in the `title`, and durations re-surface via the timer/subLabel. Possible Phase-2 polish: extend the trailing-glue trim to drop a stranded preposition-phrase head.
 
 Re-captured `final-desktop-light.png` + `final-tablet-light.png` (overwrite, same representative fixtures). Both visibly fixed: Po'Boy remoulade cell now "Whisk the mayonnaise and dill pickles and Creole mustard" (no dangling "…to make"); Po'Boy "Dredge the shrimp in the seasoned flour" (no "…seasoned" fragment); Marinara "Warm the olive oil in a saucepan" (no dangling "…and sauté"); Marinara "Cook the spaghetti…" ("Meanwhile," skipped and sentence-cased, capitalization uniform down the column). Static harness mounting the real `TabularRecipeView` with `deriveRecipeMatrix`. **Verdict: SHIP Phase 1.**
+
+## 2026-08-03 — REAL END-TO-END verification against Brandon's live dev DB (first non-harness pass)
+
+Docker Postgres 16 (`saul-mealdb`, localhost:5432) up with Brandon's actual data: **74 meals / 365 ingredients / 61 instructions**. Stood up the real API (`tsx src/index.ts`:3001, `DATABASE_URL` → live DB) + web (`vite`:5199, proxy `/api`→3001) and drove the Grid in headless Edge over CDP from **real network responses** — every prior pass was a static harness.
+
+**Task 1 — real stack works.** `/api/families/:fam/meals/:id` serves the matrix fields (matrixSource `derived`, all `groupLabel` null, real spans). Grid `<table>` renders real "Braise the beef" cells; toggle Grid↔List flips `aria-pressed` + `localStorage.recipeViewMode` and **persists across reload**. Loading spinner and a clean "Failed to load recipe" error state both observed live.
+
+**Task 2 — THE MEASUREMENT (all 74 meals; replica matcher cross-validated 0 failures vs real `dist/deriveRecipeMatrix.js`):**
+- **All 74 meals are DERIVED (0 authored); every `groupLabel` derives null** (categories are grocery aisles).
+- **58 / 74 meals (78%) have ZERO instructions** → Grid = ingredient column, empty right side, no crash, but adds nothing over List.
+- Of the **16 instruction-bearing meals: 1 clean (Miso-Glazed Cod), 15 over-bracket (94%).**
+- **PROCESS steps: 61 total → 32 clean, 26 over-inclusive (43%), 3 degenerate full-span** (name no ingredient).
+- Severity: 5 steps sweep 1 stray, 15 sweep 2-3, 6 sweep 4-6 (max 5). **7 of 15 over-meals have a step bracketing >half the list.** Worst: Birria 0.63, Vietnamese Lemongrass Pork 0.63, Butternut Risotto 0.57, White Cheddar Mac 0.57.
+- **Correlation:** the whole library is 3-4 terse steps over 6-8 ingredients listed in shopping order, not use-order → min..max span guarantees over-bracketing unless the list happens to be in use-order (only Miso-Cod is). Not a bug — Livingston's flagged weakness (b) manifesting on real data.
+
+**Task 3 — degenerate shapes:** 58 zero-instruction (dominant), 0 one-instruction, 0 instructions-without-ingredients, 2 one-ingredient (test rows). All render without crash; already covered by existing web unit tests (`TabularRecipeView.test.tsx:198`, `buildTabularRecipe.test.ts:236`).
+
+**Task 4 — 6 real screenshots** (real app + real server + real DB), session files dir: `real-birria-overbracketed-{light,dark}.png` (Braise/Shred each bracket 7 of 8 incl. tortillas & cheese), `real-miso-cod-clean-{light,dark}.png` (the lone clean meal), `real-beef-tacos-noinstructions-{light,dark}.png` (the 58/74 empty-Grid shape).
+
+**Task 5 — real-server-only:** API contract matches web's `TabularRecipeMealDTO` exactly; loading + 404 error states clean. **Finding: `/api/auth/*` (incl. `/api/auth/me`) is rate-limited (15-min in-memory window); a reload burst trips 429 → bounce to /login.** Expected middleware behavior, not a Grid defect; noted for whoever tunes limits.
+
+Added `packages/shared/src/deriveRecipeMatrix.realdata.test.ts` — 5 PASSING characterization tests pinning the Birria over-bracket, the Miso-Cod clean case, and the no-instruction empty shape to real-data fixtures (shared 31→36 tests; lint + `tsc` clean). No `it.fails` — over-bracketing is documented derived behavior, not a bug.
+
+**VERDICT: SHIP Phase 1 behind the List default — but derived Grid is NOT trustworthy standalone on Brandon's real library.** Structurally sound (no crashes, List is the lossless backstop, format is correct when data lines up). But on the actual catalog it's low-value/misleading for the vast majority: 78% of meals show an empty Grid, and 94% of the rest over-bracket (7/15 bracket >half the list). **Derived mode alone does not justify relying on the Grid — it needs the Phase-2 authoring editor (or an ingredient use-order pass) before it faithfully represents recipes.** Routing the product call to the coordinator.
