@@ -57,3 +57,5 @@ Rusty/Livingston to confirm backfill on first `migrate deploy`.
 
 **Left for Livingston:** `deriveRecipeMatrix()` + DTO in shared, service
 position-from-index writes, REST/MCP read shaping (outside my fence, untouched).
+
+📌 Team update (2026-08-03T11:00:32-04:00): Rusty reviewed and **APPROVED** P1-1 schema migration (`27e94a3`). Backfill SQL verified correct (0-based, ctid ordering acceptable), strictly additive, doc comments meet Brandon's anti-staleness requirement. Yen gave **SHIP Phase 1** verdict after full integration verification: 1840 tests passing, build/lint clean. Phase 1 complete. — decided by Rusty, Yen

@@ -9,41 +9,42 @@
 
 Lead / Architect. Owns cross-package contracts, scope, and code review. Build/CI order is shared → generate Prisma → api → web — keep it intact.
 
-## Recent Updates
+## History Summary (2026-06-30 through 2026-07-28)
 
-📌 Team initialized on 2026-06-30 (Ocean's Eleven cast).
-
-📌 Recent update (2026-06-30T15:08:40-04:00): Architecture review filed #5 (MCP epic), #12 (shared DTOs), and #13 (Node version).
-
-📌 Sprint 1 batch (2026-06-30T17:04:41-04:00): Two roles this sprint. (1) Authored #12 `squad/12-shared-dtos` PR #38 (draft) — made `@meal-planner/shared` the single source of truth for serialized API response DTOs (new `src/types/dto.ts`: SerializedUser, FamilyMemberDTO, FamilyDTO, ApiKeyListItemDTO, CreatedApiKeyDTO, ImportMealsResultDTO), removed duplicate web-local interfaces. These DTOs are the wire contract MCP must reuse — the foundational MCP contract surface. Calls: services keep returning Prisma shapes (serialize at `res.json()`), dates are ISO strings, api-key secret-once invariant preserved. (2) Acting as the independent Lead security gate on Frank's #11 (fail-closed secrets) — in review, since Frank can't self-gate.
-
-📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Ran the independent security gates on Frank's two PRs (author was Frank, so I review since he can't self-gate). #10 `PR #41` (scoped rate limits) → APPROVE. #6 `PR #47` (scoped MCP agent credentials) → APPROVE on all 11 acceptance criteria. Because every agent PR shares author `brandonmartinez`, `gh pr review --approve` is blocked — gate verdicts posted as review comments instead; Squad-layer independence (reviewer ≠ author) still holds. #6 stays OPEN: management endpoints deferred to #50.
-
-📌 Sprint 4 batch (2026-06-30T21:57:01-04:00): Two roles. (1) Authored #5 `PR #65` — the MCP server package `packages/mcp`; Frank's independent security gate APPROVE. Coordinator fixed 2 TS compile errors before merge (`agent.ts` `mealId` scope hoist; mcp `ToolResult` index signature) and regenerated `pnpm-lock.yaml`. (2) Ran the infra gates on Basher's k8s PRs: #25 `PR #63` (immutable image tags) → APPROVE; #26 `PR #64` (migrations out of multi-replica startup) → first REQUEST-CHANGES (migrate-job hardcoded `:latest`), then APPROVE after it consumed #25's single-source pinned tag and moved migrate to a fail-fast Job in `deploy.sh`.
-
-📌 Sprint 5 batch (2026-06-30T21:57:02-04:00): Infra gate on Basher's #42 `PR #66` (CI migration validation — `prisma migrate deploy` + `migrate diff --exit-code` drift check in the test job) → APPROVE. All Sprint 1–5 milestones now closed.
+- **Initialization (2026-06-30):** Ocean's Eleven cast. Established `@meal-planner/shared` DTOs as MCP contract surface (#12 PR #38). Security gated Frank's #10 (rate limits APPROVE) and #6 (MCP credentials APPROVE).
+- **MCP server (Sprint 4):** Authored `packages/mcp` (#5 PR #65); Frank APPROVE. Infra gates: #25/PR #63 (immutable tags), #26/PR #64 (migrations out of startup) — both APPROVE. CI validation #42/PR #66 APPROVE.
+- **MCP bearer auth (2026-07-01):** #87/#88 host-trust fix closed injection issue. PR #90 preserved Bearer/WWW-Authenticate + fixed `agentKeyGenerator` keying.
+- **Epic #91 + parity gate (2026-07-02):** Led #91 decomposition into 29 issues (#92–#120); five-sprint plan; critical path #92→#96→#111→#112. #96 APPROVED: 11-row parity checklist, `meal:write` for metadata, UI-only features violate parity (HARD RULE). `parity.instructions.md` committed.
+- **#218 grocery grouping review (2026-07-28):** Rejected Linus's initial commit (two blockers: pantry separation must be mode-independent per #205; meal grouping must use `sourceMealIds`). Approved Virgil's fix `bb7474e`.
+- **Archive gate policy (2026-07-28):** Rewrote Scribe's gate to use `archivable_bytes` (top-level `##` sections except `## Standing Policy`) with 24 KiB / 64 KiB tiers; `total_bytes` is reporting-only. Archive gate triggers from `archivable_bytes` only — a budget measured against content the gate cannot act on creates a permanently red signal.
 
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
-📌 Team update (2026-07-01T17-12-00Z): #87/#88 host-trust fix closed the reviewer-flagged injection issue and passed the final gate. — decided by Rusty
-📌 Team update (2026-07-01T14:01:24-04:00): #89 mounted the hosted MCP core handler inside the API at `POST /mcp`, preserving per-request family-from-key auth while shipping through the existing production image and ingress. — decided by Rusty
-📌 Team update (2026-07-01T14:57:00-04:00): PR #90 merge-conflict resolution preserved upstream #88 Bearer/WWW-Authenticate support alongside the `createMcpCoreHandler` extraction; Rusty fixed Frank's post-merge finding so `agentKeyGenerator` keys on Bearer token or `x-agent-key` for the same per-credential rate-limit bucket. — decided by Frank and Rusty
-📌 Team update (2026-07-02T10:16:59-0400): Rusty led the approved decomposition of epic #91 into 29 dependency-ordered issues (#92-#120) across P1-P3. — logged by Scribe
-📌 Team update (2026-07-02T10:59:35-04:00): Rusty produced a five-sprint recipe-management execution plan for #91-#121; Sprint 1 owner issue is #96, with the critical path #92 → #96 → #111 → #112. — logged by Scribe
-📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 design gate #96 (API/MCP parity rules) APPROVED. Contract: 11-row parity checklist standardized; reuse meal:write for all recipe metadata; meal:image scope deferred to #103/#104 (binary only); display deny-by-default; placeholders un-editable+excluded. HARD RULE: UI-only recipe features violate parity. Option A: commit .github/instructions/parity.instructions.md as FIRST Sprint 2 task. Issue closed, decision record posted. All Sprint 1 design gates complete. — logged by Scribe
+### 2026-08-03T11:09:03-04:00 — Tabular "Grid" view: HYBRID approved, spec revised
 
-### 2026-07-28T10:15:00-04:00 — #218 grocery grouping review gate
+Brandon approved Approach C (Hybrid) and reframed the phase split. Phase 1 = additive schema (`MealIngredient.position`+`groupLabel`; `MealInstruction.kind`/`subLabel`/`column`/`spanFrom`/`spanTo`, `enum InstructionKind`) + derive-on-read + read path + toggle/renderer; Phase 2 = editor UI (write parity). Key design calls: derivation is a pure `deriveRecipeMatrix()` in shared, run on the API read path, **never persisted**; provenance is **structural** (`matrixSource='authored'` iff any instruction has non-null `spanFrom`), no stored `isDerived` flag — explicitly citing the grocery `sources`-vs-`sourceMealIds` staleness lesson; schema doc comments must state null=derive-at-read/display-only. Parity: Phase 1 is a READ capability (read parity done; agent write Zod + MCP inputSchema documented N/A), Phase 2 is the WRITE capability.
 
-Reviewed Linus's #218 commit `21be592` and rejected it for two blockers: pantry-staple separation must remain mode-independent under #205, and meal grouping must use `sourceMealIds` for membership rather than stale-prone `sources` labels. Issued the binding ruling in `rusty-grocery-pantry-grouping.md`; re-reviewed Virgil's revision `bb7474e` and approved it after both blockers were closed.
+### 2026-08-03T11:28:18-04:00 — Review gate: P1-1 schema migration (Saul, 27e94a3) → APPROVE
 
+Verified: backfill SQL valid Postgres (0-based `row_number()-1`, ordered after ADD COLUMN); `ctid` ordering acceptable for one-shot in-transaction backfill (random UUID PK; ACCESS EXCLUSIVE lock rules out concurrent VACUUM FULL); strictly additive; doc comments fully convey anti-staleness contract. Verdict: **APPROVE**.
 
-📌 Team update (2026-07-28T11:52:00-04:00): Archive-gate policy now requires both age and non-durability before Scribe can archive a decision. Rusty's durability test treats still-true process rules, architecture/data contracts, security/auth hardening, environment/infra facts, and cross-package conventions as durable; `## Standing Policy` is the hard-exempt section, and pressure is reported instead of evicting durable rules. — logged by Scribe
+### 2026-08-03T11:49:30-04:00 — Review gate: P1-2/3/4/5 read-path + parity (Livingston, 7054875 + 9f62bfc) → APPROVE
 
-### 2026-07-28T13:51:00-04:00 — Scribe archive gate byte budget
+Verified: (1) `applyRecipeMatrix` is a pure projection — no Prisma write, read positions only. (2) Ingredient ordering: `MEAL_DETAIL_INCLUDE` + `exportMeals` + `applyRecipeMatrix` re-sort — belt-and-suspenders. (3) `mapIngredientCreates()` assigns 0-based position from array index — confirmed. (4) #96 parity: read parity delivered; agent-write Zod + MCP inputSchema N/A = legitimate (READ capability only). (5) 6 re-fetch fixture completions genuine. Verdict: **APPROVE** (conditional on Linus's P1 web staying read-only).
 
-Rewrote Scribe's charter/template gate to budget `archivable_bytes` (top-level `##` sections except `## Standing Policy`) with 24 KiB / 64 KiB tiers and reporting-only `total_bytes`. Decision inbox entry `rusty-archivable-byte-gate.md` supersedes the threshold half of `b288603` while preserving the durability test and Standing Policy never-archive rule.
+### 2026-08-03T12:13:00-04:00 — Review gate: P1-6/7/8 web Grid view (Linus, 4d23572) → APPROVE (+1 design ruling)
 
-### 2026-07-28T13:55:00-04:00 — Archive budgets must measure actionable content
+Verified: (1) parity condition DISCHARGED — no matrix authoring vector from web; (2) column-assignment cascade SOUND (induction proof); (3) `getTabularMeal()` cast SOUND; (4) a11y coherent — real `<table>`, `scope`, `headers`; (5) sub-sm degrade SAFE — persisted preference never overwritten by viewport. **DESIGN RULING:** `MealIngredient.category` is grocery-aisle vocabulary, NOT recipe sections. Adopted option (ii): suppress DERIVED groups; render pills/borders only for authored `groupLabel`. New work item **P1-9** issued (owner: Livingston). Verdict: **APPROVE**.
 
-A memory budget measured against content the gate cannot act on creates a permanently red signal. For Scribe's decision archive gate, trigger sweeps from `archivable_bytes` only and keep `total_bytes` as reporting-only visibility into durable-corpus growth.
+### 2026-08-03T12:14:00-04:00 — P1-6/7/8 addendum: 3 visual/semantic findings from Yen's po'boy screenshot
+
+Verdict UNCHANGED (APPROVE). Findings are derivation/content-shaping, not render defects:
+1. **subLabel duplicates label** — suppress subLabel when substring of displayed label. Owner Linus.
+2. **Full-sentence labels defeat format** — web derives SHORT display label (leading clause, ~6-word cap, strip trailing "to/for <detail>" tail); full text in `title`; always full in List. Presentation-only → NO persistence, NO DTO field; `text` stays single semantic source. Owner Linus.
+3. **Group pills = grocery aisle** — reaffirms option (ii) ruling; P1-9 owner Livingston.
+
+### 2026-08-03T12:16:22-04:00 — #96 parity conditional DISCHARGED
+
+No matrix authoring vector from web confirmed: base `MealIngredient`/`MealInstruction` types carry NO span fields; `MealFormPage` untouched; REST Zod takes position from array order. Write-side #96 N/A from the P1-2..5 review stands as legitimate. Phase 1 parity confirmed: all read surfaces complete, all write surfaces N/A documented.
+
+📌 Team update (2026-08-03T11:00:32-04:00): Linus fixed all 3 adversarial short-label defects in `d467f29` (D1: adverbial openers skipped to reach imperative; D2: 9-word cap + glue-word trim; D3: seconds/days strip narrowed to temperature+min/hr). All `it.fails` converted to passing; 670 total shortStepLabel tests. Yen's final SHIP verdict stands for the completed feature. Phase 1 delivered end-to-end. — decided by Linus, Yen
