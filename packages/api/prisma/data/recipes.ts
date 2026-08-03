@@ -221,7 +221,7 @@ export const DEMO_RECIPES: SeedRecipe[] = [
       { name: "Cumin", quantity: "1", unit: "tbsp", category: "condiments", groupLabel: "Protein & Spice" },
       { name: "Diced tomatoes", quantity: "28", unit: "oz", category: "pantry", groupLabel: "Simmer" },
       { name: "Kidney beans", quantity: "15", unit: "oz", category: "pantry", groupLabel: "Simmer" },
-      { name: "Broth", quantity: "2", unit: "cups", category: "pantry", groupLabel: "Simmer" },
+      { name: "Beef broth", quantity: "2", unit: "cups", category: "pantry", groupLabel: "Simmer" },
       { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy", groupLabel: "Garnish" },
     ],
     instructions: [
@@ -231,7 +231,7 @@ export const DEMO_RECIPES: SeedRecipe[] = [
       { text: "Add the ground beef and brown it." },
       { text: "Season with chili powder and cumin." },
       {
-        text: "Pour in the diced tomatoes, kidney beans, and broth, then simmer.",
+        text: "Pour in the diced tomatoes, kidney beans, and beef broth, then simmer.",
         timerMinutes: 30,
       },
       { text: "Top each bowl with cheddar and serve." },
@@ -291,13 +291,13 @@ export const DEMO_RECIPES: SeedRecipe[] = [
       { name: "Tomato", quantity: "3", category: "produce" },
       { name: "Red onion", quantity: "1/2", category: "produce" },
       { name: "Feta", quantity: "4", unit: "oz", category: "dairy" },
-      { name: "Olives", quantity: "1/2", unit: "cup", category: "condiments" },
+      { name: "Kalamata olives", quantity: "1/2", unit: "cup", category: "condiments" },
       { name: "Olive oil", quantity: "3", unit: "tbsp", category: "pantry" },
       { name: "Oregano", quantity: "1", unit: "tsp", category: "condiments" },
     ],
     instructions: [
       { text: "Chop the cucumber, tomato, and red onion into a bowl." },
-      { text: "Add the feta and olives." },
+      { text: "Add the feta and kalamata olives." },
       { text: "Dress with olive oil and oregano, then toss." },
       { text: "Serve chilled." },
     ],

@@ -110,3 +110,21 @@ Seeded a scratch DB (`saul-seed-scratch`, :5433, fresh volume) via `migrate depl
 `db seed`: 14 recipes; ingredient AND instruction positions dense/0-based; derived
 meals persist 0 layout columns; authored spans in range. **`saul-mealdb` (:5432,
 Brandon's real 74 meals) was never written to** — left running for Yen.
+
+## 2026-08-03 (PM) — Restore natural ingredient names post matcher-fix
+Livingston hardened the Grid matcher (`a008feb`: descriptors kept as non-anchoring
+modifiers; longer adjacent phrase wins a shared token). Undid my earlier workaround.
+
+- **Reverted** chili "Broth" → **"Beef broth"** (name + step text "and beef broth").
+  Re-verified: "ground beef" step spans Ground beef only; "beef broth" matches Beef
+  broth only. Now a deliberate beef/beef-broth **regression fixture**.
+- **Found a separate latent collision** on a deliberate pass: Greek Salad "Olives" vs
+  "Olive oil" (bare token `olive`, step said "olives" → matcher tie → matched BOTH →
+  over-bracket 3..5). Matcher can't disambiguate a bare shared token; fixed with the
+  natural varietal name **"Kalamata olives"** (+ step). Not a workaround — a content fix.
+- No other bug-shaped accommodations; the "sauce/glaze/filling" wordings address the
+  intrinsic cross-step-reuse limit, not the collision bug, so they stand.
+
+**Re-verified clean-span: 11/11 derived recipes match intended brackets** under the new
+matcher (intent-based harness, deleted before commit). 3 authored unchanged. Reseeded
+scratch (:5433) to confirm names persist + 11/3 split. `saul-mealdb` (:5432) untouched.
