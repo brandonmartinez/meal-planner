@@ -240,3 +240,58 @@ describe('shortStepLabel — SEVENTH FAMILY: no dangling severed verb', () => {
     );
   });
 });
+
+/**
+ * EIGHTH-FAMILY SWEEP (Yen, 2026-08-03, after c46855b + c358937). Adversarial
+ * pass targeting the two cleverest new rules — the positional connective back-off
+ * and the -ing participle detection — per Brandon's request. VERDICT: no genuine
+ * eighth family. Both rules are err-safe on realistic recipe prose: the worst
+ * case is an already-heavily-abbreviated (>9-word) label losing a rowspan-shown
+ * ingredient tail, never a flip to a DIFFERENT instruction. These characterize
+ * and lock in that safe behavior so a future edit cannot silently regress it.
+ */
+describe('shortStepLabel — eighth-family sweep: connective back-off is err-safe, never wrong', () => {
+  it('a determiner-less "and"-list strips to the floor without dangling (== comma abbreviation)', () => {
+    // Equivalent to the accepted "Season with salt, pepper, and cumin" -> "Season
+    // with salt": the dropped items are shown by the rowspan, and the label still
+    // leads with the real verb + first object. Never a different instruction.
+    for (const s of [
+      'Mix salt and pepper and garlic and paprika and cayenne and cumin',
+      'Combine flour and sugar and eggs and milk and butter and vanilla',
+    ]) {
+      const out = shortStepLabel(s);
+      expect(out.split(' ').length).toBeGreaterThanOrEqual(2); // floor honored
+      expect(/\b(?:and|or|to|then|plus|but|nor)$/i.test(out)).toBe(false); // no dangle
+      expect(out.toLowerCase().startsWith(s.split(' ')[0].toLowerCase())).toBe(true); // real verb kept
+    }
+  });
+
+  it('keeps a legitimate "or <alt>" tail when its object is complete at the boundary', () => {
+    expect(shortStepLabel('Grill the chicken over high heat or pan-fry it in a hot skillet')).toBe(
+      'Grill the chicken over high heat or pan-fry it',
+    );
+  });
+});
+
+describe('shortStepLabel — eighth-family sweep: -ing rule fails safe, never promotes a wrong clause', () => {
+  it('a non-cooking -ing head missing from ING_BASE_VERBS falls back to full text, not a wrong clause', () => {
+    // "Sting"/"Swing" are not cooking imperatives; even mis-detected as participial
+    // adjuncts they only fall back to full (safe) text because the trailing clause
+    // is itself an opener ("then ..."). No real cooking imperative is missing.
+    expect(shortStepLabel('Sting the sauce with lime, then taste for seasoning')).toBe(
+      'Sting the sauce with lime, then taste for seasoning',
+    );
+  });
+
+  it('a single-clause -ing step falls back to full text (no false opener skip)', () => {
+    expect(shortStepLabel('Seasoning the chicken generously with salt and pepper')).toBe(
+      'Seasoning the chicken generously with salt and pepper',
+    );
+  });
+
+  it('the length>4 guard keeps a 4-letter -ing verb (zing) as the imperative', () => {
+    expect(shortStepLabel('Zing the dressing with vinegar, then whisk in the oil')).toBe(
+      'Zing the dressing with vinegar',
+    );
+  });
+});
