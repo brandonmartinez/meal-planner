@@ -60,3 +60,13 @@ Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMemb
 📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #206 regenerate behavior. Preserve checked items, support date-range generate, add manual remove-past-days, tests, and PR. — logged by Scribe
 
 📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #206 grocery regenerate behavior; PR #211 merged (`903e09d`). Regeneration preserves checked items, date-range generation supports short-order shopping, and remove-past-days remains an explicit manual action. — logged by Scribe
+
+## 2026-08-03T11:00:32-0400 — Grid view Wave 1 (P1-2): shared type contract + deriveRecipeMatrix
+
+- Delivered `packages/shared` for the tabular ("Grid") recipe view (spec §3.3–3.4), unblocking Linus.
+- Added `InstructionKind` (`SETUP|PROCESS|FINISH`, mirrors Prisma enum, `PROCESS` default) to `constants/index.ts`.
+- New `types/tabularRecipe.ts`: `MatrixSource`, `TabularRecipe{Ingredient,Instruction}Input`, `TabularRecipe{Ingredient,Instruction}Matrix`, `TabularRecipeMatrix`.
+- New wire DTOs in `types/dto.ts`: `TabularRecipeIngredientDTO`, `TabularRecipeInstructionDTO`, `TabularRecipeMealDTO` (pinned contract for `buildTabularRecipe`).
+- `deriveRecipeMatrix(ingredients, instructions)` — pure, no Prisma. Structural provenance (`spanFrom != null` → authored), never-persist/never-clobber guarantees in a load-bearing module header citing the grocery-provenance staleness lesson. 27 colocated tests.
+- Verified: `tsc` build ✓, vitest 31 tests ✓, eslint ✓. Committed with pathspec (packages/shared + my .squad files) — no bare commit (shared worktree with Saul/Linus/Rusty concurrent).
+- Handoff: Wave 2 (P1-3/4/5) service+route+MCP read path waits on Saul's P1-1 migration + regenerated Prisma client.

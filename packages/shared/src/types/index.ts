@@ -5,6 +5,10 @@ export * from "./dto.js";
 // Real-time (WebSocket) event contracts (issue #207).
 export * from "./realtime.js";
 
+// Tabular ("Grid") recipe view contracts (spec §3.3) — matrix semantics types
+// and the deriveRecipeMatrix() I/O shapes.
+export * from "./tabularRecipe.js";
+
 export enum Role {
   PARENT = "PARENT",
   CHILD = "CHILD",
