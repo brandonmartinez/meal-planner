@@ -55,15 +55,25 @@ export interface CreateMealInput {
     quantity?: string;
     unit?: string;
     category?: string;
+    /** Authored tabular ("Grid") group-pill label; null/omitted ⇒ derived. */
+    groupLabel?: string | null;
   }[];
   /** Tag names to assign (family-scoped, resolved/created by name). #107. */
   tags?: string[];
   /** Collection names to assign (family-scoped, resolved/created by name). #109. */
   collections?: string[];
-  /** Ordered preparation steps; order is preserved as `position`. #100. */
+  /** Ordered preparation steps; order is preserved as `position`. #100.
+   *  Authored Grid layout fields (`kind`/`subLabel`/`column`/`spanFrom`/`spanTo`)
+   *  are optional and omit-defaulting — omit them entirely to leave the meal's
+   *  layout derived (never authored). Spans index into ingredient order. */
   instructions?: {
     text: string;
     timerMinutes?: number | null;
+    kind?: "SETUP" | "PROCESS" | "FINISH";
+    subLabel?: string | null;
+    column?: number | null;
+    spanFrom?: number | null;
+    spanTo?: number | null;
   }[];
 }
 
@@ -104,15 +114,26 @@ export interface UpdateMealInput {
     quantity?: string;
     unit?: string;
     category?: string;
+    /** Authored tabular ("Grid") group-pill label; null/omitted ⇒ derived. */
+    groupLabel?: string | null;
   }[];
   /** Tag names to replace the meal's tags with (by name). #107. */
   tags?: string[];
   /** Collection names to replace the meal's collections with (by name). #109. */
   collections?: string[];
-  /** Ordered steps to replace the meal's instructions with; order preserved. #100. */
+  /** Ordered steps to replace the meal's instructions with; order preserved. #100.
+   *  Authored Grid layout fields (`kind`/`subLabel`/`column`/`spanFrom`/`spanTo`)
+   *  are optional and omit-defaulting — an update that omits spans leaves the
+   *  layout derived and never flips the meal to authored. Spans index into
+   *  ingredient order. */
   instructions?: {
     text: string;
     timerMinutes?: number | null;
+    kind?: "SETUP" | "PROCESS" | "FINISH";
+    subLabel?: string | null;
+    column?: number | null;
+    spanFrom?: number | null;
+    spanTo?: number | null;
   }[];
 }
 

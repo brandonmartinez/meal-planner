@@ -12,6 +12,16 @@ vi.mock("../services/meals.js", () => ({
   getMealById: vi.fn(),
   updateMeal: vi.fn(),
   deleteMeal: vi.fn(),
+  // Real error class so the route's `instanceof InvalidLayoutError` branch is a
+  // callable constructor even when the module is mocked.
+  InvalidLayoutError: class InvalidLayoutError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.name = "InvalidLayoutError";
+      this.code = code;
+    }
+  },
 }));
 vi.mock("../services/taxonomy.js", () => ({
   listTags: vi.fn(),
@@ -206,6 +216,33 @@ describe("POST /:familyId/meals (create)", () => {
       buildNext(),
     );
     expect(res.statusCode).toBe(400);
+  });
+
+  it("400s with the violation code when the service rejects an invalid authored layout (Phase-2 P2.5)", async () => {
+    vi.mocked(mealService.createMeal).mockRejectedValue(
+      new mealService.InvalidLayoutError(
+        "SPAN_COLUMN_OVERLAP",
+        "two steps in the same column cover overlapping rows",
+      ),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params: { familyId: FAMILY_ID },
+        body: {
+          name: "Bad grid",
+          ingredients: [{ name: "a" }, { name: "b" }],
+          instructions: [
+            { text: "1", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 1 },
+            { text: "2", kind: "PROCESS", column: 0, spanFrom: 1, spanTo: 1 },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ code: "SPAN_COLUMN_OVERLAP" });
   });
 
   it("forwards core metadata through to the service", async () => {
@@ -1010,6 +1047,40 @@ describe("PUT /:familyId/meals/:mealId (update)", () => {
     await handler(req({ params, body: { name: "New" } }), res, buildNext());
     expect(res.statusCode).toBe(404);
     expect(res.body).toEqual({ error: "Meal not found" });
+  });
+
+  it("400s with the violation code when the service rejects an invalid authored layout (Phase-2 P2.5)", async () => {
+    vi.mocked(mealService.updateMeal).mockRejectedValue(
+      new mealService.InvalidLayoutError(
+        "SPAN_OUT_OF_RANGE",
+        "spanTo exceeds the last ingredient row",
+      ),
+    );
+    const res = buildFullRes();
+    await handler(
+      req({
+        params,
+        body: {
+          instructions: [
+            { text: "x", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 9 },
+          ],
+        },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ code: "SPAN_OUT_OF_RANGE" });
+  });
+
+  it("403s (not 500) when the service reports a placeholder meal — parity with agent PATCH (Phase-2 P2.5 #7)", async () => {
+    vi.mocked(mealService.updateMeal).mockRejectedValue(
+      new Error("Cannot modify placeholder meal"),
+    );
+    const res = buildFullRes();
+    await handler(req({ params, body: { name: "New" } }), res, buildNext());
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: "Cannot modify placeholder meal" });
   });
 
   it("500s on an unexpected error", async () => {

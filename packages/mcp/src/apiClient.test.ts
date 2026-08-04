@@ -365,6 +365,43 @@ describe("MealPlannerApiClient", () => {
     expect(JSON.parse(init.body as string)).toEqual(input);
   });
 
+  it("createMeal forwards authored Grid layout fields in the body (Phase-2, parity row 7)", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-new" }, 201));
+    const input = {
+      name: "Layered dip",
+      ingredients: [
+        { name: "beans", groupLabel: "Base" },
+        { name: "cheese", groupLabel: "Base" },
+        { name: "cilantro", groupLabel: null },
+      ],
+      instructions: [
+        {
+          text: "Mash beans with cheese",
+          kind: "PROCESS" as const,
+          subLabel: "mash",
+          column: 0,
+          spanFrom: 0,
+          spanTo: 1,
+        },
+        {
+          text: "Garnish",
+          kind: "FINISH" as const,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
+      ],
+    };
+
+    await client.createMeal(input);
+
+    const { init } = lastCall(fetchFn);
+    // The client is a pure pass-through: authored layout fields ride verbatim
+    // in the JSON body so the API's shared validator is the single trust edge.
+    expect(JSON.parse(init.body as string)).toEqual(input);
+  });
+
   it("updateMeal sends a PATCH with the partial body", async () => {
     const { client, fetchFn } = makeClient(jsonResponse({ id: "meal-1" }));
 

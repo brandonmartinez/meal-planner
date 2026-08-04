@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { INGREDIENT_CATEGORIES } from "@meal-planner/shared";
+import { INGREDIENT_CATEGORIES, INSTRUCTION_KINDS } from "@meal-planner/shared";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { MealPlannerApiClient } from "./apiClient.js";
 import { ApiError, ApiTransportError } from "./errors.js";
@@ -80,6 +80,17 @@ const ingredientSchema = z.object({
         INGREDIENT_CATEGORIES.join(", ") +
         ", but any custom family category name is also accepted.",
     ),
+  groupLabel: z
+    .string()
+    .max(60)
+    .nullable()
+    .optional()
+    .describe(
+      "Authored tabular ('Grid') group-pill label for this ingredient row " +
+        "(e.g. 'For the sauce'). Optional: omit (or null) to leave the meal's " +
+        "grouping derived — do NOT set it unless you are deliberately authoring " +
+        "the recipe's Grid layout.",
+    ),
 });
 
 const instructionSchema = z.object({
@@ -91,6 +102,62 @@ const instructionSchema = z.object({
     .nullable()
     .optional()
     .describe("Optional timer for this step, in minutes."),
+  kind: z
+    .enum(INSTRUCTION_KINDS)
+    .optional()
+    .describe(
+      "Authored tabular ('Grid') step classification: PROCESS (default — a " +
+        "step that combines ingredient rows, gets a span), SETUP (a full-width " +
+        "prep band above the grid, e.g. 'Preheat oven'), or FINISH (a trailing " +
+        "note, e.g. 'Serve'). SETUP/FINISH carry no span. Omit to leave derived.",
+    ),
+  subLabel: z
+    .string()
+    .max(80)
+    .nullable()
+    .optional()
+    .describe(
+      "Authored short column heading for this step in the Grid (e.g. 'whisk'). " +
+        "Optional; omit (or null) to leave derived.",
+    ),
+  column: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe(
+      "Authored process-column (lane) index, 0-based. Parallel prep tracks use " +
+        "different columns; a later column that re-combines rows an earlier " +
+        "column already covered is the intended cascade. Omit (or null) for the " +
+        "single default lane. Same-column spans must NOT overlap.",
+    ),
+  spanFrom: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe(
+      "Authored span START: the 0-based index (into the meal's ingredient " +
+        "order) of the FIRST ingredient row this step combines, INCLUSIVE. " +
+        "Pair with spanTo (both set or both omitted). Range: 0 ≤ spanFrom ≤ " +
+        "spanTo ≤ ingredientCount-1. Setting any span authors the meal's " +
+        "layout, so EVERY PROCESS step must then carry one — omit spans entirely " +
+        "to leave the Grid auto-derived.",
+    ),
+  spanTo: z
+    .number()
+    .int()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe(
+      "Authored span END: the 0-based index (into the meal's ingredient order) " +
+        "of the LAST ingredient row this step combines, INCLUSIVE. Pair with " +
+        "spanFrom. Spans in the same column must be disjoint; spans in " +
+        "different columns MAY overlap (the cascade). Omit to leave derived.",
+    ),
 });
 
 /**
@@ -252,12 +319,18 @@ export function createToolHandlers(
         quantity?: string;
         unit?: string;
         category?: string;
+        groupLabel?: string | null;
       }[];
       tags?: string[];
       collections?: string[];
       instructions?: {
         text: string;
         timerMinutes?: number | null;
+        kind?: "SETUP" | "PROCESS" | "FINISH";
+        subLabel?: string | null;
+        column?: number | null;
+        spanFrom?: number | null;
+        spanTo?: number | null;
       }[];
     }): Promise<ToolResult> => run(() => client.createMeal(args)),
 
@@ -279,12 +352,18 @@ export function createToolHandlers(
         quantity?: string;
         unit?: string;
         category?: string;
+        groupLabel?: string | null;
       }[];
       tags?: string[];
       collections?: string[];
       instructions?: {
         text: string;
         timerMinutes?: number | null;
+        kind?: "SETUP" | "PROCESS" | "FINISH";
+        subLabel?: string | null;
+        column?: number | null;
+        spanFrom?: number | null;
+        spanTo?: number | null;
       }[];
     }): Promise<ToolResult> => {
       const { mealId, ...rest } = args;
@@ -849,9 +928,13 @@ export function registerTools(
         "and a list of ingredients. Requires the meal:write scope. The created " +
         "meal is returned with its tabular \"Grid\" recipe view fields " +
         "(matrixSource, ingredientDisplayOrder, plus per-ingredient " +
-        "position/groupLabel and per-instruction kind/subLabel/spanFrom/spanTo), " +
-        "derived on read for meals without an authored layout. Grid layout " +
-        "authoring is not yet accepted as input (a future phase).",
+        "position/groupLabel and per-instruction kind/subLabel/spanFrom/spanTo). " +
+        "You MAY author that Grid layout by setting instruction spans " +
+        "(spanFrom/spanTo index into ingredient order, inclusive; same-column " +
+        "spans must be disjoint, cross-column spans may overlap as a cascade) " +
+        "plus kind/subLabel/column and ingredient groupLabel; omit all of them " +
+        "to leave the layout auto-derived. Setting any span authors the whole " +
+        "meal, so every PROCESS step must then carry one.",
       inputSchema: {
         name: z.string().min(1).describe("The meal's name (required)."),
         description: z
@@ -952,9 +1035,14 @@ export function registerTools(
         "Requires the meal:write scope. The updated meal is returned with its " +
         "tabular \"Grid\" recipe view fields (matrixSource, " +
         "ingredientDisplayOrder, plus per-ingredient position/groupLabel and " +
-        "per-instruction kind/subLabel/spanFrom/spanTo), derived on read for " +
-        "meals without an authored layout. Grid layout authoring is not yet " +
-        "accepted as input (a future phase).",
+        "per-instruction kind/subLabel/spanFrom/spanTo). You MAY author that " +
+        "Grid layout by setting instruction spans (spanFrom/spanTo index into " +
+        "ingredient order, inclusive; same-column spans must be disjoint, " +
+        "cross-column spans may overlap as a cascade) plus kind/subLabel/column " +
+        "and ingredient groupLabel. Omit the span fields to leave the layout " +
+        "derived — an update that never sends spans will NOT flip the meal to an " +
+        "authored layout. Setting any span authors the whole meal, so every " +
+        "PROCESS step must then carry one.",
       inputSchema: {
         mealId: z.string().min(1).describe("The id of the meal to edit."),
         name: z.string().min(1).optional().describe("New name."),

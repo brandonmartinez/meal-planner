@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { MEAL_DIFFICULTIES } from "@meal-planner/shared";
+import { MEAL_DIFFICULTIES, INSTRUCTION_KINDS } from "@meal-planner/shared";
 import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as mealService from "../services/meals.js";
@@ -20,10 +20,39 @@ export { imageUrlSchema };
 
 /** A single ordered preparation step (issue #100). `text` is required;
  *  `timerMinutes` is an optional non-negative countdown for the step. Order is
- *  taken from array position, not encoded here. */
-const instructionInputSchema = z.object({
+ *  taken from array position, not encoded here. This BASE shape is what CSV
+ *  import accepts — layout fields are deliberately NOT here (spec P2.4.2 row 10:
+ *  CSV round-trips step text + order only). */
+const baseInstructionInputSchema = z.object({
   text: z.string().min(1),
   timerMinutes: z.number().int().min(0).nullable().optional(),
+});
+
+/** The authored tabular ("Grid") layout fields threaded onto a step for the
+ *  create/update write path (Phase-2, spec P2.4.1). Every field is optional and
+ *  omit-defaulting — omitted ⇒ null ⇒ derived — so a normal meal save that
+ *  never mentions spans does NOT flip the meal to `authored`. Cross-field
+ *  invariants (range/pairing/all-or-nothing/per-column overlap) that per-object
+ *  Zod cannot express are enforced by the shared `validateAuthoredLayout` in the
+ *  service (spec P2.5), so REST and the agent surface share one rule set. */
+const instructionInputSchema = baseInstructionInputSchema.extend({
+  kind: z.enum(INSTRUCTION_KINDS).optional(),
+  subLabel: z.string().max(80).nullable().optional(),
+  column: z.number().int().min(0).nullable().optional(),
+  spanFrom: z.number().int().min(0).nullable().optional(),
+  spanTo: z.number().int().min(0).nullable().optional(),
+});
+
+/** Per-ingredient input for the create/update write path. `groupLabel` is the
+ *  authored group-pill label (Phase-2, spec P2.4.1): optional + omit-defaulting
+ *  (omitted ⇒ null ⇒ ungrouped/derived). `position` still comes from array
+ *  order — no new input field for ordering (spec §3.2). */
+const ingredientInputSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.string().optional(),
+  unit: z.string().optional(),
+  category: z.string().optional(),
+  groupLabel: z.string().max(60).nullable().optional(),
 });
 
 export const createMealSchema = z.object({
@@ -38,16 +67,7 @@ export const createMealSchema = z.object({
   notes: z.string().nullable().optional(),
   favorite: z.boolean().optional(),
   rating: z.number().int().min(1).max(5).nullable().optional(),
-  ingredients: z
-    .array(
-      z.object({
-        name: z.string().min(1),
-        quantity: z.string().optional(),
-        unit: z.string().optional(),
-        category: z.string().optional(),
-      }),
-    )
-    .optional(),
+  ingredients: z.array(ingredientInputSchema).optional(),
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
@@ -65,16 +85,7 @@ export const updateMealSchema = z.object({
   notes: z.string().nullable().optional(),
   favorite: z.boolean().optional(),
   rating: z.number().int().min(1).max(5).nullable().optional(),
-  ingredients: z
-    .array(
-      z.object({
-        name: z.string().min(1),
-        quantity: z.string().optional(),
-        unit: z.string().optional(),
-        category: z.string().optional(),
-      }),
-    )
-    .optional(),
+  ingredients: z.array(ingredientInputSchema).optional(),
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
@@ -108,7 +119,7 @@ const importMealsSchema = z.object({
           .optional(),
         tags: z.array(z.string()).optional(),
         collections: z.array(z.string()).optional(),
-        instructions: z.array(instructionInputSchema).optional(),
+        instructions: z.array(baseInstructionInputSchema).optional(),
       }),
     )
     .min(1)
@@ -179,6 +190,10 @@ mealsRouter.post(
         res
           .status(400)
           .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof mealService.InvalidLayoutError) {
+        res.status(400).json({ error: error.message, code: error.code });
         return;
       }
       res.status(500).json({ error: "Failed to create meal" });
@@ -267,8 +282,21 @@ mealsRouter.put(
           .json({ error: "Validation failed", details: error.errors });
         return;
       }
+      if (error instanceof mealService.InvalidLayoutError) {
+        res.status(400).json({ error: error.message, code: error.code });
+        return;
+      }
       if (error instanceof Error && error.message === "Meal not found") {
         res.status(404).json({ error: "Meal not found" });
+        return;
+      }
+      if (
+        error instanceof Error &&
+        error.message === "Cannot modify placeholder meal"
+      ) {
+        // Placeholder guard mirrors the agent PATCH surface: identical 403 on
+        // browser PUT and agent PATCH (spec P2.5 #7).
+        res.status(403).json({ error: "Cannot modify placeholder meal" });
         return;
       }
       res.status(500).json({ error: "Failed to update meal" });

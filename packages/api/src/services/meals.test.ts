@@ -12,6 +12,7 @@ const {
   deleteMeal,
   importMeals,
   exportMeals,
+  InvalidLayoutError,
 } = await import("./meals.js");
 
 // Route-level Zod schemas (validation lives at the route boundary).
@@ -1159,14 +1160,47 @@ describe("meals service", () => {
       const arg = prismaMock.meal.create.mock.calls[0][0] as {
         data: {
           instructions?: {
-            create: { text: string; timerMinutes: number | null; position: number }[];
+            create: {
+              text: string;
+              timerMinutes: number | null;
+              position: number;
+            }[];
           };
         };
       };
+      // Layout fields are omit-defaulting: omitted spans ⇒ null (⇒ derived),
+      // omitted kind ⇒ undefined (⇒ Prisma default PROCESS). #100 / Phase-2.
       expect(arg.data.instructions?.create).toEqual([
-        { text: "Warm tortillas", timerMinutes: null, position: 0 },
-        { text: "Simmer 10 min", timerMinutes: 10, position: 1 },
-        { text: "Assemble", timerMinutes: null, position: 2 },
+        {
+          text: "Warm tortillas",
+          timerMinutes: null,
+          position: 0,
+          kind: undefined,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
+        {
+          text: "Simmer 10 min",
+          timerMinutes: 10,
+          position: 1,
+          kind: undefined,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
+        {
+          text: "Assemble",
+          timerMinutes: null,
+          position: 2,
+          kind: undefined,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
       ]);
     });
 
@@ -1221,6 +1255,170 @@ describe("meals service", () => {
         data: { instructions?: unknown };
       };
       expect(arg.data.instructions).toBeUndefined();
+    });
+  });
+
+  describe("authored layout write path (Grid write, Phase-2 P2.5)", () => {
+    beforeEach(() => {
+      prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+        id: "m-1",
+        ingredients: [],
+        instructions: [],
+        tags: [],
+      } as never);
+    });
+
+    it("threads authored groupLabel + kind/subLabel/column/spans into create rows", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      await createMeal("fam-1", {
+        name: "Lasagna",
+        ingredients: [
+          { name: "noodles", groupLabel: "Sheets" },
+          { name: "sauce", groupLabel: "Sauce" },
+        ],
+        instructions: [
+          {
+            text: "Layer noodles and sauce",
+            kind: "PROCESS",
+            subLabel: "layer",
+            column: 0,
+            spanFrom: 0,
+            spanTo: 1,
+          },
+        ],
+      } as never);
+
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          ingredients?: { create: { groupLabel: string | null }[] };
+          instructions?: {
+            create: {
+              kind?: string;
+              subLabel: string | null;
+              column: number | null;
+              spanFrom: number | null;
+              spanTo: number | null;
+            }[];
+          };
+        };
+      };
+      expect(arg.data.ingredients?.create.map((c) => c.groupLabel)).toEqual([
+        "Sheets",
+        "Sauce",
+      ]);
+      expect(arg.data.instructions?.create[0]).toMatchObject({
+        kind: "PROCESS",
+        subLabel: "layer",
+        column: 0,
+        spanFrom: 0,
+        spanTo: 1,
+      });
+    });
+
+    it("accepts cross-column overlap — the cascade is required, not rejected", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      // Two PROCESS steps in DIFFERENT columns both cover rows 0..1: this is the
+      // cascade and MUST be accepted (per-column non-overlap is enforced, global
+      // overlap is not). If the validator wrongly went global this would throw.
+      await expect(
+        createMeal("fam-1", {
+          name: "Cascade",
+          ingredients: [{ name: "a" }, { name: "b" }],
+          instructions: [
+            { text: "col 0", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 1 },
+            { text: "col 1", kind: "PROCESS", column: 1, spanFrom: 0, spanTo: 1 },
+          ],
+        } as never),
+      ).resolves.toBeDefined();
+    });
+
+    it("rejects the entire write with InvalidLayoutError when a span is out of range", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      // spanTo=5 exceeds ingredients.length-1 (=1) — reject, never clamp.
+      let caught: unknown;
+      try {
+        await createMeal("fam-1", {
+          name: "Bad",
+          ingredients: [{ name: "a" }, { name: "b" }],
+          instructions: [
+            { text: "oops", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 5 },
+          ],
+        } as never);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(InvalidLayoutError);
+      expect((caught as InstanceType<typeof InvalidLayoutError>).code).toBe(
+        "SPAN_OUT_OF_RANGE",
+      );
+      // Nothing applied: the create was never issued.
+      expect(prismaMock.meal.create).not.toHaveBeenCalled();
+    });
+
+    it("validates the RESULTING pair on partial update — replacing instructions with spans that dangle past persisted ingredients is rejected", async () => {
+      stubTransaction();
+      // Only the instructions array is sent; the persisted ingredient rows
+      // (loaded via findMany) are the effective ingredient side of the pair.
+      prismaMock.mealIngredient.findMany.mockResolvedValue([
+        { groupLabel: null },
+      ] as never);
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+
+      let caught: unknown;
+      try {
+        await updateMeal("m-1", "fam-1", {
+          instructions: [
+            { text: "spans row 2", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 2 },
+          ],
+        } as never);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(InvalidLayoutError);
+      expect((caught as InstanceType<typeof InvalidLayoutError>).code).toBe(
+        "SPAN_OUT_OF_RANGE",
+      );
+      // Reject-before-apply: no destructive delete ran.
+      expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("a partial update that never mentions spans does NOT flip a meal to authored", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      // Persisted instruction rows carry NULL spans (derived). Loading them as
+      // the effective side must keep the meal derived, not authored.
+      prismaMock.mealInstruction.findMany.mockResolvedValue([
+        { kind: "PROCESS", column: null, spanFrom: null, spanTo: null },
+      ] as never);
+      prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
+        id: "m-1",
+        ingredients: [],
+        instructions: [],
+        tags: [],
+      } as never);
+
+      // Update only touches metadata; omitting instructions leaves them as-is.
+      await expect(
+        updateMeal("m-1", "fam-1", { name: "Renamed" } as never),
+      ).resolves.toBeDefined();
+
+      // The ingredient rows were replaced with new create rows carrying null
+      // spans — proving no derived provenance was silently persisted.
+      const updateArgs = prismaMock.mealInstruction.create;
+      // No instruction write happened at all (instructions omitted).
+      expect(updateArgs).not.toHaveBeenCalled();
     });
   });
 
@@ -1607,13 +1805,36 @@ describe("meals service", () => {
       const arg = prismaMock.meal.update.mock.calls[0][0] as {
         data: {
           instructions?: {
-            create: { text: string; timerMinutes: number | null; position: number }[];
+            create: {
+              text: string;
+              timerMinutes: number | null;
+              position: number;
+            }[];
           };
         };
       };
+      // Omit-defaulting layout fields carried on every replace row (Phase-2).
       expect(arg.data.instructions?.create).toEqual([
-        { text: "New step 1", timerMinutes: null, position: 0 },
-        { text: "New step 2", timerMinutes: null, position: 1 },
+        {
+          text: "New step 1",
+          timerMinutes: null,
+          position: 0,
+          kind: undefined,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
+        {
+          text: "New step 2",
+          timerMinutes: null,
+          position: 1,
+          kind: undefined,
+          subLabel: null,
+          column: null,
+          spanFrom: null,
+          spanTo: null,
+        },
       ]);
     });
 

@@ -39,6 +39,16 @@ vi.mock("../services/meals.js", () => ({
   listMeals: vi.fn(),
   createMeal: vi.fn(),
   updateMeal: vi.fn(),
+  // Real error class so the route's `instanceof InvalidLayoutError` branch is a
+  // callable constructor even when the module is mocked.
+  InvalidLayoutError: class InvalidLayoutError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.name = "InvalidLayoutError";
+      this.code = code;
+    }
+  },
 }));
 vi.mock("../services/grocery.js", () => ({
   getGroceryListByWeek: vi.fn(),
