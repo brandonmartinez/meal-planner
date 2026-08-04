@@ -106,3 +106,5 @@ guards over-rejection. **Numbers verified myself:** build ✓; 1984 pass / 0 fai
 structural, no schema change, scope stayed meal:write. Amended spec P2.4.3 with a RESOLVED
 note. Livingston AND Yen now both locked out of this artifact; any further revision → a
 third api specialist. Decision → `.squad/decisions/inbox/rusty-2b-rereview-approve.md`.
+
+📌 Team update (2026-08-04T10:45:00-04:00): **Phase 1 merged to main** as PR #222 (`679be0e`), CI green from zero. **Phase 2 spec produced** (`f0bca40`): sequencing ruling — Slice 2a DROPPED (78%-empty-Grid finding was a seed-data artifact, not a product gap; instruction entry already ships end-to-end); sequence is 2b write path → measure → 2c span editor (gated on ROI). **Slice 2b APPROVED** after Yen's importMeals fix (`a3772aa`); PR #223 open on `phase2-layout-write-path`. Livingston AND Yen both locked out of further 2b revision. — Scribe cross-cut
