@@ -82,3 +82,27 @@ change / no stored boolean / no persisted permutation (anti-staleness intact); p
 Baseline VERIFIED not assumed: build green; 1982 pass / 0 fail (shared 118, mcp 124, web
 706, api 1034); lint 0 errors / 6 pre-existing warnings. Decision →
 `.squad/decisions/inbox/rusty-2b-layout-write-review.md`.
+
+### 2026-08-04T11:00:00-04:00 — Slice 2b re-review: APPROVE (importMeals blocker closed by Yen `a3772aa`)
+
+Scoped re-review of `a3772aa` (importMeals + tests only; rest of e3d93c6 already ratified).
+**Verdict: APPROVE — Slice 2b goes to PR.** Yen validated the effective resulting pair in
+the import-replace branch before mutating (incoming ingredients vs RETAINED instructions
+when the steps column is omitted), throwing InvalidLayoutError into the existing per-row
+error model. **Q1:** "import steps are span-free" is SAFE — enforced at both the Zod
+boundary (import uses `baseInstructionInputSchema`, no span/groupLabel keys; default
+`.strip()`) and the param type; no import shape can carry spans. Effective-pair
+construction correct. **Q2:** per-row error path correct — validate-before-mutate inside
+the per-meal try/$transaction; failing row rolls back + is reported, batch continues,
+`skipped` untouched. **Q3:** importMeals is the LAST runtime replace-all path — the only
+pair writers are mapIngredient/InstructionCreates, callers = create/update/import(replace)
+all validated + import-create (span-free, can't dangle). NO fourth. One non-service writer
+flagged: `prisma/seed.ts` writes authored spans from static DEMO_RECIPES — dev/build-time,
+outside the API trust boundary, NOT a blocker (optional: validate DEMO_RECIPES in seed).
+**Independently proved genuineness:** reverted ONLY the service to pre-fix (e3d93c6),
+reproduced Yen's exact failure `expected 1 to be +0`; restored → passes. Companion test
+guards over-rejection. **Numbers verified myself:** build ✓; 1984 pass / 0 fail (shared
+118, mcp 124, web 706, api 1036); lint 0 err / 6 pre-existing warn. matrixSource still
+structural, no schema change, scope stayed meal:write. Amended spec P2.4.3 with a RESOLVED
+note. Livingston AND Yen now both locked out of this artifact; any further revision → a
+third api specialist. Decision → `.squad/decisions/inbox/rusty-2b-rereview-approve.md`.
