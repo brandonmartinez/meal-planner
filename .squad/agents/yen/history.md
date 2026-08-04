@@ -79,3 +79,18 @@ My `deriveRecipeMatrix.realdata.test.ts` (`19fb67c`) was correctly re-baselined 
 **6 `decision-*.png` captured** (real app + server + DB, light 1440): Birria after use-ordering (braise strays only onion), Korean over-bracket (serve/assembly residual), no-instruction shape, derived Bolognese (no group pills), partially-authored Chili (derived + authored `groupLabel`), fully-authored Lasagna (the Phase-2 target). Session files dir.
 
 **VERDICT: SHIP.** Derived Grid is now structurally trustworthy for well-formed, use-ordered recipes. Two honest caveats: (1) 78% of the current library has no instructions → empty Grid (a data-entry gap, not a code defect; List is the lossless default). (2) ~15% residual over-bracket on assembly/reuse steps is intrinsic and only Phase-2 authored spans fully close it. Highest-value next investment: Phase-2 authoring editor + encouraging instruction entry — NOT further matcher tuning (hardening impact: 1+0 steps — diminishing returns). Commits `983b21a`, `afe721f`.
+
+## 2026-08-04 — Slice 2b: adversarial suite for `validateAuthoredLayout` (pre-implementation)
+
+**Task:** Write `packages/shared/src/validateAuthoredLayout.adversarial.test.ts` against the pinned contract `validateAuthoredLayout(ingredients, instructions) → { ok: true } | { ok: false; code; message }`, BEFORE Livingston's Slice-2b implementation landed. My file, mine alone — he was told not to touch it.
+
+**Approach:** Decoupled from his exact input-type names via `Parameters<typeof validateAuthoredLayout>` + `as unknown as` fixture factories (`ings(n)`, `step(pos, overrides)`). Never hardcoded a `code` value — asserted behaviourally (`ok===false`, non-empty string code + message) and, critically, that semantically different violations yield DIFFERENT codes.
+
+**43 cases, weighted to the two highest-risk invariants:**
+- #5 cross-column overlap MUST be accepted — 5 cases (the cascade; a global overlap check would silently break every authored recipe). Highest-value assertions in the suite.
+- #3 all-or-nothing — 6 cases (SETUP/FINISH null spans don't trip it; partial PROCESS sets reject).
+- #1 range/boundaries 11, #2 pairing 5, #4 per-column non-overlap 7, #6 gaps allowed 3, #7 column int/sparse 3, code-distinctness 3.
+
+**Result:** His impl landed during my poll (working-tree `validateAuthoredLayout.ts`, re-exported from `index.ts`, stable `AUTHORED_LAYOUT_CODES`). `pnpm --filter @meal-planner/shared run test` = **118 passed** (my 43 + his 22 + 53 pre-existing), **0 fail**. All 43 adversarial cases green on first run against his code. He correctly accepts cross-column cascades, allows coverage gaps, and emits one distinct code per invariant — the three most-likely-to-be-wrong behaviours are correct.
+
+**Committed** with explicit pathspec (test file + inbox decision + this history). Reviewer/implementer separation honoured — I did not touch his `validateAuthoredLayout.ts`.
