@@ -111,3 +111,15 @@ My `deriveRecipeMatrix.realdata.test.ts` (`19fb67c`) was correctly re-baselined 
 - **No defect.** Ordinary meal edits do NOT flip recipes to authored/frozen — the Phase-1 anti-staleness class is not reintroduced.
 
 Committed the lint fix with explicit pathspec. Did not touch any Livingston-owned file.
+
+## 2026-08-04 (3) — Slice 2b BLOCKER FIX (implementer hat): importMeals dangling-span validation
+
+Rusty REJECTED Slice 2b and named me fix agent (Livingston locked out as author). Blocker: `importMeals` is a third replace-all write path that reached Prisma WITHOUT calling `validateAuthoredLayout`. It deletes ingredients unconditionally but RETAINS instructions when that column is omitted — so importing over a previously-authored meal with fewer/omitted ingredients leaves retained authored spans pointing at rows that no longer exist (dangling span; spec P2.5 Range violation). Narrow (needs a pre-existing authored meal, none exist yet) but real the moment Brandon authors his first recipe.
+
+**Fix (services/meals.ts, import replace branch only):** validate the EFFECTIVE resulting pair before any mutation, mirroring updateMeal's precedent. Critical subtlety handled: import wipes ingredients unconditionally, so effective ingredients = the INCOMING list (never persisted); effective instructions = incoming when provided (import steps are always span-free), else the RETAINED rows fetched via `tx.mealInstruction.findMany`. `assertValidLayout` throws `InvalidLayoutError`, which the existing per-row try/catch converts to a row error — the whole import is NOT aborted (fits the per-row model). Mapped incoming arrays to the validator's input shape to avoid weak-type TS errors; guarded the retained findMany with `?? []` (mirrors updateMeal:727) so an omitted-instructions replace never crashes.
+
+**Regression test (services/meals.test.ts) — PROVEN to fail without the fix:** author a meal (retained PROCESS span 0..3), import over it with 1 ingredient + omitted instructions; assert the row errors and NOTHING persists (`updated===0`, `errors.length===1`, `meal.update` not called). `git stash`-ed the service fix and ran it against the broken code: FAILED with `expected 1 to be +0` (broken code persists the dangling span, updated=1). Restored fix. Added a companion test proving no over-rejection (retained span 0..1 within a 2-ingredient import still succeeds).
+
+**Fallout fixed in-scope:** 4 existing replace-mode import tests omit instructions and don't mock `mealInstruction.findMany`; the `?? []` guard keeps them green without editing them.
+
+**Full branch (ran myself):** build ✓ all four packages Done. `pnpm -r test` = **1984 passed, 0 fail** (shared 118, mcp 124, web 706, api 1036 = baseline 1982 + my 2). `pnpm -r lint` = **0 errors, 6 pre-existing warnings**. Scope fence honoured: only importMeals + its tests touched.

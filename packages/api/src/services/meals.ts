@@ -857,6 +857,38 @@ export async function importMeals(
             result.skipped++;
             return;
           }
+          // Validate the RESULTING (ingredients, instructions) pair (spec P2.5)
+          // BEFORE mutating anything. Import-replace differs from updateMeal:
+          // ingredients are wiped UNCONDITIONALLY (so the effective ingredient
+          // list is the incoming one, never the persisted rows), but existing
+          // instructions are RETAINED when the column is omitted. Retained
+          // authored spans can therefore point past a new, shorter ingredient
+          // list — a dangling span the Range invariant forbids. Validate the
+          // incoming ingredients against the RETAINED instructions in that case
+          // so the same shared validator guards this third replace-all path.
+          // (Import instructions carry no span fields, so an incoming list is
+          // always span-free; only the retained branch can dangle.)
+          const effectiveIngredients: AuthoredLayoutIngredientInput[] = (
+            data.ingredients ?? []
+          ).map(() => ({ groupLabel: null }));
+          const effectiveInstructions: AuthoredLayoutInstructionInput[] =
+            data.instructions !== undefined
+              ? data.instructions.map(() => ({
+                  spanFrom: null,
+                  spanTo: null,
+                  column: null,
+                }))
+              : (await tx.mealInstruction.findMany({
+                  where: { mealId: existing.id },
+                  select: {
+                    kind: true,
+                    column: true,
+                    spanFrom: true,
+                    spanTo: true,
+                  },
+                })) ?? [];
+          assertValidLayout(effectiveIngredients, effectiveInstructions);
+
           // replace: update description and reset ingredients
           await tx.mealIngredient.deleteMany({
             where: { mealId: existing.id },

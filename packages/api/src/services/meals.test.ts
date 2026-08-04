@@ -2242,6 +2242,74 @@ describe("meals service", () => {
       ]);
       expect(prismaMock.meal.create).not.toHaveBeenCalled();
     });
+
+    // Rusty's Slice-2b blocker: import-replace deletes ingredients but RETAINS
+    // instructions when the column is omitted. Importing over a previously
+    // AUTHORED meal with fewer ingredients leaves the retained authored spans
+    // pointing at rows that no longer exist — a dangling span that spec P2.5's
+    // Range invariant (spanTo ≤ ingredients.length − 1) forbids. The effective
+    // resulting pair (incoming ingredients + RETAINED instructions) must be
+    // validated, and the row errored — not persisted. This test would PASS
+    // against the pre-fix code (no validation ⇒ meal.update runs, updated=1),
+    // so it fails loudly until the effective-pair validation is in place.
+    it("errors the row (and persists nothing) when import-replace would leave a retained authored span dangling past a shorter ingredient list", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      // The existing meal is AUTHORED: a retained PROCESS step spans rows 0..3.
+      // Instructions are OMITTED from the import, so the service retains these.
+      prismaMock.mealInstruction.findMany.mockResolvedValue([
+        { kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 3 },
+      ] as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 4,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+
+      const result = await importMeals(
+        "fam-1",
+        // Only ONE ingredient now (index 0). The retained span reaches row 3.
+        [{ name: "Tacos", ingredients: [{ name: "salsa" }] }],
+        { mode: "replace" },
+      );
+
+      expect(result.updated).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].name).toBe("Tacos");
+      // The whole write is rejected for this row: nothing is persisted.
+      expect(prismaMock.meal.update).not.toHaveBeenCalled();
+      expect(prismaMock.mealIngredient.deleteMany).not.toHaveBeenCalled();
+    });
+
+    // Companion (guards against over-rejection): the same retain path is VALID
+    // when the retained span still fits the incoming ingredient list, so the
+    // import must succeed and persist rather than falsely erroring.
+    it("still replaces when a retained authored span stays within the new ingredient list", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({ id: "m-old" } as never);
+      // Retained span 0..1 — fits a 2-ingredient import.
+      prismaMock.mealInstruction.findMany.mockResolvedValue([
+        { kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 1 },
+      ] as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 2,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-old" } as never);
+
+      const result = await importMeals(
+        "fam-1",
+        [
+          {
+            name: "Tacos",
+            ingredients: [{ name: "salsa" }, { name: "beef" }],
+          },
+        ],
+        { mode: "replace" },
+      );
+
+      expect(result.updated).toBe(1);
+      expect(result.errors).toHaveLength(0);
+      expect(prismaMock.meal.update).toHaveBeenCalled();
+    });
   });
 
   describe("exportMeals", () => {
