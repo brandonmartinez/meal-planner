@@ -94,3 +94,20 @@ My `deriveRecipeMatrix.realdata.test.ts` (`19fb67c`) was correctly re-baselined 
 **Result:** His impl landed during my poll (working-tree `validateAuthoredLayout.ts`, re-exported from `index.ts`, stable `AUTHORED_LAYOUT_CODES`). `pnpm --filter @meal-planner/shared run test` = **118 passed** (my 43 + his 22 + 53 pre-existing), **0 fail**. All 43 adversarial cases green on first run against his code. He correctly accepts cross-column cascades, allows coverage gaps, and emits one distinct code per invariant — the three most-likely-to-be-wrong behaviours are correct.
 
 **Committed** with explicit pathspec (test file + inbox decision + this history). Reviewer/implementer separation honoured — I did not touch his `validateAuthoredLayout.ts`.
+
+## 2026-08-04 (2) — Slice 2b: lint cleanup + full-branch verification + end-to-end anti-staleness proof
+
+**1. Lint self-fix:** removed an unused `Ingredient` type alias I introduced in `validateAuthoredLayout.adversarial.test.ts` (it added a 7th `no-explicit-any`-class warning; branch baseline is 0 errors / 6 pre-existing). shared lint now clean; 43/43 adversarial still pass.
+
+**2. Full-branch verify (ran it myself, not trusting the report).** Livingston's impl committed at `e3d93c6`.
+- `pnpm -r build` ✓ (shared→mcp→web→api all Done).
+- `pnpm -r test` = **1982 passed, 0 fail** — shared 118, mcp 124, web 706, api 1034. Confirms Livingston's numbers EXACTLY.
+- `pnpm -r lint` = **0 errors, 6 warnings** — all 6 pre-existing `no-explicit-any` in api (auth.ts, membership.ts, agent.mcp.test.ts×2, agent.test.ts×2). My shared warning is gone. Confirms "0 lint errors".
+
+**3. Omit-defaulting anti-staleness — the load-bearing check. VERDICT: CORRECT.**
+- Traced the write path: Zod (`routes/meals.ts`) makes `spanFrom/spanTo/column` `.nullable().optional()` (omitted ⇒ undefined). Service `mapInstructionCreates` (`services/meals.ts:63-74`) maps `step.spanFrom ?? null` etc. Used by createMeal (650), updateMeal (764), import/agent (888/916) — uniform. `matrixSource` = `authored` iff any `spanFrom != null` (`deriveRecipeMatrix.ts:196`).
+- Livingston's cited test (`meals.test.ts:1147`) is a REAL write-path test (input omits spans; asserts captured Prisma create arg `spanFrom:null`) — NOT tautological. But it only covers createMeal at the mock layer, never a real persist→read round-trip.
+- Closed that gap myself: stood up Postgres 16 (Docker `/usr/local/bin/docker`), `prisma migrate deploy` (incl. `add_recipe_matrix_layout`), ran a throwaway tsx script against the REAL service + REAL DB (removed after). Results, all PASS: createMeal w/ instructions & NO spans → `derived`; DB rows spanFrom/spanTo/column all null; **updateMeal w/ instructions & NO spans → `derived`** (the ordinary-edit case Rusty flagged); DB null; CONTROL updateMeal WITH a span → `authored`; CONTROL edit back to NO spans → `derived` (no sticky authoring). The read oracle (`getMealById`→`applyRecipeMatrix`) genuinely flips both ways, so the 'derived' results are meaningful.
+- **No defect.** Ordinary meal edits do NOT flip recipes to authored/frozen — the Phase-1 anti-staleness class is not reintroduced.
+
+Committed the lint fix with explicit pathspec. Did not touch any Livingston-owned file.

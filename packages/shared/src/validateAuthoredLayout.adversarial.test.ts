@@ -39,7 +39,6 @@ import { validateAuthoredLayout } from "./validateAuthoredLayout.js";
 /* -------------------------------------------------------------------------- */
 type Ingredients = Parameters<typeof validateAuthoredLayout>[0];
 type Instructions = Parameters<typeof validateAuthoredLayout>[1];
-type Ingredient = Ingredients extends readonly (infer T)[] ? T : never;
 type Instruction = Instructions extends readonly (infer T)[] ? T : never;
 
 type Kind = "SETUP" | "PROCESS" | "FINISH";
