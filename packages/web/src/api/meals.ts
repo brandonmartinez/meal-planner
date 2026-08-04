@@ -5,6 +5,7 @@ import type {
   ImportMealsResultDTO,
   ExportMealsResponseDTO,
   Difficulty,
+  TabularRecipeMealDTO,
 } from "@meal-planner/shared";
 import { request } from "./client";
 
@@ -72,6 +73,23 @@ export async function getMeal(
   mealId: string,
 ): Promise<Meal & { ingredients: MealIngredient[] }> {
   return request<Meal & { ingredients: MealIngredient[] }>(
+    `${BASE}/${familyId}/meals/${mealId}`,
+  );
+}
+
+/**
+ * Fetch a meal shaped for the tabular ("Grid") recipe view (spec §3.3). Hits the
+ * same meal-detail endpoint as {@link getMeal}; the API read path augments the
+ * response with `matrixSource`, ingredient `position`/`groupLabel`, and per-step
+ * effective `kind`/`subLabel`/`spanFrom`/`spanTo` (derived on read when
+ * unauthored). The wider return type is a superset of `getMeal`, so callers that
+ * only need List-view fields can use it too.
+ */
+export async function getTabularMeal(
+  familyId: string,
+  mealId: string,
+): Promise<TabularRecipeMealDTO> {
+  return request<TabularRecipeMealDTO>(
     `${BASE}/${familyId}/meals/${mealId}`,
   );
 }

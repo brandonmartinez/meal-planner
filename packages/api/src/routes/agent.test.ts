@@ -91,6 +91,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
     prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
       id: "meal-1",
       ingredients: [],
+      instructions: [],
       tags: [],
     } as never);
   });
@@ -520,6 +521,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
     prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
       id: "meal-1",
       ingredients: [],
+      instructions: [],
       tags: [],
     } as never);
 
@@ -563,6 +565,7 @@ describe("agent routes (end-to-end middleware chain)", () => {
     prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
       id: "meal-1",
       ingredients: [],
+      instructions: [],
       tags: [],
     } as never);
 

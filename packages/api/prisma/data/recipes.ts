@@ -1,8 +1,32 @@
 /**
- * A rich library of ~50 common recipes used to seed the demo family. Each maps
- * to a `Meal` (name, description, difficulty) plus its `MealIngredient`s.
- * Ingredient categories come from `INGREDIENT_CATEGORIES` in
- * `@meal-planner/shared`.
+ * A curated, tabular-Grid-aware library used to seed the demo family. Each recipe
+ * maps to a `Meal` (name, description, difficulty) plus its ordered
+ * `MealIngredient`s AND ordered `MealInstruction`s.
+ *
+ * TABULAR ("Grid") VIEW — why this data looks the way it does
+ * -----------------------------------------------------------
+ * The Cooking-for-Engineers matrix reads ingredients DOWN the left and brackets
+ * each PROCESS step across the contiguous ingredient rows it combines. A derived
+ * step's span is the min..max of the ingredient rows its text names, so a recipe
+ * only renders cleanly when its ingredients are in USE ORDER — the order a cook
+ * reaches for them — not shopping order. Every derived recipe below is authored
+ * in use order so that each step's named ingredients are contiguous (no
+ * over-bracketing sweep). See `deriveRecipeMatrix` in `@meal-planner/shared`.
+ *
+ * Two knobs, kept honest:
+ *   - MOST recipes are DERIVED: they carry `instructions` with plain `text` (+
+ *     optional `timerMinutes`) and NO `spanFrom`/`spanTo`/`kind`. Their matrix is
+ *     recomputed on every read. A `groupLabel` on an ingredient is independent of
+ *     derivation and always renders a group pill (derivation never invents one
+ *     from `category`, which is grocery-aisle vocabulary).
+ *   - A few recipes are fully AUTHORED: every instruction carries an explicit
+ *     `kind` and PROCESS steps carry inclusive 0-based `spanFrom`/`spanTo` indices
+ *     into the position-sorted ingredient array (NOT ingredient ids). Presence of
+ *     any non-null `spanFrom` flips the meal to authored, so the read path passes
+ *     the layout through untouched. These show the format at its ceiling (cascade
+ *     re-spans, parallel sub-recipes, group pills).
+ *
+ * Ingredient categories come from `INGREDIENT_CATEGORIES` in `@meal-planner/shared`.
  */
 import type { Difficulty, IngredientCategory } from "@meal-planner/shared";
 
@@ -11,6 +35,37 @@ export interface SeedIngredient {
   quantity?: string;
   unit?: string;
   category: IngredientCategory;
+  /**
+   * Authored group-pill label (e.g. "Breading", "Rémoulade"). Independent of the
+   * derived/authored provenance split — a group pill renders whenever this is set,
+   * on derived and authored recipes alike. `null`/absent → ungrouped.
+   */
+  groupLabel?: string;
+}
+
+export interface SeedInstruction {
+  text: string;
+  /** Optional timer for the step, in minutes. */
+  timerMinutes?: number;
+  /**
+   * Authored band classification. Omit on DERIVED recipes (the read path derives
+   * it). Set on AUTHORED recipes, where derivation is bypassed and every field is
+   * passed through as-is — so `kind` must be set on EVERY step of an authored
+   * recipe (SETUP / PROCESS / FINISH).
+   */
+  kind?: "SETUP" | "PROCESS" | "FINISH";
+  /** Authored sub-detail line (e.g. "350°F", "20 min"). Authored recipes only. */
+  subLabel?: string;
+  /** Authored process-column index (cascade ordering). Authored recipes only. */
+  column?: number;
+  /**
+   * Authored inclusive 0-based START index into the position-sorted ingredient
+   * array (a row index, NOT an ingredient id). PROCESS steps only; leave unset on
+   * SETUP/FINISH. Setting this on ANY step marks the whole meal "authored".
+   */
+  spanFrom?: number;
+  /** Authored inclusive 0-based END row index. Pairs with `spanFrom`. */
+  spanTo?: number;
 }
 
 export interface SeedRecipe {
@@ -18,605 +73,335 @@ export interface SeedRecipe {
   description: string;
   difficulty: Difficulty;
   ingredients: SeedIngredient[];
+  /** Ordered preparation steps. Position is assigned from array index by the seed. */
+  instructions: SeedInstruction[];
 }
 
 export const DEMO_RECIPES: SeedRecipe[] = [
+  /* ===================================================================== */
+  /* DERIVED recipes — use-ordered so derived spans stay contiguous.       */
+  /* ===================================================================== */
+
   {
     name: "Spaghetti Bolognese",
     description: "Slow-simmered beef and tomato ragù over spaghetti.",
     difficulty: "MEDIUM",
     ingredients: [
-      { name: "Spaghetti", quantity: "1", unit: "lb", category: "pantry" },
-      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Crushed tomatoes", quantity: "28", unit: "oz", category: "pantry" },
+      { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry" },
       { name: "Onion", quantity: "1", category: "produce" },
       { name: "Garlic", quantity: "3", unit: "cloves", category: "produce" },
+      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
+      { name: "Crushed tomatoes", quantity: "28", unit: "oz", category: "pantry" },
+      { name: "Spaghetti", quantity: "1", unit: "lb", category: "pantry" },
       { name: "Parmesan", quantity: "1/2", unit: "cup", category: "dairy" },
     ],
-  },
-  {
-    name: "Chicken Alfredo",
-    description: "Creamy parmesan sauce with seared chicken over fettuccine.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Fettuccine", quantity: "1", unit: "lb", category: "pantry" },
-      { name: "Chicken breast", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Heavy cream", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Butter", quantity: "4", unit: "tbsp", category: "dairy" },
-      { name: "Parmesan", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Garlic", quantity: "2", unit: "cloves", category: "produce" },
+    instructions: [
+      { text: "Bring a large pot of salted water to a boil." },
+      { text: "Warm the olive oil in a pan and soften the onion and garlic." },
+      { text: "Add the ground beef and brown it well." },
+      { text: "Stir in the crushed tomatoes and simmer.", timerMinutes: 20 },
+      {
+        text: "Drain the spaghetti, toss with the sauce, and finish with parmesan.",
+      },
+      { text: "Serve immediately." },
     ],
   },
+
+  {
+    name: "Chocolate Chip Cookies",
+    description: "Chewy cookies with a classic creamed-butter cascade.",
+    difficulty: "EASY",
+    ingredients: [
+      { name: "Butter", quantity: "1", unit: "cup", category: "dairy" },
+      { name: "Brown sugar", quantity: "1", unit: "cup", category: "pantry" },
+      { name: "Eggs", quantity: "2", category: "dairy" },
+      { name: "Vanilla", quantity: "1", unit: "tsp", category: "condiments" },
+      { name: "Flour", quantity: "2 1/4", unit: "cups", category: "pantry" },
+      { name: "Baking soda", quantity: "1", unit: "tsp", category: "pantry" },
+      { name: "Chocolate chips", quantity: "2", unit: "cups", category: "snacks" },
+    ],
+    instructions: [
+      { text: "Preheat the oven to 375°F." },
+      { text: "Cream the butter and brown sugar until fluffy." },
+      { text: "Beat in the eggs and vanilla." },
+      { text: "Mix in the flour and baking soda." },
+      { text: "Fold in the chocolate chips." },
+      { text: "Bake until the edges set.", timerMinutes: 11 },
+    ],
+  },
+
+  {
+    name: "Guacamole",
+    description: "Bright, chunky avocado dip.",
+    difficulty: "EASY",
+    ingredients: [
+      { name: "Avocado", quantity: "3", category: "produce" },
+      { name: "Lime", quantity: "1", category: "produce" },
+      { name: "Salt", quantity: "1/2", unit: "tsp", category: "pantry" },
+      { name: "Cilantro", quantity: "1/4", unit: "cup", category: "produce" },
+    ],
+    instructions: [
+      { text: "Mash the avocado in a bowl." },
+      { text: "Stir in the lime juice and salt." },
+      { text: "Fold in the chopped cilantro." },
+      { text: "Serve right away." },
+    ],
+  },
+
+  {
+    name: "Grilled Cheese",
+    description: "Golden, buttery, three-ingredient comfort.",
+    difficulty: "EASY",
+    ingredients: [
+      { name: "Bread", quantity: "2", unit: "slices", category: "bakery" },
+      { name: "Butter", quantity: "1", unit: "tbsp", category: "dairy" },
+      { name: "Cheddar", quantity: "2", unit: "slices", category: "dairy" },
+    ],
+    instructions: [
+      { text: "Spread the butter over one side of each slice of bread." },
+      { text: "Layer the cheddar between the unbuttered sides." },
+      { text: "Grill the sandwich until golden.", timerMinutes: 4 },
+    ],
+  },
+
+  {
+    name: "Miso-Glazed Salmon",
+    description: "A quick roasted salmon with a savory-sweet glaze.",
+    difficulty: "EASY",
+    ingredients: [
+      { name: "Salmon", quantity: "4", unit: "fillets", category: "seafood" },
+      { name: "Miso paste", quantity: "3", unit: "tbsp", category: "condiments" },
+      { name: "Soy sauce", quantity: "1", unit: "tbsp", category: "condiments" },
+      { name: "Honey", quantity: "2", unit: "tbsp", category: "pantry" },
+      { name: "Green onion", quantity: "2", category: "produce" },
+    ],
+    instructions: [
+      { text: "Preheat the oven to 400°F." },
+      { text: "Whisk the miso paste, soy sauce, and honey into a glaze." },
+      { text: "Brush the glaze over the salmon and roast.", timerMinutes: 12 },
+      { text: "Scatter the sliced green onion over the top." },
+      { text: "Serve hot." },
+    ],
+  },
+
   {
     name: "Beef Tacos",
-    description: "Seasoned ground beef in warm tortillas with fresh toppings.",
+    description: "Seasoned beef with a lime crema — lime pulls double duty.",
     difficulty: "EASY",
     ingredients: [
       { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
       { name: "Taco seasoning", quantity: "1", unit: "packet", category: "condiments" },
       { name: "Tortillas", quantity: "8", category: "bakery" },
       { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Lettuce", quantity: "1", unit: "head", category: "produce" },
-      { name: "Tomato", quantity: "2", category: "produce" },
+      { name: "Sour cream", quantity: "1/2", unit: "cup", category: "dairy" },
+      { name: "Lime", quantity: "1", category: "produce" },
+      { name: "Cilantro", quantity: "1/4", unit: "cup", category: "produce" },
+    ],
+    instructions: [
+      { text: "Brown the ground beef and stir in the taco seasoning." },
+      { text: "Warm the tortillas and layer in the cheddar." },
+      { text: "Stir the sour cream with a squeeze of lime." },
+      { text: "Spoon the filling into the tortillas." },
+      { text: "Garnish with cilantro and another squeeze of lime." },
+      { text: "Serve while warm." },
     ],
   },
+
   {
-    name: "Margherita Pizza",
-    description: "Classic pizza with tomato, fresh mozzarella, and basil.",
+    name: "Vegetable Beef Chili",
+    description: "A hearty, long-simmered chili — grouped by prep stage.",
     difficulty: "MEDIUM",
     ingredients: [
-      { name: "Pizza dough", quantity: "1", unit: "ball", category: "bakery" },
-      { name: "Tomato sauce", quantity: "1", unit: "cup", category: "pantry" },
-      { name: "Fresh mozzarella", quantity: "8", unit: "oz", category: "dairy" },
-      { name: "Fresh basil", quantity: "1", unit: "handful", category: "produce" },
-      { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry" },
+      { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry", groupLabel: "Aromatics" },
+      { name: "Yellow onion", quantity: "1", category: "produce", groupLabel: "Aromatics" },
+      { name: "Bell pepper", quantity: "1", category: "produce", groupLabel: "Aromatics" },
+      { name: "Garlic", quantity: "3", unit: "cloves", category: "produce", groupLabel: "Aromatics" },
+      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat", groupLabel: "Protein & Spice" },
+      { name: "Chili powder", quantity: "2", unit: "tbsp", category: "condiments", groupLabel: "Protein & Spice" },
+      { name: "Cumin", quantity: "1", unit: "tbsp", category: "condiments", groupLabel: "Protein & Spice" },
+      { name: "Diced tomatoes", quantity: "28", unit: "oz", category: "pantry", groupLabel: "Simmer" },
+      { name: "Kidney beans", quantity: "15", unit: "oz", category: "pantry", groupLabel: "Simmer" },
+      { name: "Beef broth", quantity: "2", unit: "cups", category: "pantry", groupLabel: "Simmer" },
+      { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy", groupLabel: "Garnish" },
+    ],
+    instructions: [
+      { text: "Warm the olive oil in a large pot." },
+      { text: "Sauté the onion and bell pepper until soft." },
+      { text: "Stir in the garlic." },
+      { text: "Add the ground beef and brown it." },
+      { text: "Season with chili powder and cumin." },
+      {
+        text: "Pour in the diced tomatoes, kidney beans, and beef broth, then simmer.",
+        timerMinutes: 30,
+      },
+      { text: "Top each bowl with cheddar and serve." },
     ],
   },
+
   {
-    name: "Caesar Salad",
-    description: "Crisp romaine, croutons, and parmesan in a creamy dressing.",
+    name: "Buttermilk Pancakes",
+    description: "Fluffy stacks from a two-bowl batter.",
     difficulty: "EASY",
     ingredients: [
-      { name: "Romaine lettuce", quantity: "2", unit: "heads", category: "produce" },
-      { name: "Caesar dressing", quantity: "1/2", unit: "cup", category: "condiments" },
-      { name: "Croutons", quantity: "1", unit: "cup", category: "bakery" },
-      { name: "Parmesan", quantity: "1/2", unit: "cup", category: "dairy" },
+      { name: "Flour", quantity: "1 1/2", unit: "cups", category: "pantry" },
+      { name: "Sugar", quantity: "2", unit: "tbsp", category: "pantry" },
+      { name: "Baking powder", quantity: "2", unit: "tsp", category: "pantry" },
+      { name: "Buttermilk", quantity: "1 1/4", unit: "cups", category: "dairy" },
+      { name: "Eggs", quantity: "2", category: "dairy" },
+      { name: "Butter", quantity: "3", unit: "tbsp", category: "dairy" },
+    ],
+    instructions: [
+      { text: "Whisk the flour, sugar, and baking powder in a bowl." },
+      { text: "In a second bowl, beat the buttermilk, eggs, and melted butter." },
+      { text: "Combine into a batter and cook ladlefuls on a hot griddle.", timerMinutes: 3 },
+      { text: "Serve warm." },
     ],
   },
+
   {
-    name: "Grilled Cheese & Tomato Soup",
-    description: "Golden grilled cheese with a bowl of tomato soup.",
+    name: "Sheet-Pan Chicken Fajitas",
+    description: "Everything roasts on one pan; finish with warm tortillas.",
     difficulty: "EASY",
-    ingredients: [
-      { name: "Bread", quantity: "4", unit: "slices", category: "bakery" },
-      { name: "Cheddar", quantity: "4", unit: "slices", category: "dairy" },
-      { name: "Butter", quantity: "2", unit: "tbsp", category: "dairy" },
-      { name: "Tomato soup", quantity: "1", unit: "can", category: "pantry" },
-    ],
-  },
-  {
-    name: "Vegetable Stir-Fry",
-    description: "Crisp-tender vegetables tossed in a savory soy-ginger sauce.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Broccoli", quantity: "1", unit: "head", category: "produce" },
-      { name: "Bell pepper", quantity: "2", category: "produce" },
-      { name: "Carrot", quantity: "2", category: "produce" },
-      { name: "Soy sauce", quantity: "1/4", unit: "cup", category: "condiments" },
-      { name: "Ginger", quantity: "1", unit: "tbsp", category: "produce" },
-      { name: "Rice", quantity: "2", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Chicken Fajitas",
-    description: "Sizzling chicken with peppers and onions in tortillas.",
-    difficulty: "MEDIUM",
     ingredients: [
       { name: "Chicken breast", quantity: "1", unit: "lb", category: "meat" },
       { name: "Bell pepper", quantity: "2", category: "produce" },
       { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Fajita seasoning", quantity: "1", unit: "packet", category: "condiments" },
-      { name: "Tortillas", quantity: "8", category: "bakery" },
-    ],
-  },
-  {
-    name: "Beef Chili",
-    description: "Hearty beef and bean chili simmered with warm spices.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Kidney beans", quantity: "2", unit: "cans", category: "pantry" },
-      { name: "Diced tomatoes", quantity: "28", unit: "oz", category: "pantry" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Chili powder", quantity: "2", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Pancakes",
-    description: "Fluffy buttermilk pancakes with maple syrup.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Flour", quantity: "2", unit: "cups", category: "pantry" },
-      { name: "Eggs", quantity: "2", category: "dairy" },
-      { name: "Milk", quantity: "1.5", unit: "cups", category: "dairy" },
-      { name: "Maple syrup", quantity: "1/2", unit: "cup", category: "condiments" },
-      { name: "Butter", quantity: "2", unit: "tbsp", category: "dairy" },
-    ],
-  },
-  {
-    name: "Scrambled Eggs & Toast",
-    description: "Soft scrambled eggs with buttered toast.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Eggs", quantity: "6", category: "dairy" },
-      { name: "Butter", quantity: "2", unit: "tbsp", category: "dairy" },
-      { name: "Bread", quantity: "4", unit: "slices", category: "bakery" },
-      { name: "Milk", quantity: "1/4", unit: "cup", category: "dairy" },
-    ],
-  },
-  {
-    name: "Baked Salmon with Asparagus",
-    description: "Lemon-herb salmon roasted with fresh asparagus.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Salmon fillets", quantity: "4", category: "seafood" },
-      { name: "Asparagus", quantity: "1", unit: "bunch", category: "produce" },
-      { name: "Lemon", quantity: "1", category: "produce" },
       { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry" },
-      { name: "Garlic", quantity: "2", unit: "cloves", category: "produce" },
+      { name: "Fajita seasoning", quantity: "2", unit: "tbsp", category: "condiments" },
+      { name: "Tortillas", quantity: "8", category: "bakery" },
+      { name: "Lime", quantity: "1", category: "produce" },
+    ],
+    instructions: [
+      { text: "Preheat the oven to 425°F." },
+      {
+        text: "Toss the chicken, bell pepper, onion, olive oil, and fajita seasoning on a sheet pan, then roast.",
+        timerMinutes: 20,
+      },
+      { text: "Warm the tortillas and squeeze lime over the filling." },
+      { text: "Serve family-style." },
     ],
   },
-  {
-    name: "Shrimp Scampi",
-    description: "Garlic-butter shrimp with white wine over linguine.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Shrimp", quantity: "1", unit: "lb", category: "seafood" },
-      { name: "Linguine", quantity: "1", unit: "lb", category: "pantry" },
-      { name: "Butter", quantity: "4", unit: "tbsp", category: "dairy" },
-      { name: "Garlic", quantity: "4", unit: "cloves", category: "produce" },
-      { name: "White wine", quantity: "1/2", unit: "cup", category: "beverages" },
-      { name: "Parsley", quantity: "1/4", unit: "cup", category: "produce" },
-    ],
-  },
-  {
-    name: "Pad Thai",
-    description: "Stir-fried rice noodles with egg, peanuts, and tamarind.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Rice noodles", quantity: "8", unit: "oz", category: "pantry" },
-      { name: "Shrimp", quantity: "1/2", unit: "lb", category: "seafood" },
-      { name: "Eggs", quantity: "2", category: "dairy" },
-      { name: "Bean sprouts", quantity: "1", unit: "cup", category: "produce" },
-      { name: "Peanuts", quantity: "1/2", unit: "cup", category: "snacks" },
-      { name: "Tamarind paste", quantity: "2", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Chicken Curry",
-    description: "Tender chicken simmered in a spiced coconut curry sauce.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Chicken thighs", quantity: "1.5", unit: "lb", category: "meat" },
-      { name: "Coconut milk", quantity: "1", unit: "can", category: "pantry" },
-      { name: "Curry powder", quantity: "2", unit: "tbsp", category: "condiments" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Rice", quantity: "2", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Vegetable Lasagna",
-    description: "Layered pasta with roasted vegetables and ricotta.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Lasagna noodles", quantity: "1", unit: "box", category: "pantry" },
-      { name: "Ricotta", quantity: "15", unit: "oz", category: "dairy" },
-      { name: "Zucchini", quantity: "2", category: "produce" },
-      { name: "Spinach", quantity: "2", unit: "cups", category: "produce" },
-      { name: "Marinara sauce", quantity: "24", unit: "oz", category: "pantry" },
-      { name: "Mozzarella", quantity: "2", unit: "cups", category: "dairy" },
-    ],
-  },
-  {
-    name: "BBQ Pulled Pork Sandwiches",
-    description: "Slow-cooked pork shoulder in barbecue sauce on brioche buns.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Pork shoulder", quantity: "3", unit: "lb", category: "meat" },
-      { name: "BBQ sauce", quantity: "1", unit: "cup", category: "condiments" },
-      { name: "Brioche buns", quantity: "6", category: "bakery" },
-      { name: "Coleslaw mix", quantity: "1", unit: "bag", category: "produce" },
-    ],
-  },
-  {
-    name: "Turkey Meatballs",
-    description: "Baked turkey meatballs in marinara over pasta.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Ground turkey", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Breadcrumbs", quantity: "1/2", unit: "cup", category: "pantry" },
-      { name: "Egg", quantity: "1", category: "dairy" },
-      { name: "Marinara sauce", quantity: "24", unit: "oz", category: "pantry" },
-      { name: "Spaghetti", quantity: "1", unit: "lb", category: "pantry" },
-    ],
-  },
+
   {
     name: "Greek Salad",
-    description: "Cucumber, tomato, olives, and feta with oregano vinaigrette.",
+    description: "A crisp, no-cook salad tossed in a simple vinaigrette.",
     difficulty: "EASY",
     ingredients: [
       { name: "Cucumber", quantity: "1", category: "produce" },
       { name: "Tomato", quantity: "3", category: "produce" },
       { name: "Red onion", quantity: "1/2", category: "produce" },
-      { name: "Kalamata olives", quantity: "1/2", unit: "cup", category: "pantry" },
       { name: "Feta", quantity: "4", unit: "oz", category: "dairy" },
+      { name: "Kalamata olives", quantity: "1/2", unit: "cup", category: "condiments" },
+      { name: "Olive oil", quantity: "3", unit: "tbsp", category: "pantry" },
+      { name: "Oregano", quantity: "1", unit: "tsp", category: "condiments" },
+    ],
+    instructions: [
+      { text: "Chop the cucumber, tomato, and red onion into a bowl." },
+      { text: "Add the feta and kalamata olives." },
+      { text: "Dress with olive oil and oregano, then toss." },
+      { text: "Serve chilled." },
     ],
   },
-  {
-    name: "Minestrone Soup",
-    description: "Vegetable and bean soup with small pasta.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Cannellini beans", quantity: "1", unit: "can", category: "pantry" },
-      { name: "Diced tomatoes", quantity: "14", unit: "oz", category: "pantry" },
-      { name: "Carrot", quantity: "2", category: "produce" },
-      { name: "Celery", quantity: "2", unit: "stalks", category: "produce" },
-      { name: "Ditalini pasta", quantity: "1", unit: "cup", category: "pantry" },
-      { name: "Vegetable broth", quantity: "6", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Beef Stew",
-    description: "Braised beef with potatoes, carrots, and rich gravy.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Beef chuck", quantity: "2", unit: "lb", category: "meat" },
-      { name: "Potato", quantity: "4", category: "produce" },
-      { name: "Carrot", quantity: "4", category: "produce" },
-      { name: "Beef broth", quantity: "4", unit: "cups", category: "pantry" },
-      { name: "Tomato paste", quantity: "2", unit: "tbsp", category: "pantry" },
-    ],
-  },
-  {
-    name: "Roast Chicken",
-    description: "Whole roasted chicken with herbs and lemon.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Whole chicken", quantity: "1", category: "meat" },
-      { name: "Lemon", quantity: "1", category: "produce" },
-      { name: "Rosemary", quantity: "2", unit: "sprigs", category: "produce" },
-      { name: "Butter", quantity: "3", unit: "tbsp", category: "dairy" },
-      { name: "Garlic", quantity: "1", unit: "head", category: "produce" },
-    ],
-  },
-  {
-    name: "Mac and Cheese",
-    description: "Creamy baked macaroni with a three-cheese blend.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Elbow macaroni", quantity: "1", unit: "lb", category: "pantry" },
-      { name: "Cheddar", quantity: "2", unit: "cups", category: "dairy" },
-      { name: "Milk", quantity: "2", unit: "cups", category: "dairy" },
-      { name: "Butter", quantity: "3", unit: "tbsp", category: "dairy" },
-      { name: "Flour", quantity: "3", unit: "tbsp", category: "pantry" },
-    ],
-  },
-  {
-    name: "Fish and Chips",
-    description: "Beer-battered cod with crispy fries.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Cod fillets", quantity: "4", category: "seafood" },
-      { name: "Potato", quantity: "4", category: "produce" },
-      { name: "Flour", quantity: "1.5", unit: "cups", category: "pantry" },
-      { name: "Beer", quantity: "1", unit: "cup", category: "beverages" },
-      { name: "Vegetable oil", quantity: "4", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Veggie Burritos",
-    description: "Rice, beans, and cheese wrapped in a flour tortilla.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Flour tortillas", quantity: "6", category: "bakery" },
-      { name: "Black beans", quantity: "2", unit: "cans", category: "pantry" },
-      { name: "Rice", quantity: "2", unit: "cups", category: "pantry" },
-      { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Salsa", quantity: "1", unit: "cup", category: "condiments" },
-    ],
-  },
+
   {
     name: "Teriyaki Chicken Bowl",
-    description: "Glazed teriyaki chicken over rice with steamed vegetables.",
+    description: "Glazed chicken over rice — grouped by component.",
     difficulty: "MEDIUM",
     ingredients: [
-      { name: "Chicken thighs", quantity: "1.5", unit: "lb", category: "meat" },
-      { name: "Teriyaki sauce", quantity: "1/2", unit: "cup", category: "condiments" },
-      { name: "Rice", quantity: "2", unit: "cups", category: "pantry" },
-      { name: "Broccoli", quantity: "1", unit: "head", category: "produce" },
-      { name: "Sesame seeds", quantity: "1", unit: "tbsp", category: "pantry" },
+      { name: "Rice", quantity: "2", unit: "cups", category: "pantry", groupLabel: "Base" },
+      { name: "Chicken thighs", quantity: "1", unit: "lb", category: "meat", groupLabel: "Chicken" },
+      { name: "Soy sauce", quantity: "1/4", unit: "cup", category: "condiments", groupLabel: "Teriyaki Glaze" },
+      { name: "Honey", quantity: "3", unit: "tbsp", category: "pantry", groupLabel: "Teriyaki Glaze" },
+      { name: "Ginger", quantity: "1", unit: "tbsp", category: "produce", groupLabel: "Teriyaki Glaze" },
+      { name: "Broccoli", quantity: "2", unit: "cups", category: "produce", groupLabel: "Vegetables" },
+      { name: "Sesame seeds", quantity: "1", unit: "tbsp", category: "pantry", groupLabel: "Garnish" },
+    ],
+    instructions: [
+      { text: "Steam the rice." },
+      { text: "Sear the chicken thighs until browned." },
+      { text: "Whisk the soy sauce, honey, and ginger, then glaze the chicken.", timerMinutes: 5 },
+      { text: "Steam the broccoli until tender." },
+      { text: "Sprinkle with sesame seeds and serve." },
     ],
   },
+
+  /* ===================================================================== */
+  /* AUTHORED recipes — explicit kind + inclusive 0-based spanFrom/spanTo   */
+  /* (row indices into the position-sorted ingredient array) + group pills. */
+  /* These bypass derivation and render the layout exactly as written.      */
+  /* ===================================================================== */
+
   {
-    name: "Eggplant Parmesan",
-    description: "Breaded eggplant baked with marinara and mozzarella.",
+    name: "Fried Shrimp with Rémoulade",
+    description:
+      "AUTHORED showcase: a breading cascade over the shrimp beside a parallel rémoulade.",
+    difficulty: "MEDIUM",
+    ingredients: [
+      { name: "Shrimp", quantity: "1", unit: "lb", category: "seafood", groupLabel: "Shrimp" },
+      { name: "Flour", quantity: "1", unit: "cup", category: "pantry", groupLabel: "Breading" },
+      { name: "Eggs", quantity: "2", category: "dairy", groupLabel: "Breading" },
+      { name: "Breadcrumbs", quantity: "1", unit: "cup", category: "pantry", groupLabel: "Breading" },
+      { name: "Mayonnaise", quantity: "1/2", unit: "cup", category: "condiments", groupLabel: "Rémoulade" },
+      { name: "Dijon mustard", quantity: "1", unit: "tbsp", category: "condiments", groupLabel: "Rémoulade" },
+      { name: "Pickles", quantity: "2", unit: "tbsp", category: "condiments", groupLabel: "Rémoulade" },
+      { name: "Hot sauce", quantity: "1", unit: "tsp", category: "condiments", groupLabel: "Rémoulade" },
+    ],
+    instructions: [
+      { kind: "SETUP", text: "Heat 2 inches of oil in a heavy pot.", subLabel: "350°F" },
+      { kind: "PROCESS", text: "Dredge the shrimp in flour.", column: 0, spanFrom: 0, spanTo: 1 },
+      { kind: "PROCESS", text: "Dip the floured shrimp in beaten egg.", column: 1, spanFrom: 0, spanTo: 2 },
+      { kind: "PROCESS", text: "Coat in breadcrumbs.", column: 2, spanFrom: 0, spanTo: 3 },
+      { kind: "PROCESS", text: "Fry until golden.", column: 3, spanFrom: 0, spanTo: 3, subLabel: "3 min" },
+      { kind: "PROCESS", text: "Whisk the mayonnaise, Dijon, pickles, and hot sauce.", column: 0, spanFrom: 4, spanTo: 7 },
+      { kind: "FINISH", text: "Serve the shrimp with the rémoulade for dipping." },
+    ],
+  },
+
+  {
+    name: "Baked Lasagna",
+    description:
+      "AUTHORED showcase: two parallel sub-recipes (meat sauce, cheese filling) cascade into one assembly.",
     difficulty: "HARD",
     ingredients: [
-      { name: "Eggplant", quantity: "2", category: "produce" },
-      { name: "Breadcrumbs", quantity: "1.5", unit: "cups", category: "pantry" },
-      { name: "Marinara sauce", quantity: "24", unit: "oz", category: "pantry" },
-      { name: "Mozzarella", quantity: "2", unit: "cups", category: "dairy" },
-      { name: "Eggs", quantity: "2", category: "dairy" },
+      { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry", groupLabel: "Meat Sauce" },
+      { name: "Onion", quantity: "1", category: "produce", groupLabel: "Meat Sauce" },
+      { name: "Garlic", quantity: "3", unit: "cloves", category: "produce", groupLabel: "Meat Sauce" },
+      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat", groupLabel: "Meat Sauce" },
+      { name: "Marinara", quantity: "24", unit: "oz", category: "pantry", groupLabel: "Meat Sauce" },
+      { name: "Ricotta", quantity: "15", unit: "oz", category: "dairy", groupLabel: "Cheese Filling" },
+      { name: "Egg", quantity: "1", category: "dairy", groupLabel: "Cheese Filling" },
+      { name: "Parmesan", quantity: "1/2", unit: "cup", category: "dairy", groupLabel: "Cheese Filling" },
+      { name: "Lasagna noodles", quantity: "12", category: "pantry", groupLabel: "Assembly" },
+      { name: "Mozzarella", quantity: "2", unit: "cups", category: "dairy", groupLabel: "Assembly" },
+    ],
+    instructions: [
+      { kind: "SETUP", text: "Preheat the oven.", subLabel: "375°F" },
+      { kind: "PROCESS", text: "Sauté the onion and garlic in the olive oil.", column: 0, spanFrom: 0, spanTo: 2 },
+      { kind: "PROCESS", text: "Brown the beef, stir in the marinara, and simmer.", column: 1, spanFrom: 0, spanTo: 4, subLabel: "20 min" },
+      { kind: "PROCESS", text: "Blend the ricotta, egg, and parmesan.", column: 0, spanFrom: 5, spanTo: 7 },
+      { kind: "PROCESS", text: "Layer noodles, meat sauce, cheese filling, and mozzarella.", column: 2, spanFrom: 0, spanTo: 9 },
+      { kind: "PROCESS", text: "Bake covered, then uncovered until bubbly.", column: 3, spanFrom: 0, spanTo: 9, subLabel: "45 min" },
+      { kind: "FINISH", text: "Let rest before slicing." },
     ],
   },
+
   {
-    name: "Tuna Melt",
-    description: "Tuna salad and melted cheddar on toasted sourdough.",
+    name: "Caprese Salad",
+    description:
+      "AUTHORED showcase: a small plate — a stack cascade beside a two-item dressing.",
     difficulty: "EASY",
     ingredients: [
-      { name: "Canned tuna", quantity: "2", unit: "cans", category: "pantry" },
-      { name: "Mayonnaise", quantity: "1/4", unit: "cup", category: "condiments" },
-      { name: "Sourdough bread", quantity: "4", unit: "slices", category: "bakery" },
-      { name: "Cheddar", quantity: "4", unit: "slices", category: "dairy" },
+      { name: "Tomatoes", quantity: "3", category: "produce", groupLabel: "Stack" },
+      { name: "Fresh mozzarella", quantity: "8", unit: "oz", category: "dairy", groupLabel: "Stack" },
+      { name: "Fresh basil", quantity: "1", unit: "handful", category: "produce", groupLabel: "Stack" },
+      { name: "Olive oil", quantity: "2", unit: "tbsp", category: "pantry", groupLabel: "Dressing" },
+      { name: "Balsamic", quantity: "1", unit: "tbsp", category: "condiments", groupLabel: "Dressing" },
     ],
-  },
-  {
-    name: "Chicken Noodle Soup",
-    description: "Comforting chicken soup with egg noodles and vegetables.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Chicken breast", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Egg noodles", quantity: "3", unit: "cups", category: "pantry" },
-      { name: "Carrot", quantity: "3", category: "produce" },
-      { name: "Celery", quantity: "3", unit: "stalks", category: "produce" },
-      { name: "Chicken broth", quantity: "8", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Pork Fried Rice",
-    description: "Wok-fried rice with pork, egg, and vegetables.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Cooked rice", quantity: "4", unit: "cups", category: "pantry" },
-      { name: "Pork loin", quantity: "1/2", unit: "lb", category: "meat" },
-      { name: "Eggs", quantity: "2", category: "dairy" },
-      { name: "Peas and carrots", quantity: "1", unit: "cup", category: "frozen" },
-      { name: "Soy sauce", quantity: "3", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Stuffed Bell Peppers",
-    description: "Peppers filled with seasoned beef, rice, and cheese.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Bell pepper", quantity: "4", category: "produce" },
-      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Rice", quantity: "1", unit: "cup", category: "pantry" },
-      { name: "Diced tomatoes", quantity: "14", unit: "oz", category: "pantry" },
-      { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy" },
-    ],
-  },
-  {
-    name: "Sloppy Joes",
-    description: "Saucy ground beef on soft hamburger buns.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Ground beef", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Hamburger buns", quantity: "6", category: "bakery" },
-      { name: "Tomato sauce", quantity: "1", unit: "cup", category: "pantry" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Worcestershire sauce", quantity: "1", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Butternut Squash Soup",
-    description: "Velvety roasted butternut squash soup with a hint of nutmeg.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Butternut squash", quantity: "1", category: "produce" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Vegetable broth", quantity: "4", unit: "cups", category: "pantry" },
-      { name: "Heavy cream", quantity: "1/2", unit: "cup", category: "dairy" },
-    ],
-  },
-  {
-    name: "Shepherd's Pie",
-    description: "Ground lamb and vegetables topped with mashed potatoes.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Ground lamb", quantity: "1.5", unit: "lb", category: "meat" },
-      { name: "Potato", quantity: "5", category: "produce" },
-      { name: "Peas and carrots", quantity: "2", unit: "cups", category: "frozen" },
-      { name: "Beef broth", quantity: "1", unit: "cup", category: "pantry" },
-      { name: "Butter", quantity: "4", unit: "tbsp", category: "dairy" },
-    ],
-  },
-  {
-    name: "Quesadillas",
-    description: "Crispy tortillas filled with melted cheese and chicken.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Flour tortillas", quantity: "4", category: "bakery" },
-      { name: "Cheddar", quantity: "2", unit: "cups", category: "dairy" },
-      { name: "Cooked chicken", quantity: "1", unit: "cup", category: "meat" },
-      { name: "Salsa", quantity: "1/2", unit: "cup", category: "condiments" },
-    ],
-  },
-  {
-    name: "Caprese Chicken",
-    description: "Seared chicken topped with tomato, mozzarella, and balsamic.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Chicken breast", quantity: "4", category: "meat" },
-      { name: "Tomato", quantity: "2", category: "produce" },
-      { name: "Fresh mozzarella", quantity: "8", unit: "oz", category: "dairy" },
-      { name: "Basil", quantity: "1", unit: "handful", category: "produce" },
-      { name: "Balsamic glaze", quantity: "2", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Lemon Garlic Tilapia",
-    description: "Pan-seared tilapia in a bright lemon-garlic butter.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Tilapia fillets", quantity: "4", category: "seafood" },
-      { name: "Lemon", quantity: "1", category: "produce" },
-      { name: "Garlic", quantity: "3", unit: "cloves", category: "produce" },
-      { name: "Butter", quantity: "3", unit: "tbsp", category: "dairy" },
-    ],
-  },
-  {
-    name: "Beef and Broccoli",
-    description: "Tender beef and broccoli in a glossy garlic-soy sauce.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Flank steak", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Broccoli", quantity: "1", unit: "head", category: "produce" },
-      { name: "Soy sauce", quantity: "1/3", unit: "cup", category: "condiments" },
-      { name: "Garlic", quantity: "3", unit: "cloves", category: "produce" },
-      { name: "Rice", quantity: "2", unit: "cups", category: "pantry" },
-    ],
-  },
-  {
-    name: "Falafel Wraps",
-    description: "Crispy chickpea falafel in pita with tahini sauce.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Chickpeas", quantity: "2", unit: "cans", category: "pantry" },
-      { name: "Pita bread", quantity: "4", category: "bakery" },
-      { name: "Tahini", quantity: "1/4", unit: "cup", category: "condiments" },
-      { name: "Cucumber", quantity: "1", category: "produce" },
-      { name: "Parsley", quantity: "1/2", unit: "cup", category: "produce" },
-    ],
-  },
-  {
-    name: "French Toast",
-    description: "Custard-dipped bread griddled golden and dusted with sugar.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Bread", quantity: "8", unit: "slices", category: "bakery" },
-      { name: "Eggs", quantity: "4", category: "dairy" },
-      { name: "Milk", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Cinnamon", quantity: "1", unit: "tsp", category: "pantry" },
-      { name: "Maple syrup", quantity: "1/2", unit: "cup", category: "condiments" },
-    ],
-  },
-  {
-    name: "Sausage & Peppers",
-    description: "Italian sausage with sautéed peppers and onions.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Italian sausage", quantity: "1", unit: "lb", category: "meat" },
-      { name: "Bell pepper", quantity: "3", category: "produce" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Hoagie rolls", quantity: "4", category: "bakery" },
-    ],
-  },
-  {
-    name: "Chicken Parmesan",
-    description: "Breaded chicken cutlets with marinara and melted mozzarella.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Chicken breast", quantity: "4", category: "meat" },
-      { name: "Breadcrumbs", quantity: "1.5", unit: "cups", category: "pantry" },
-      { name: "Marinara sauce", quantity: "24", unit: "oz", category: "pantry" },
-      { name: "Mozzarella", quantity: "1.5", unit: "cups", category: "dairy" },
-      { name: "Spaghetti", quantity: "1", unit: "lb", category: "pantry" },
-    ],
-  },
-  {
-    name: "Vegetable Fried Quinoa",
-    description: "Protein-packed quinoa stir-fried with mixed vegetables.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Quinoa", quantity: "2", unit: "cups", category: "pantry" },
-      { name: "Mixed vegetables", quantity: "2", unit: "cups", category: "frozen" },
-      { name: "Eggs", quantity: "2", category: "dairy" },
-      { name: "Soy sauce", quantity: "3", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Clam Chowder",
-    description: "Creamy New England chowder with clams and potatoes.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Clams", quantity: "2", unit: "cans", category: "seafood" },
-      { name: "Potato", quantity: "3", category: "produce" },
-      { name: "Bacon", quantity: "4", unit: "slices", category: "meat" },
-      { name: "Heavy cream", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Onion", quantity: "1", category: "produce" },
-    ],
-  },
-  {
-    name: "Pesto Pasta",
-    description: "Penne tossed in basil pesto with cherry tomatoes.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Penne", quantity: "1", unit: "lb", category: "pantry" },
-      { name: "Basil pesto", quantity: "1/2", unit: "cup", category: "condiments" },
-      { name: "Cherry tomatoes", quantity: "1", unit: "cup", category: "produce" },
-      { name: "Parmesan", quantity: "1/2", unit: "cup", category: "dairy" },
-    ],
-  },
-  {
-    name: "Korean Bibimbap",
-    description: "Rice bowl with seasoned vegetables, beef, and a fried egg.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Rice", quantity: "3", unit: "cups", category: "pantry" },
-      { name: "Ground beef", quantity: "1/2", unit: "lb", category: "meat" },
-      { name: "Spinach", quantity: "2", unit: "cups", category: "produce" },
-      { name: "Carrot", quantity: "2", category: "produce" },
-      { name: "Eggs", quantity: "4", category: "dairy" },
-      { name: "Gochujang", quantity: "3", unit: "tbsp", category: "condiments" },
-    ],
-  },
-  {
-    name: "Breakfast Burritos",
-    description: "Scrambled eggs, sausage, and cheese in warm tortillas.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Flour tortillas", quantity: "6", category: "bakery" },
-      { name: "Eggs", quantity: "8", category: "dairy" },
-      { name: "Breakfast sausage", quantity: "1/2", unit: "lb", category: "meat" },
-      { name: "Cheddar", quantity: "1", unit: "cup", category: "dairy" },
-      { name: "Potato", quantity: "2", category: "produce" },
-    ],
-  },
-  {
-    name: "Ratatouille",
-    description: "Rustic Provençal stew of eggplant, zucchini, and tomato.",
-    difficulty: "HARD",
-    ingredients: [
-      { name: "Eggplant", quantity: "1", category: "produce" },
-      { name: "Zucchini", quantity: "2", category: "produce" },
-      { name: "Bell pepper", quantity: "2", category: "produce" },
-      { name: "Tomato", quantity: "4", category: "produce" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Olive oil", quantity: "1/4", unit: "cup", category: "pantry" },
-    ],
-  },
-  {
-    name: "Honey Garlic Chicken Thighs",
-    description: "Sticky honey-garlic glazed chicken thighs, oven-baked.",
-    difficulty: "MEDIUM",
-    ingredients: [
-      { name: "Chicken thighs", quantity: "2", unit: "lb", category: "meat" },
-      { name: "Honey", quantity: "1/3", unit: "cup", category: "condiments" },
-      { name: "Garlic", quantity: "4", unit: "cloves", category: "produce" },
-      { name: "Soy sauce", quantity: "1/4", unit: "cup", category: "condiments" },
-    ],
-  },
-  {
-    name: "Black Bean Soup",
-    description: "Smoky black bean soup finished with lime and cilantro.",
-    difficulty: "EASY",
-    ingredients: [
-      { name: "Black beans", quantity: "3", unit: "cans", category: "pantry" },
-      { name: "Onion", quantity: "1", category: "produce" },
-      { name: "Vegetable broth", quantity: "4", unit: "cups", category: "pantry" },
-      { name: "Lime", quantity: "1", category: "produce" },
-      { name: "Cilantro", quantity: "1/4", unit: "cup", category: "produce" },
+    instructions: [
+      { kind: "PROCESS", text: "Slice the tomatoes and mozzarella.", column: 0, spanFrom: 0, spanTo: 1 },
+      { kind: "PROCESS", text: "Stack with basil leaves.", column: 1, spanFrom: 0, spanTo: 2 },
+      { kind: "PROCESS", text: "Whisk the olive oil and balsamic.", column: 0, spanFrom: 3, spanTo: 4 },
+      { kind: "FINISH", text: "Drizzle over the stacks and serve." },
     ],
   },
 ];

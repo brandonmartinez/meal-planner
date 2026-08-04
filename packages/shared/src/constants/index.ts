@@ -25,6 +25,19 @@ export const MEAL_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
 
 export type Difficulty = (typeof MEAL_DIFFICULTIES)[number];
 
+/**
+ * The classification of a preparation step in the tabular ("Grid") recipe view
+ * (Cooking-for-Engineers matrix). Mirrors the Prisma `InstructionKind` enum:
+ *   - `SETUP`   — a full-width band rendered above the grid (preheat, line a pan…).
+ *   - `PROCESS` — a step that combines a contiguous range of ingredient rows.
+ *   - `FINISH`  — a trailing note rendered below the grid (cool, serve, garnish…).
+ * The string values are the wire contract and MUST stay byte-for-byte identical
+ * to the Prisma enum. `PROCESS` is the schema default.
+ */
+export const INSTRUCTION_KINDS = ["SETUP", "PROCESS", "FINISH"] as const;
+
+export type InstructionKind = (typeof INSTRUCTION_KINDS)[number];
+
 export interface MealPlaceholderMetadata {
   name: string;
   description: string;

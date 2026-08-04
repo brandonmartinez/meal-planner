@@ -9,63 +9,54 @@
 
 Frontend Dev. Owns `packages/web`. Use the `request<T>()` pattern and MSW handlers (see `.github/instructions/web.instructions.md`). Web tests run Vitest with `globals: true`.
 
-## Recent Updates
+## History Summary (2026-06-30 through 2026-07-28)
 
-📌 Team initialized on 2026-06-30 (Ocean's Eleven cast).
-
-📌 Recent update (2026-06-30T15:08:40-04:00): Frontend review filed #14 (request<T>), #15 (a11y forms), #16 (a11y modals), and #17 (API key UX).
-
-📌 Recent update (2026-06-30T15:28:32-04:00): #27 includes web acceptance for a "Recent" badge on meals browse plus difficulty display from #8.
-
-📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Two PRs. (1) #14 `PR #39` — centralized all `packages/web` API calls through a typed `request<T>()` + `ApiError` client (`packages/web/src/api/client.ts`) and removed raw `fetch` (the OAuth redirect stays a documented exception). (2) #8 web UI `PR #44` — surfaced the nullable meal difficulty: a `DifficultyBadge` for display plus a form select to set/clear EASY/MEDIUM/HARD, on top of Livingston's backend/shared work. Both CLOSED.
-
-📌 Sprint 3 batch (2026-06-30T21:57:00-04:00): A11y + UX sweep across `packages/web`, all merged & closed. #16 — accessible modals (MealPicker, ImportMealsDialog); a11y gate PASSED. #6 web UI — agent-credential management surface (Frank owned the backend). #27 web — recent-meal badge on meals browse (Livingston backend). #17 — API key copy + last-used display. #15 (PR #62, last to merge) — accessible names + loading-status across web pages; a11y gate PASSED; de-raced 3 loading-status a11y tests before merge.
+- **Initialization (2026-06-30):** Ocean's Eleven cast. Filed frontend reviews #14 (request<T>), #15 (a11y forms), #16 (a11y modals), #17 (API key UX).
+- **Sprint 1–3 (2026-06-30):** #14 PR #39 (centralized `request<T>()` client, removed raw fetch except OAuth redirect); #8 PR #44 (DifficultyBadge + form select); #16 (accessible modals), #6 web (agent credentials UI), #27 web (recent-meal badge), #17 (API key copy + last-used), #15 PR #62 (accessible names + loading status). Web a11y gates PASSED.
+- **Sprint 2 (2026-07-01):** #70 Meal Library UI PR #73 — MealPicker Recent/Difficulty badges + MealsPage zoned card layout.
+- **Sprint 2 Waves 4–6 (2026-07-02):** #103 external imageUrl PR #133 (shared MealThumbnail, scheme allowlist, CSP img-src: "https:"); #108 tags UI PR #135 (TokenField, MealTagList, useTaxonomy, filter controls). Web tests 327.
+- **Sprint 3 (2026-07-02):** #102 cooking mode PR #138 (immersive `/meals/:id/cook`, per-step timers, 100% client-side). KEY: `userEvent` v14 clicks deadlock under `vi.useFakeTimers()` → use `fireEvent.click` for fake-timer tests.
+- **Waves 3–4 (2026-07-03):** #110 collections UI PR #145; #117 templates UI PR #147 (apply flow, existingMode, parent-gated destructive actions).
+- **UI polish wave (2026-07-03):** PR #157 (unapprove toggle + photo stamp); PR #159 (responsive toolbar); PR #160 (form polish, repeat-week modal, template modal pagination); PR #161 DayCard stamp hotfix (`size-16 sm:size-20`, no absolute).
+- **Meal Library epic #168 (2026-07-04):** PR #169 (standardized Select, max-w-7xl); PR #170 (card/table toggle, TagMultiSelect, hide-built-ins); PR #173 (title→MealDetailModal, `/meals/:id` deep-link). PR #185 instructions editor (ordered steps + timers).
+- **MMM image proxy (2026-07-06):** `node_helper` axios arraybuffer + base64 data URI + ETag conditional GET. Images visible on MagicMirror end-to-end.
+- **Meal-picker UX #208 (2026-07-09):** PR #209 (search covers names+tags, difficulty Select, advanced facets collapsed, 2-line descriptions). `5b02eca`.
+- **#218 grocery grouping rejection lesson (2026-07-28):** Rusty rejected initial commit for two blockers: pantry-staple separation must be mode-independent (regressed #205), and meal grouping must use `sourceMealIds` not stale `sources`. Locked out of revision; Virgil owned the fix.
+- **#220 Week Plan header action row (2026-07-28):** Moved header actions to a dedicated row below title/date. Past weeks omit the row; action row renders only for non-past weeks. Web validation: 593 tests, lint, build green.
 
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
+### 2026-08-03 (AM) — Grid view P1-6/7/8 through short-label rounds 1–3 (summary)
 
-- 2026-07-01: #70 Meal Library UI (PR #73) — MealPicker Recent/Difficulty badges + MealsPage zoned card layout (impeccable layout pass). a11y gate APPROVE. Merged.
-📌 Team update (2026-07-02T10:16:59-0400): Eight epic #91 recipe-management issues were filed under Linus ownership for future frontend planning. — logged by Scribe
-📌 Team update (2026-07-02T19:53:00Z): Wave 3 shipped #101 recipe detail page in PR #130; MealPicker linking deferred to avoid nested-interactive a11y risk. Wave 4 launched #103 imageUrl wiring from green main 67c4f42 with CSV lockstep + Helmet CSP review — logged by Scribe.
+- Shipped `TabularRecipeView`, `RecipeViewToggle`, `buildTabularRecipe`, `useRecipeViewMode`, `useMediaQuery` in web. Real `<table>` + ARIA `scope`/`headers`. Column cascade assignment proven sound by induction. Sub-`sm` degrade-to-List safe (persisted `localStorage` preference never overwritten by viewport). Commit `4d23572`. Tests: 623 ✓.
+- Three rounds of short-label fixes. After round 3 (`d467f29`): skip leading adverbial/conditional openers (meanwhile/once/after/…) to reach the imperative; strip `to/for <measurement>` ONLY for temperature + minutes/hours (ties to `extractSubLabel`); 9-word cap with glue-word trim (never ends on article/prep/conj); 2-word floor. Full text in `title`; List always lossless. Guiding principle: never emit a label a cook would read as a different or incomplete instruction — abbreviate, never mislead. Yen's `it.fails` markers for all 3 defects converted to passing. Tests: 670 ✓.
+- Yen SHIP verdict (AM): 1840 tests PASS, build/lint clean. Phase 1 AM work complete.
 
-📌 Team update (2026-07-02T19:16:33-04:00): Sprint 2 Waves 4–6 complete. #103 (external recipe imageUrl) shipped PR #133 SHA ba7b628 with shared MealThumbnail component, scheme allowlist, minimal CSP broadening (img-src: "https:"), graceful degradation, full REST + agent + MCP parity, CSV round-trip. #108 (tags/categories UI) shipped PR #135 SHA b16810d with TokenField (native datalist + pills), MealTagList (compact display, capped + overflow), useTaxonomy hook (DRY, fails soft), filter controls (OR-within-facet, AND-across-facets), 327 web tests green, lint 0 errors. v0.4.0 recipe-metadata vertical complete. — logged by Scribe
+### 2026-08-03T13:27:37-04:00 — Short-label: structural boundary rewrite (retire the word cap)
 
-- 2026-07-02: #102 Local cooking mode (PR pending) — immersive `/meals/:mealId/cook` route + "Start cooking" CTA on MealDetailPage. Large-text steps, ingredient checklist, per-step completion, per-step countdown timers. ALL client-side (React useState, in-memory) — no backend/localStorage/server progress. New: `pages/CookingModePage.tsx`, `components/CookTimer.tsx`, `hooks/useCountdown.ts` + colocated tests. Web gate green: 356 tests (42 files), lint clean. a11y: native checkboxes/labels, aria-labelled timer buttons, single role="alert" on completion (no per-tick spam), 44×44 targets. CSP intact (bundled React, no inline). **Reusable learning:** userEvent v14 clicks DEADLOCK under vi.useFakeTimers() (0-delay setTimeout never reached by advanceTimersByTime(0)) → use fireEvent.click (sync, auto-act) for clicks in fake-timer tests, reserve act() for advanceTimersByTime. Web lane only.
+Brandon found "Cook the spaghetti in a large pot of salted" — the D2 fragment class again (8th round). Root cause ruling: truncating natural language at a word count cannot be made safe.
 
-📌 Team update (2026-07-02T21:37:00-0400): Sprint 3 Wave 1 complete. Linus shipped #102 local cooking mode (frontend-only `/meals/:mealId/cook` + timers); Basher shipped #104 image asset backend; Livingston shipped #114 repeat previous week planning. Merges: #104 PR #137 SHA a9a5df5; #102 PR #138 SHA 6acf0d0; #114 PR #139 SHA 68b6637. — logged by Scribe
+**The boundary rule (`dropTrailingClause`):** never cut mid-phrase. Cut ONLY at a real syntactic boundary — a subordinator (`to`/`until`/`while`/`then`) that introduces a droppable trailing clause — else emit FULL TEXT.
+- Guards: ≥2 words floor; subordinator's next word must be a content word (so "to a boil"/"to 165°F" stay whole); head must not end on a glue/connective; `parts[i-2]` must not be a coordinator (blocks "…and fry | until golden" bare-verb strand); scans from the end → drops only outermost clause; trailing comma/`;`/`:` stripped from head.
+- **Excluded `and`/`or` from cut boundaries** — ambiguously coordinate nouns vs clauses with no POS signal in-browser; flagged deviation to Rusty.
+- Added `isParticipleHead` + `ING_BASE_VERBS` for `-ing`-led pseudo-imperatives; positional connective back-off (`c358937`) for >9-word labels ending with {to,and,or,…} at n−2.
+- Deleted: word cap, trailing-glue trim, dangling-verb back-off, `CUT_CONNECTIVES`. Kept untouched: opener-skip + capitalization, `to/for` strip (temp+min/hr only), 2-word floor, `isRedundantSubLabel`.
+- Width: `<td>` is `min-w-[6rem]` with no `max-w` / no `whitespace-nowrap`; longer labels wrap vertically, never a horizontal blowout.
+- Commits `f8a87f3`, `c46855b`, `c358937`. Tests: 700 ✓.
 
-📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #105 meal image upload UI merged via PR #143 (9bb530d): MealImageField link/upload mode, web image API + MSW handlers, unified imageUrl, and thumbnails. — logged by Scribe
+### 2026-08-03T16:12:04-04:00 — Grid ingredient use-ordering (web half of `ad63eb8`)
 
-## 2026-07-03T02:23:57-0400 — Wave 3 shipped
+Livingston shipped `ad63eb8` (shared/API): new non-nullable `ingredientDisplayOrder: number[]` on `TabularRecipeMealDTO`, a permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row. `spanFrom`/`spanTo` index into the DISPLAY order, not `position`.
 
-- Shipped #110 collections UI; PR #145 squash `e3b2651` merged after Saul #116 and Livingston #120. State reconciled by Scribe.
+**`buildTabularRecipe.ts`:**
+- Deleted the ingredient `position`-sort (now actively wrong). `ingredients` used as-is (canonical coordinate system).
+- Added `resolveDisplayOrder(order, n)`: validates a true permutation of `0..n-1`; missing/wrong-length/non-permutation → identity fallback (degrades to position order — covers older API or malformed fixture without dropping rows).
+- Row loop walks `displayOrder.map((ingredientIndex, r) => …)`; `rowIndex: r` = consecutive display walk. Spans already in display coords; cascade/rowspan and `headers`/`scope` a11y linkage unchanged.
+- Group runs computed over DISPLAY order. Instruction `position`-sort independent.
+- Function param widened to `…& { ingredientDisplayOrder?: number[] }` for 10 legacy unit tests + defensive fallback.
 
-## 2026-07-03T03:07:00-0400 — Wave 4 shipped
+**`TabularRecipeView.tsx`:** added small visible note for `matrixSource === 'derived'` — "Ingredients are listed in the order the recipe uses them, so this order can differ from the List view." Authored meals (identity = List order) get no note.
 
-- Shipped #117 planning templates UI; PR #147 squash `ed355be` merged. Added `/templates` management and WeekPlan apply flow with `existingMode:error` first, 409 confirmation, skip/replace choices, and parent-gated destructive actions.
+Cross-step reuse over-bracketing is intrinsic (DAG-vs-tree) — NOT tested for zero over-bracketing. Tests: `buildTabularRecipe` +5 (Birria displayOrder walk, identity fallback, malformed fallback, group runs over display order, instruction-position sort), `TabularRecipeView` +2 (use-order note, display-order render + a11y linkage). Total: 706 ✓. Commit `d325227`.
 
-📌 Team update (2026-07-03T17:14:44Z): Merged UI wave (PR #157 unapprove toggle + photo stamp, PR #159 responsive toolbar, PR #160 photo stamp label fix + 5 additional design decisions: password manager suppression, collections redesign, meal form polish, repeat-week modal, template modal pagination) — Linus
-
-📌 Team update (2026-07-03T17:36:35-0400): PR #161 DayCard stamp hotfix Round 2 merged to main (f5e2662). Fixed invisible-stamp regression from #160 by using `size-16 sm:size-20` shorthand (both dimensions definite 64px/80px, no wrapper, no absolute positioning). Tests assert size-16, object-cover, no absolute. Web lint 0, tests 527/527. — logged by Scribe
-
-📌 Team update (2026-07-04T10:57:00-04:00): Meal Library UI epic #168 shipped across 4 merged PRs. Linus delivered: PR #169 standardized Select control + page-width foundations (shared component, 12 replacements, 9 pages normalized to max-w-7xl); PR #170 Meal Library density + filtering (card/table toggle with persistence, TagMultiSelect, hide-built-ins); PR #173 meal detail modal navigation (title clicks open MealDetailModal, `/meals/:id` deep-link preserves modal on cooking-mode exit). Decision records reconciled by Scribe.
-📌 Team update (2026-07-05T17:05:41-04:00): #184 steps/instructions editor shipped by Linus and merged via PR #185 (commit 65d302b); web meal create/edit now supports ordered instructions with timers, closing the UI gap after #100.
-
-📌 Team update (2026-07-06T14:09:24-04:00): Delivered MMM-meal-planner server-side image proxy (MMM #5, PR #6). `node_helper` now fetches relative `/api/display/images/{id}` URLs as arraybuffer via axios with `X-API-Key`, base64-encodes them to data URIs, and caches per URL with ETag + `If-None-Match` conditional GET (304 → reuse). Per-image errors are isolated so one bad asset can't drop the whole payload. Added `thumbnailHeight` config (default `6rem`) → `--mmp-thumb-height` CSS custom property for per-install image sizing. Clarified `days` semantics in README (today + next days−1). Images are now fully visible on the MagicMirror display end-to-end. Issue MMM #5 closed. — logged by Scribe
-
-📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #208 meal-picker modal UX, frontend-only. Read `MealPicker.tsx`; produce UX changes, tests, and PR. — logged by Scribe
-
-📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #208 meal-picker modal UX; PR #209 merged (`5b02eca`). Search now covers names/tags, difficulty uses a single Select, advanced facets are collapsed by default, and descriptions show two lines. — logged by Scribe
-
-### 2026-07-28T10:15:00-04:00 — #218 grocery grouping rejection lesson
-
-Rusty rejected Linus's commit `21be592` on two counts: pantry-staple separation was made category-mode-only, which regressed the #205 contract that managed pantry staples remain separated mode-independently; and meal grouping inferred provenance from `sources`, which the API can leave stale when a MANUAL orphan is promoted. Linus was locked out of the revision under the Reviewer Rejection Protocol; Virgil owned the follow-up fix.
-
-### 2026-07-28T13:00:00-04:00 — #220 Week Plan header action row
-
-Moved the Week Plan header actions (Grocery List, Repeat a previous week, Apply a template) into a dedicated action row below the title/date cluster. Removed the obsolete desktop spacer. The row renders only for non-past weeks, stacks full-width on mobile, and omits itself entirely on past weeks; tests cover parent, child/partial, and past-week/no-row cases. Web validation green: `pnpm --filter @meal-planner/web run test` (593 passed), lint, build.
-
-### 2026-07-28T13:55:00-04:00 — Week Plan header action row edge cases
-
-Week Plan title/date now own the first header row, while Grocery List and parent actions live in a dedicated `role="group"` Week actions row below. Past weeks omit the row entirely; non-parent viewers still get Grocery List only. Tests should assert row membership and the absence of the action-row heading in omitted cases.
+📌 Team update (2026-08-03T16:52:00-04:00): Yen's **SHIP** verdict (PM final pass): 1903 tests PASS (web 706); boundary-cut labels + displayOrder walk verified against real 94-meal DB. The word-cap `it.fails` from Yen's earlier fifth-family pass and all adversarial label families are green. Phase 1 fully complete. — decided by Yen, Rusty

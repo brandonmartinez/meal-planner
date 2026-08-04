@@ -7,11 +7,11 @@ import type {
   RepeatWeekExistingMode,
   FillWeekRequestDTO,
   AgentIdentityDTO,
-  Meal,
   GroceryList,
   Difficulty,
   RecipeCollection,
   PlanningTemplate,
+  TabularRecipeMealDTO,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -354,14 +354,26 @@ export class MealPlannerApiClient {
 
   // --- Meal catalog write (family-from-key; meal:write scope) ---------------
 
-  /** Create a meal in the family the key resolves to (no family in the path). */
-  createMeal(input: CreateMealInput): Promise<Meal> {
-    return this.request<Meal>("POST", `/api/agent/meals`, { body: input });
+  /** Create a meal in the family the key resolves to (no family in the path).
+   *  The returned meal carries the tabular ("Grid") recipe read fields
+   *  (`matrixSource`, `ingredientDisplayOrder`, per-ingredient
+   *  `position`/`groupLabel`, per-instruction effective
+   *  `kind`/`subLabel`/`spanFrom`/`spanTo`) derived on read — Phase-1 MCP read
+   *  parity. No matrix authoring input is accepted yet (Phase 2). */
+  createMeal(input: CreateMealInput): Promise<TabularRecipeMealDTO> {
+    return this.request<TabularRecipeMealDTO>("POST", `/api/agent/meals`, {
+      body: input,
+    });
   }
 
-  /** Edit an existing meal by id in the family the key resolves to. */
-  updateMeal(mealId: string, input: UpdateMealInput): Promise<Meal> {
-    return this.request<Meal>(
+  /** Edit an existing meal by id in the family the key resolves to. The returned
+   *  meal carries the same tabular ("Grid") recipe read fields as
+   *  {@link createMeal} (derived on read; Phase-1 MCP read parity). */
+  updateMeal(
+    mealId: string,
+    input: UpdateMealInput,
+  ): Promise<TabularRecipeMealDTO> {
+    return this.request<TabularRecipeMealDTO>(
       "PATCH",
       `/api/agent/meals/${encodeURIComponent(mealId)}`,
       { body: input },

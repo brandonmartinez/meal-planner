@@ -640,6 +640,7 @@ describe("meals service", () => {
     it("includes instructions ordered by position asc", async () => {
       prismaMock.meal.findFirst.mockResolvedValue({
         id: "m-1",
+        ingredients: [],
         instructions: [
           { position: 0, text: "Chop", timerMinutes: null },
           { position: 1, text: "Cook", timerMinutes: 5 },
@@ -676,6 +677,243 @@ describe("meals service", () => {
     });
   });
 
+  // The tabular ("Grid") recipe read path (spec §3.3/§3.4). getMealById enriches
+  // every detail read with the derived-or-authored matrix via deriveRecipeMatrix.
+  // The anti-staleness contract is load-bearing here: derive ONLY when nothing is
+  // authored, pass an authored layout through untouched, and NEVER write it back.
+  describe("tabular recipe matrix (Grid read path)", () => {
+    // A persisted ingredient row as MEAL_DETAIL_INCLUDE returns it (groupLabel is
+    // the authored override; null → derive from category at read time).
+    function ingredientRow(
+      position: number,
+      name: string,
+      category: string | null,
+      groupLabel: string | null = null,
+    ) {
+      return {
+        id: `ing-${position}`,
+        mealId: "m-1",
+        name,
+        quantity: null,
+        unit: null,
+        category,
+        position,
+        groupLabel,
+      };
+    }
+
+    // A persisted instruction row. kind defaults to PROCESS; the authored layout
+    // overrides (subLabel/spanFrom/spanTo) are null unless a meal was authored.
+    function instructionRow(
+      position: number,
+      text: string,
+      overrides: {
+        kind?: "SETUP" | "PROCESS" | "FINISH";
+        subLabel?: string | null;
+        spanFrom?: number | null;
+        spanTo?: number | null;
+      } = {},
+    ) {
+      return {
+        id: `ins-${position}`,
+        mealId: "m-1",
+        position,
+        text,
+        timerMinutes: null,
+        kind: overrides.kind ?? "PROCESS",
+        subLabel: overrides.subLabel ?? null,
+        spanFrom: overrides.spanFrom ?? null,
+        spanTo: overrides.spanTo ?? null,
+      };
+    }
+
+    it("derives the matrix on read for an unauthored meal (matrixSource='derived')", async () => {
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        ingredients: [
+          ingredientRow(0, "flour", "pantry"),
+          ingredientRow(1, "sugar", "pantry"),
+          ingredientRow(2, "butter", "dairy"),
+        ],
+        instructions: [
+          instructionRow(0, "Preheat oven to 350°F"),
+          instructionRow(1, "Mix flour and sugar"),
+          instructionRow(2, "Cream the butter for 5 min"),
+          instructionRow(3, "Serve warm"),
+        ],
+        tags: [],
+      } as never);
+
+      const result = (await getMealById("m-1", "fam-1")) as unknown as {
+        matrixSource: string;
+        ingredients: { position: number; groupLabel: string | null }[];
+        ingredientDisplayOrder: number[];
+        instructions: {
+          kind: string;
+          subLabel: string | null;
+          spanFrom: number | null;
+          spanTo: number | null;
+        }[];
+      };
+
+      expect(result.matrixSource).toBe("derived");
+      // flour(0)+sugar(1) are first-used in step 1, butter(2) in step 2 → the
+      // display order is already the identity permutation here.
+      expect(result.ingredientDisplayOrder).toEqual([0, 1, 2]);
+      // P1-9: derived meals are UNGROUPED — category (grocery aisle) is never
+      // used as a group pill, so every effective groupLabel is null.
+      expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
+        null,
+        null,
+        null,
+      ]);
+      // Leading setup verb naming no ingredient → SETUP band, temp subLabel.
+      expect(result.instructions[0]).toMatchObject({
+        kind: "SETUP",
+        subLabel: "350°F",
+        spanFrom: null,
+        spanTo: null,
+      });
+      // "Mix flour and sugar" spans rows 0–1; "Cream the butter" spans row 2.
+      expect(result.instructions[1]).toMatchObject({
+        kind: "PROCESS",
+        spanFrom: 0,
+        spanTo: 1,
+      });
+      expect(result.instructions[2]).toMatchObject({
+        kind: "PROCESS",
+        spanFrom: 2,
+        spanTo: 2,
+        subLabel: "5 min",
+      });
+      // Trailing finish verb naming no ingredient → FINISH note.
+      expect(result.instructions[3]).toMatchObject({
+        kind: "FINISH",
+        spanFrom: null,
+        spanTo: null,
+      });
+    });
+
+    it("passes an authored layout through untouched and NEVER clobbers it (matrixSource='authored')", async () => {
+      // One instruction carries an authored span → the whole meal is authored.
+      // The authored SETUP kind on step 1 must survive even though its text
+      // ("Combine flour") would otherwise derive to PROCESS — editing step text
+      // must never re-derive over an authored layout.
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        ingredients: [
+          ingredientRow(0, "flour", "pantry", "Dry"),
+          ingredientRow(1, "butter", "dairy"),
+        ],
+        instructions: [
+          instructionRow(0, "Combine flour", {
+            kind: "SETUP",
+            subLabel: "authored-note",
+            spanFrom: null,
+            spanTo: null,
+          }),
+          instructionRow(1, "Blend everything", {
+            kind: "PROCESS",
+            spanFrom: 0,
+            spanTo: 1,
+          }),
+        ],
+        tags: [],
+      } as never);
+
+      const result = (await getMealById("m-1", "fam-1")) as unknown as {
+        matrixSource: string;
+        ingredients: { groupLabel: string | null }[];
+        ingredientDisplayOrder: number[];
+        instructions: {
+          kind: string;
+          subLabel: string | null;
+          spanFrom: number | null;
+          spanTo: number | null;
+        }[];
+      };
+
+      expect(result.matrixSource).toBe("authored");
+      // Authored matrices are never reordered: the display order is the identity
+      // permutation, so the authored spans keep indexing the same rows.
+      expect(result.ingredientDisplayOrder).toEqual([0, 1]);
+      // Authored groupLabel is used ("Dry"); the row with no authored label
+      // stays null — category ("dairy") is never used as a group (P1-9).
+      expect(result.ingredients.map((i) => i.groupLabel)).toEqual([
+        "Dry",
+        null,
+      ]);
+      // Authored fields pass through verbatim — no re-derivation.
+      expect(result.instructions[0]).toMatchObject({
+        kind: "SETUP",
+        subLabel: "authored-note",
+        spanFrom: null,
+        spanTo: null,
+      });
+      expect(result.instructions[1]).toMatchObject({
+        kind: "PROCESS",
+        spanFrom: 0,
+        spanTo: 1,
+      });
+    });
+
+    it("keeps ingredients in canonical position order but indexes spans into ingredientDisplayOrder", async () => {
+      // Rows arrive out of position order; applyRecipeMatrix sorts by position.
+      // After sorting: pasta=0, tomato=1, cheese=2. The step names pasta+cheese
+      // (not tomato), so use-ordering parks tomato LAST in the display order and
+      // the span indexes into that display order — NOT into position.
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        ingredients: [
+          ingredientRow(2, "cheese", "dairy"),
+          ingredientRow(0, "pasta", "pantry"),
+          ingredientRow(1, "tomato", "produce"),
+        ],
+        instructions: [instructionRow(0, "Top the pasta with cheese")],
+        tags: [],
+      } as never);
+
+      const result = (await getMealById("m-1", "fam-1")) as unknown as {
+        ingredients: { position: number; name: string }[];
+        ingredientDisplayOrder: number[];
+        instructions: { spanFrom: number | null; spanTo: number | null }[];
+      };
+
+      // The canonical ingredients array stays in position order — it is the
+      // coordinate system for List/Grocery/Cooking-Mode and is NEVER reordered.
+      expect(result.ingredients.map((i) => i.name)).toEqual([
+        "pasta",
+        "tomato",
+        "cheese",
+      ]);
+      // Grid rows: pasta (0) and cheese (2) are first-used, tomato (1) parked last.
+      expect(result.ingredientDisplayOrder).toEqual([0, 2, 1]);
+      // pasta = display 0, cheese = display 1 → span 0..1, contiguous. tomato,
+      // which the step never names, is no longer swept between them.
+      expect(result.instructions[0]).toMatchObject({ spanFrom: 0, spanTo: 1 });
+    });
+
+    it("spans ALL rows for a PROCESS step that names no ingredient (intentional degenerate case)", async () => {
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        ingredients: [
+          ingredientRow(0, "flour", "pantry"),
+          ingredientRow(1, "butter", "dairy"),
+        ],
+        instructions: [instructionRow(0, "Stir until combined")],
+        tags: [],
+      } as never);
+
+      const result = (await getMealById("m-1", "fam-1")) as unknown as {
+        matrixSource: string;
+        instructions: { spanFrom: number | null; spanTo: number | null }[];
+      };
+
+      expect(result.matrixSource).toBe("derived");
+      expect(result.instructions[0]).toMatchObject({ spanFrom: 0, spanTo: 1 });
+    });
+  });
+
   describe("createMeal", () => {
     beforeEach(() => {
       // createMeal re-fetches the meal with taxonomy joins after mutating.
@@ -684,6 +922,7 @@ describe("meals service", () => {
       prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
         id: "m-1",
         ingredients: [],
+        instructions: [],
         tags: [],
       } as never);
     });
@@ -931,6 +1170,39 @@ describe("meals service", () => {
       ]);
     });
 
+    // Tabular Grid: ingredients are nested-created with a dense 0-based position
+    // from input array order (spec §3.2 — order already conveys row order, so no
+    // new input field), exactly mirroring the instruction position contract.
+    it("nested-creates ingredients with 0-based position in input order", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      await createMeal("fam-1", {
+        name: "Cake",
+        ingredients: [
+          { name: "flour", quantity: "2", unit: "cups" },
+          { name: "sugar" },
+          { name: "butter" },
+        ],
+      });
+
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          ingredients?: { create: { name: string; position: number }[] };
+        };
+      };
+      expect(
+        arg.data.ingredients?.create.map((c) => ({
+          name: c.name,
+          position: c.position,
+        })),
+      ).toEqual([
+        { name: "flour", position: 0 },
+        { name: "sugar", position: 1 },
+        { name: "butter", position: 2 },
+      ]);
+    });
+
     it("omits the instructions clause when none are provided", async () => {
       stubTransaction();
       prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
@@ -958,6 +1230,7 @@ describe("meals service", () => {
       prismaMock.meal.findUniqueOrThrow.mockResolvedValue({
         id: "m-1",
         ingredients: [],
+        instructions: [],
         tags: [],
       } as never);
     });
@@ -1005,6 +1278,39 @@ describe("meals service", () => {
         data: { ingredients?: { create: unknown[] } };
       };
       expect(arg.data.ingredients?.create).toHaveLength(1);
+    });
+
+    // Tabular Grid: the replace path re-assigns a dense 0-based position from the
+    // new input array order, so a re-authored ingredient list keeps stable row
+    // indices for spanFrom/spanTo. Mirrors the instruction replace contract.
+    it("replace-sets ingredient position from input order", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.mealIngredient.deleteMany.mockResolvedValue({
+        count: 3,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", {
+        name: "Updated",
+        ingredients: [{ name: "eggs" }, { name: "milk" }, { name: "flour" }],
+      });
+
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          ingredients?: { create: { name: string; position: number }[] };
+        };
+      };
+      expect(
+        arg.data.ingredients?.create.map((c) => [c.position, c.name]),
+      ).toEqual([
+        [0, "eggs"],
+        [1, "milk"],
+        [2, "flour"],
+      ]);
     });
 
     it("leaves ingredients untouched when ingredients is undefined", async () => {

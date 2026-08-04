@@ -846,7 +846,12 @@ export function registerTools(
         "parsed (from a CSV, a photo/scan, or pasted text — you do the " +
         "parsing/OCR; this tool only stores the structured result). Provide a " +
         "name and, optionally, a description, a difficulty (EASY/MEDIUM/HARD), " +
-        "and a list of ingredients. Requires the meal:write scope.",
+        "and a list of ingredients. Requires the meal:write scope. The created " +
+        "meal is returned with its tabular \"Grid\" recipe view fields " +
+        "(matrixSource, ingredientDisplayOrder, plus per-ingredient " +
+        "position/groupLabel and per-instruction kind/subLabel/spanFrom/spanTo), " +
+        "derived on read for meals without an authored layout. Grid layout " +
+        "authoring is not yet accepted as input (a future phase).",
       inputSchema: {
         name: z.string().min(1).describe("The meal's name (required)."),
         description: z
@@ -944,7 +949,12 @@ export function registerTools(
         "change. Passing `ingredients` REPLACES the meal's ingredient list. " +
         "Passing `instructions` REPLACES the meal's instruction list. " +
         "Placeholder meals (e.g. Free Day, Leftovers) cannot be edited. " +
-        "Requires the meal:write scope.",
+        "Requires the meal:write scope. The updated meal is returned with its " +
+        "tabular \"Grid\" recipe view fields (matrixSource, " +
+        "ingredientDisplayOrder, plus per-ingredient position/groupLabel and " +
+        "per-instruction kind/subLabel/spanFrom/spanTo), derived on read for " +
+        "meals without an authored layout. Grid layout authoring is not yet " +
+        "accepted as input (a future phase).",
       inputSchema: {
         mealId: z.string().min(1).describe("The id of the meal to edit."),
         name: z.string().min(1).optional().describe("New name."),

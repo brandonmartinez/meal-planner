@@ -9,54 +9,54 @@
 
 Backend Dev. Owns `packages/api`. Auth chain: `authenticateJWT` → `requireMembership` → optional `requireRole(Role.PARENT)`; Magic Mirror uses `authenticateApiKey`. API keys stored hashed only. ESM runtime imports use `.js` suffix. Schema changes go through the guarded migration flow.
 
-## Recent Updates
+## History Summary (2026-06-30 through 2026-07-09)
 
-📌 Team initialized on 2026-06-30 (Ocean's Eleven cast).
-
-📌 Recent update (2026-06-30T15:08:40-04:00): Backend review filed #8 (meal difficulty), #7 (MCP backend), and co-sourced #9 (IDOR).
-
-📌 Recent update (2026-06-30T15:28:32-04:00): Drafted #27 for recent indicator on meals browse, depending on #8 for difficulty display.
-
-📌 Sprint 1 batch (2026-06-30T17:04:41-04:00): Shipped #9 (P1 IDOR) on `squad/9-family-scope-mutations`, PR #37. Closed the cross-family authorization gap by threading `familyId` into the suggestion/grocery service signatures and enforcing ownership in the Prisma `where` predicate (non-owned id → 404 before any write). Added domain error types (SuggestionError/MoveSuggestionError/GroceryError) mapped to 400/403/404, Zod schemas on the mutation bodies, and same-family/cross-family prismaMock tests. Frank's security gate APPROVED; PR flipped ready-for-review. HTTP contract unchanged (web client unaffected).
-
-📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Shipped #8 backend+shared `PR #40` — nullable meal `difficulty` (EASY/MEDIUM/HARD) through the stack: a Prisma enum + nullable column (hand-authored migration, no DB available), the shared type/constant in `@meal-planner/shared`, Zod validation, and service threading. Linus carried the web UI in #44. #8 CLOSED.
-
-📌 Sprint 3 batch (2026-06-30T21:57:00-04:00): #7 — MCP backend endpoints (current/prev week, schedule-by-date, approve-by-family), Zod-validated, returning shared DTOs. #27 backend — recent-meal indicator (Linus carried the web badge). Both merged & closed.
-
-📌 Sprint 5 batch (2026-06-30T21:57:02-04:00): Three backend PRs, all Frank-gated APPROVE, merged & closed. #43 (PR #67) — trust-proxy config: `app.set("trust proxy", config.trustProxy)` default `1`, `TRUST_PROXY` env, `parseTrustProxy()`. #49 (PR #68) — observable audit drops: `safeRecordAgentAudit` wrapper with a 6-field allowlist `console.error`, replaced 18 silent `catch {}` sites, fail-open preserved. #51 (PR #69) — peppered HMAC-SHA256 credential hashing: `utils/credentialHash.ts` (`hashCredential` + `legacyHashCredential`), lazy legacy-rehash on verify, `CREDENTIAL_PEPPER` fail-closed in prod, no schema change; merged after #43/#49 with main synced in.
+- **Initialization (2026-06-30):** Ocean's Eleven cast. Filed backend reviews #8 (difficulty), #7 (MCP), #9 (IDOR). Sprint 1: #9 PR #37 (IDOR/family-scope mutations, domain error types, Zod schemas, prismaMock tests). Sprint 2: #8 PR #40 (nullable difficulty through stack, hand-authored migration).
+- **Sprints 3–5 (2026-06-30):** #7 MCP backend endpoints (week, schedule, approve); #27 recent-meal indicator. Frank-gated PRs: #43/PR #67 (trust-proxy), #49/PR #68 (`safeRecordAgentAudit` 6-field allowlist), #51/PR #69 (peppered HMAC-SHA256 credential hashing with lazy legacy-rehash).
+- **MCP bearer auth (2026-07-01):** #87/#88 MCP bearer auth landed; reviewer-lockout remediation by Rusty.
+- **Sprint 2 Waves 4–6 (2026-07-02):** #99 PR #132 last-cooked/times-cooked derivation (single `mealSuggestion.findMany`); pg_trgm drift-gate hotfix. #107/#108 tags/categories held. v0.4.0 released.
+- **Sprint 3 Waves (2026-07-02/03):** #114 PR #139 (repeat week); #113 PR #140 (random meal, RNG auditable); #120 PR #144 (ingredient normalization); #115 PR #149 (category/collection week-filling, `fillWeek()`).
+- **UI polish (2026-07-03):** PR #158 removed meal taxonomy categories (#107, fold-into-tags data migration); PR #152 collection-side membership endpoint.
+- **Meal Library backend (2026-07-04):** PR #172 broadened meal search (OR across name/description/tags/collections, server-side, no schema).
+- **MCP image upload + image route series (2026-07-05/06):** #180/PR #183 MCP base64 image upload (magic-byte sniffing, decoded-size check, `meal:image` scope); #188/PR #195 UUID-constrained `ASSET_PATH_RE`; #196/PR #197 display image route for API-key auth (ETag/304, `rewriteDisplayImageUrl`); #198/PR #200 `Vary: x-api-key` + storage error logging.
+- **v0.6.0 Wave 1 (2026-07-09):** #206 PR #211 grocery regenerate (preserve checked, date-range generate, manual remove-past-days).
 
 ## Learnings
 
-<!-- Append new learnings below. Each entry is something lasting about the project. -->
-📌 Team update (2026-07-01T17-12-00Z): #87/#88 MCP bearer auth implementation landed; reviewer-lockout remediation handled by Rusty. — decided by Livingston
-📌 Team update (2026-07-02T10:16:59-0400): Nine epic #91 recipe-management issues were filed under Livingston ownership for future backend/service planning. — logged by Scribe
-📌 Team update (2026-07-02T10:59:35-04:00): Rusty produced a five-sprint recipe-management execution plan; Sprint 1 assigns Livingston #94 (recipe search/indexing) and #95 (grocery regeneration/source tracking). — logged by Scribe
-📌 Team update (2026-07-02T12:14:30-04:00): Sprint 1 design gates APPROVED. #95 grocery regeneration/source tracking: additive origin(GENERATED|MANUAL)/edited/sourceMealIds; non-destructive ID-preserving merge (name|unit keyed); PATCH endpoint in #118. #94 recipe search/indexing: shared listMealsQuerySchema for REST+agent; MealListResponseDTO{items,total,limit,offset,hasMore} envelope adopted; offset/limit pagination; indexes reserved for #111; lastCookedOn via getLastCookedMap. Both issues closed, decision records posted. Ready for Sprint 2. — logged by Scribe
-📌 Team update (2026-07-02T19:53:00Z): Wave 4 launched #99 from green main 67c4f42; last-cooked is DERIVED/no-migration. #107 tags/categories is held for a solo migration wave next, and #108 remains blocked on #107 — logged by Scribe.
+### 2026-08-03 (AM) — Grid view Waves 1/2/P1-9 (summary)
 
-📌 Team update (2026-07-02T19:16:33-04:00): Sprint 2 Waves 4–6 complete. #99 (last-cooked + times-cooked derivation) shipped PR #132 SHA bc6eae9 with single optimized query (both fields from same `mealSuggestion.findMany`), no schema change, family-scoped IDOR-safe. Drift-gate hotfix (pg_trgm GIN index declaration) merged inline to main: schema.prisma now declarative with `postgresqlExtensions` preview + `extensions = [pg_trgm]` + `@@index([name(ops: raw("gin_trgm_ops"))])`, reversing #94, unblocking Wave 6. CI drift gate now GREEN. All 7 recipe-metadata issues merged to main 233597b. v0.4.0 (P2) released. — logged by Scribe
+- **Wave 1 (P1-2, `7054875`):** Delivered `packages/shared` tabular types: `InstructionKind` enum, `TabularRecipe*` DTOs, `deriveRecipeMatrix()` pure function. Never-persist contract and structural provenance documented in load-bearing module header. 31 colocated tests. `tsc`+vitest+eslint ✓.
+- **Wave 2 (P1-3/4/5, `9f62bfc`):** Wired `deriveRecipeMatrix()` into all meal detail reads via `applyRecipeMatrix()` in `services/meals.ts`. `MEAL_DETAIL_INCLUDE` + `exportMeals` now `orderBy: { position: "asc" }`. `mapIngredientCreates()` assigns 0-based position from array index. MCP `apiClient` retyped to `TabularRecipeMealDTO`; tool descriptions updated. +6 api service tests; 1017 total. Rusty APPROVED.
+- **P1-9 (`07c21b2`):** Suppressed derived group pills — `groupLabel = ing.groupLabel ?? null` (dropped `?? ing.category` fallback). `category` is grocery-aisle vocabulary, not recipe sections. Spec §3.4 rule 2 rewritten. 1023 api tests ✓. Rusty APPROVED. #96 parity conditional discharged.
+- Yen SHIP verdict (AM): 1840 tests PASS, build/lint clean.
 
-📌 Team update (2026-07-02T21:37:00-0400): Sprint 3 Wave 1 complete. Livingston shipped #114 repeat previous week planning (`repeatWeek`, REST/agent/MCP/web parity); Basher shipped #104 image asset backend; Linus shipped #102 local cooking mode. Merges: #104 PR #137 SHA a9a5df5; #102 PR #138 SHA 6acf0d0; #114 PR #139 SHA 68b6637. — logged by Scribe
+### 2026-08-03T11:00:32-0400 — Grid view P1-10: ingredient use-ordering (`ingredientDisplayOrder`)
 
-📌 Team update (2026-07-03T01:15:59-0400): Sprint 3 Wave 2 complete. #113 random meal selection merged via PR #140 (e95372c): auditable RNG meal selection/scheduling, REST+agent+MCP parity, no schema or CSV changes. — logged by Scribe
+- Rusty ruling (measured against Brandon's real 74-meal library: 26/61 PROCESS steps (43%) over-bracketed, 15/16 instruction-bearing meals swept in unnamed rows). Root cause: ingredients stored in SHOPPING order, Chu's Grid needs USE order, and min..max spans sweep everything between non-adjacent co-used rows.
+- New read field `TabularRecipeMealDTO.ingredientDisplayOrder: number[]` — a permutation of `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row. `ingredients` array STAYS canonical `position` order (untouched — coordinate system for List/Grocery/Cooking-Mode/authored spans). Rusty option (a): derivation emits the order, web never re-sorts/re-derives.
+- `spanFrom`/`spanTo` now index into `ingredientDisplayOrder` (DISPLAY rows), so every derived span is contiguous by construction. Derived: `deriveInstructions` computes `firstUse[]` (min matching-step index; unreferenced → sentinel `n`), sorts rows by `(firstUse, position)` (stable — first-use wins, ties/unreferenced by position, unmatched parked at END), builds inverse `displayIndexOf[]`, maps each PROCESS step's matched rows through it → min/max. Authored: identity permutation `[0..n-1]`, spans pass through unchanged (never reordered — same §3.3 invariant).
+- Anti-staleness reaffirmed: `ingredientDisplayOrder` computed on read, NEVER persisted, no stored flag, provenance stays structural (`matrixSource` from `spanFrom != null`). Load-bearing module/helper comments updated.
+- API: `applyRecipeMatrix()` in `services/meals.ts` passes `ingredientDisplayOrder` straight through; REST serves the service result and MCP `apiClient` returns `TabularRecipeMealDTO`, so both INHERIT the field. Confirmed (not assumed): api tsc + full suite green, mcp tsc + suite green.
+- Parity #96: read-only field → shared DTO (added) + REST (inherited) + MCP apiClient (inherited). No write field, no `inputSchema` obligation, Phase-1 read-only posture preserved. Updated `create_meal`/`update_meal` MCP tool descriptions + apiClient doc comments.
+- Real-DB sanity check (read-only, `saul-mealdb`): Birria Tacos derives displayOrder `[1,2,3,0,6,4,5,7]`, braise span `0..4` — corn tortillas (display 5) & oaxaca cheese (display 6) pulled OUT; cilantro parked last. Residual: onion still swept (first-used with chiles, chiles reused by braise) — intrinsic cross-step reuse, only Phase-2 authored spans close it.
+- Tests: shared +7; api: ordering test + `ingredientDisplayOrder` assertions on derived + authored. Verified: shared 41 ✓; api 1023 ✓; mcp 121 ✓. Committed with pathspec.
 
-## 2026-07-03T02:23:57-0400 — Wave 3 shipped
+## 2026-08-03T11:00:32-0400 — Grid matcher hardening: phrase-specificity (token collisions)
 
-- Shipped #120 ingredient normalization; PR #144 squash `e604ab3` merged after Saul #116 and before Linus #110. State reconciled by Scribe.
+- PROBLEM (found by Saul while authoring the seed): "Ground beef" + "Beef broth" both reduced to `{beef}` (descriptor `ground` was a stop word), so a step mentioning "beef" matched BOTH — corrupting the first-use permutation.
+- FIX in `packages/shared/deriveRecipeMatrix.ts` (DERIVED branch only): split `STOP_WORDS` into `QUANTITY_STOP` (removed) and `MODIFIER_WORDS` (kept, tagged `mod` — adds phrase specificity, can never anchor). Replaced any-token matching with **phrase-specificity claiming**: for each ingredient find maximal runs of step tokens all belonging to it AND truly adjacent (whitespace-only; `gapBefore` flag); occurrence specificity = # distinct ingredient core tokens; each step position won by max-specificity; ties → BOTH match.
+- True adjacency critical: "chicken in broth" must NOT collapse to "chicken broth"; "ground beef" (whitespace-adjacent) does form a phrase.
+- Genuine ambiguity (lone shared token, no distinguishing adjacency) → match both. Never drop a match on a guess.
+- MEASURED on real 74-meal library: changed **1 step** (Thai Green Curry false positive). Honest: collision was RARE; ordering was the dominant cause.
+- Tests: shared +6 unit + 1 real-data → 48 total. api 1023 ✓. Spec §3.4 rule 5 updated. Committed with pathspec (`packages/shared`).
 
-## 2026-07-03T03:07:00-0400 — Wave 4 shipped
+## 2026-08-03T11:00:32-0400 — Grid matcher hardening: ingredient-side full-consumption (mirror of a008feb)
 
-- Shipped #115 category/collection week-filling; PR #149 squash `eafed5e` merged. `fillWeek()` creates unapproved suggestions, reuses random-plan filters, supports error/skip/replace, and adds REST/agent/MCP parity without schema changes.
+- PROBLEM (found by Saul in Greek Salad): `Olives` + `Olive oil`, step says bare "olives" → equal step-side specificity → both matched → Olive oil falsely swept.
+- FIX: second tiebreak after step-side `spec`. Each occurrence records `fullyConsumed` (= matched run covers ALL of ingredient's CORE tokens). Per position, `hasFull[p]` = any spec-winner is fully consumed; candidate claims p iff it ties winning spec AND either no winner is fully consumed OR it is fully consumed. So "olives" fully consumes `Olives` but leaves `oil` in `Olive oil` → `Olives` wins.
+- CRITICAL: full-consumption is BINARY, not a count. A count wrongly evicted `beef chuck roast` in favour of `beef broth` on "braise the beef" — tested and rejected. Only a candidate leaving NOTHING unaccounted-for may evict others.
+- No under-matching regression: a lone candidate always matches regardless of leftover core. Eviction only when a co-covering occurrence at the same position is fully consumed.
+- MEASURED on real 74-meal library: **0 steps changed, 0 rows dropped, 0 added.** No subset-collision pairs in the whole library. Honest: this collision class is currently ABSENT on real data. Fix is future-proofing.
+- Tests: shared +5 → 53 total. api 1023 ✓. mcp 121 ✓. Spec §3.4 rule 5 updated. Committed with pathspec.
 
-📌 Team update (2026-07-03T17:14:44Z): Merged PR #158 (remove meal taxonomy categories #107, fold into tags + full parity removal) + PR #152 collection-side meal membership endpoint + 2 additional design decisions (collections-membership coordination) — Livingston
-
-📌 Team update (2026-07-04T10:57:00-04:00): Meal Library UI epic #168 shipped across 4 merged PRs. Livingston delivered: PR #172 broaden meal search to full metadata (server-side `/meals` search param OR across name, description, tags, collections; query-only, no schema migration). Decision records reconciled by Scribe.
-📌 Team update (2026-07-05T12:57:39-0400): Picked up #180 MCP meal:image upload. Implement base64 bytes + declared contentType through MCP/agent, validate with API magic-byte sniffing and decoded-size checks, and gate the upload route with additive `meal:image`. Yen and Frank may be pulled in for test/security review after PR. — logged by Scribe
-📌 Team update (2026-07-05T21:05:00Z): Delivered #180 MCP binary image upload (PR #183 squash-merged). Also folded in diagnostic logging fix to `routes/images.ts` — three silent catch blocks now emit `console.error` for upload/fetch/delete failures. Prod 500 had been masking the root cause (EACCES on unprivileged write). Key lesson: **production deploys via `raspberry-pi-kubernetes-cluster` (ArgoCD), never this repo's `k8s/`**. — logged by Scribe
-📌 Team update (2026-07-05T23:50:00-04:00): #186 fixed `imageUrlSchema` to accept same-origin uploaded-asset paths; PR #187 squash-merged to main (`5d9b934`) and closed #186. Follow-up #188 tracks exact-UUID asset-path regex hardening from Frank's advisory. — logged by Scribe
-
-📌 Team update (2026-07-06T14:09:24-04:00): Delivered three PRs in the image-path hardening + MagicMirror display series. #188/#195 (UUID-constrained imageUrlSchema — `UUID_RE` + `ASSET_PATH_RE` export, drops redundant `..` guard, RFC-4122 exact match); #196/#197 display image route for API-key auth (ETag/304 caching, same-origin path rewrite via `rewriteDisplayImageUrl()`, `ASSET_PATH_RE` reused); #198/#200 hardened that route with `Vary: x-api-key` on 200+304 and `console.error` on storage failure. All three squash-merged to main. Issues #188, #196, #198 closed. — logged by Scribe
-
-📌 Team update (2026-07-09T01:11:01-0400): Wave 1 v0.6.0 grocery & meal-picker assignment — #206 regenerate behavior. Preserve checked items, support date-range generate, add manual remove-past-days, tests, and PR. — logged by Scribe
-
-📌 Team update (2026-07-09T01:55:00-04:00): Wave 1 v0.6.0 shipped #206 grocery regenerate behavior; PR #211 merged (`903e09d`). Regeneration preserves checked items, date-range generation supports short-order shopping, and remove-past-days remains an explicit manual action. — logged by Scribe
+📌 Team update (2026-08-03T16:52:00-04:00): Yen's **SHIP** verdict (PM final pass): 1903 tests PASS; Yen independently cross-validated Livingston's `deriveRecipeMatrix` output against 94 meals — 0 mismatches. Matcher hardening impact confirmed as 1 step (`a008feb`) + 0 steps (`09eb5b4`); use-ordering (`ad63eb8`) was 17 steps / the dominant cause. `ingredientDisplayOrder` verified as a valid permutation on all 94 meals; a11y `headers`/`scope` correct in live browser DOM. Phase 1 fully complete. — decided by Yen, Rusty

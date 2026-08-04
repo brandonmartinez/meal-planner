@@ -18,7 +18,8 @@
  */
 
 import type { Meal } from "./index.js";
-import type { AgentScope, Difficulty } from "../constants/index.js";
+import type { AgentScope, Difficulty, InstructionKind } from "../constants/index.js";
+import type { MatrixSource } from "./tabularRecipe.js";
 
 /**
  * The actor type recorded when a suggestion is approved. A family member
@@ -371,4 +372,67 @@ export interface UpdateCollectionRequestDTO {
   name?: string;
   description?: string | null;
   mealIds?: string[];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tabular ("Grid") recipe read DTO (spec §3.3, Phase 1)                       */
+/*                                                                            */
+/* The read-only wire shape the meal detail read path returns for the Grid    */
+/* view. Every field is EFFECTIVE (authored value if present, else derived on  */
+/* read by `deriveRecipeMatrix`). Nothing here is a new persisted column — the */
+/* effective span/kind/subLabel/groupLabel are recomputed on every read and    */
+/* never written back (grocery-provenance staleness lesson).                   */
+/* -------------------------------------------------------------------------- */
+
+/** An ingredient row in the tabular recipe read DTO. Extends the persisted
+ *  {@link MealIngredient} wire fields with the durable `position` (0-based row
+ *  order) and the EFFECTIVE `groupLabel` (authored `groupLabel` only, else
+ *  `null` → ungrouped; there is NO `category` fallback — P1-9). Nullable Prisma
+ *  columns serialize as `T | null` per the dto.ts convention. */
+export interface TabularRecipeIngredientDTO {
+  id: string;
+  name: string;
+  quantity: string | null;
+  unit: string | null;
+  category: string | null;
+  mealId: string;
+  position: number;
+  groupLabel: string | null;
+}
+
+/** An instruction in the tabular recipe read DTO. Extends the persisted
+ *  {@link MealInstruction} wire fields with the EFFECTIVE matrix classification.
+ *  `spanFrom`/`spanTo` are inclusive 0-based indices into the meal's
+ *  `ingredientDisplayOrder` (i.e. Grid DISPLAY rows, NOT `position`/`ingredients`
+ *  indices), non-null only for `PROCESS` steps. `SETUP`/`FINISH` steps carry
+ *  `null` spans. */
+export interface TabularRecipeInstructionDTO {
+  id: string;
+  mealId: string;
+  position: number;
+  text: string;
+  timerMinutes: number | null;
+  kind: InstructionKind;
+  subLabel: string | null;
+  spanFrom: number | null;
+  spanTo: number | null;
+}
+
+/** The tabular recipe read DTO for a single meal — the pinned Phase-1 contract
+ *  the web Grid renderer (`buildTabularRecipe`) consumes. `matrixSource` reports
+ *  whether the layout is user-authored or derived-on-read. `ingredients` and
+ *  `instructions` stay ordered ascending by `position` (the canonical coordinate
+ *  system shared with List/Grocery/Cooking-Mode/authored spans — never
+ *  reordered). `ingredientDisplayOrder` is the Grid row ORDER: a permutation of
+ *  `0..n-1` where `ingredients[ingredientDisplayOrder[k]]` is the k-th Grid row,
+ *  and instruction `spanFrom`/`spanTo` index into it. Derived meals get a
+ *  first-use permutation; authored meals get the identity permutation (display
+ *  == position). Computed on read, never persisted. All other meal scalars are
+ *  inherited from {@link Meal}. */
+export interface TabularRecipeMealDTO
+  extends Omit<Meal, "ingredients" | "instructions"> {
+  matrixSource: MatrixSource;
+  ingredients: TabularRecipeIngredientDTO[];
+  instructions: TabularRecipeInstructionDTO[];
+  ingredientDisplayOrder: number[];
 }
