@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { Difficulty } from "@prisma/client";
-import { authenticateJWT, isParentReq, requireRole } from "../middleware/auth.js";
+import { authenticateJWT, requireRole } from "../middleware/auth.js";
 import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";

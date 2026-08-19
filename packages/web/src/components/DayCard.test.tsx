@@ -574,6 +574,33 @@ describe('DayCard — configurable choice resolution (#226)', () => {
     expect(screen.queryByRole('radio')).toBeNull();
   });
 
+  it('renders safely when a slot response omits its options relation', async () => {
+    const suggestionWithoutOptions = {
+      ...suggestionWithSlots,
+      meal: {
+        ...suggestionWithSlots.meal,
+        slots: [{ ...slotWithOptions, options: undefined }],
+      },
+    };
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithoutOptions] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+
+    expect(screen.getByText('Protein')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save choices/i })).toBeDisabled();
+  });
+
   it('disables the "Save choices" button when not all slots are selected', async () => {
     renderWithProviders(
       <DayCard

@@ -383,7 +383,7 @@ export function SuggestionChip({
                     <legend className="text-xs font-semibold text-gray-700 dark:text-gray-200">
                       {slot.name}
                     </legend>
-                    {slot.options.map(option => {
+                    {(slot.options ?? []).map(option => {
                       const summary = (option.ingredients ?? [])
                         .map(formatOptionIngredient)
                         .join(', ');
