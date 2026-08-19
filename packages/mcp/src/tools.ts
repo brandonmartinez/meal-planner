@@ -446,9 +446,10 @@ export function registerTools(
       description:
         "List the family's meal catalog, including a recently-scheduled " +
         "indicator, last-cooked date, and all-time times-cooked count. " +
-        "Supports name search, difficulty " +
-        "filter, favorite filter, minimum-rating filter, tag filter, " +
-        "collection filter, sort " +
+        "Supports case-insensitive substring search across meal name, " +
+        "description, tag name, collection name, and ingredient category; " +
+        "difficulty filter, favorite filter, minimum-rating filter, tag " +
+        "filter, collection filter, sort " +
         "(name|lastCooked|created), pagination " +
         "(limit/offset), and sort order (asc|desc). Multiple values within " +
         "the tags (or collections) filter are OR'd; the tags " +
@@ -460,7 +461,10 @@ export function registerTools(
           .string()
           .min(1)
           .optional()
-          .describe("Case-insensitive substring to filter meal names by."),
+          .describe(
+            "Case-insensitive substring to search meal name, description, tag " +
+              "name, collection name, and ingredient category.",
+          ),
         difficulty: z
           .array(z.enum(["EASY", "MEDIUM", "HARD"]))
           .optional()

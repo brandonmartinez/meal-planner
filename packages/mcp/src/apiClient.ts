@@ -169,7 +169,9 @@ export class MealPlannerApiClient {
     return this.request<AgentIdentityDTO>("GET", `/api/agent/me`);
   }
 
-  /** List the family's meals, including search, filter, sort, and pagination. */
+  /** List the family's meals, including case-insensitive substring search across
+   *  meal name, description, tag name, collection name, and ingredient category,
+   *  plus filters, sorting, and pagination. */
   listMeals(
     familyId: string,
     opts?: {

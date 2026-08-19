@@ -109,7 +109,7 @@ describe("meals service", () => {
       expect(result.hasMore).toBe(true);
     });
 
-    it("uses an OR clause covering name, description, tag name, and collection name when search is given", async () => {
+    it("uses an OR clause covering name, description, tag, collection, and ingredient category", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", { search: "pizza" });
       const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
@@ -131,6 +131,13 @@ describe("meals service", () => {
               recipeCollection: {
                 name: { contains: "pizza", mode: "insensitive" },
               },
+            },
+          },
+        },
+        {
+          ingredients: {
+            some: {
+              category: { contains: "pizza", mode: "insensitive" },
             },
           },
         },
@@ -181,6 +188,23 @@ describe("meals service", () => {
       expect(descArm).toEqual({
         description: { contains: "hearty", mode: "insensitive" },
       });
+    });
+
+    it("search: matches ingredient category case-insensitively without searching ingredient name", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "ProDuCe" });
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: Array<{ ingredients?: unknown }> };
+      };
+      const ingredientArm = arg.where.OR?.find((c) => "ingredients" in c);
+      expect(ingredientArm).toEqual({
+        ingredients: {
+          some: {
+            category: { contains: "ProDuCe", mode: "insensitive" },
+          },
+        },
+      });
+      expect(ingredientArm).not.toHaveProperty("ingredients.some.name");
     });
 
     it("search: no OR clause when search is absent (name-only regression guard)", async () => {

@@ -72,7 +72,8 @@ export const imageUrlSchema = z
   });
 
 export const listMealsQuerySchema = z.object({
-  /** Case-insensitive substring search across meal name, description, tag names, and collection names. */
+  /** Case-insensitive substring search across meal name, description, tag names,
+   * collection names, and ingredient categories. */
   search: z.string().optional(),
 
   /** Filter to specific difficulty levels; multiple values are OR'd. */

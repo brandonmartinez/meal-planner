@@ -51,16 +51,16 @@ describe("MealPlannerApiClient", () => {
     expect(url.toString()).not.toContain(AGENT_KEY);
   });
 
-  it("listMeals GETs the agent meals endpoint with a search query and returns the envelope", async () => {
+  it("listMeals forwards an ingredient-category search to the agent endpoint", async () => {
     const envelope = { items: [{ id: "meal-1" }], total: 1, limit: 25, offset: 0, hasMore: false };
     const { client, fetchFn } = makeClient(jsonResponse(envelope));
 
-    const result = await client.listMeals("fam-1", { search: "taco" });
+    const result = await client.listMeals("fam-1", { search: "ProDuCe" });
 
     const { url, init } = lastCall(fetchFn);
     expect(init.method).toBe("GET");
     expect(url.pathname).toBe("/api/agent/fam-1/meals");
-    expect(url.searchParams.get("search")).toBe("taco");
+    expect(url.searchParams.get("search")).toBe("ProDuCe");
     expect(result).toEqual(envelope);
   });
 

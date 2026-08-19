@@ -1,8 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { imageUrlSchema } from "./meals.js";
+import { imageUrlSchema, listMealsQuerySchema } from "./meals.js";
 
 const UUID_A = "8365a7fa-1c2d-4e5f-9a0b-1c2d3e4f5a6b";
 const UUID_B = "abcd1234-5678-4abc-9def-0123456789ab";
+
+describe("listMealsQuerySchema", () => {
+  it("preserves a mixed-case search query and applies shared list defaults", () => {
+    expect(listMealsQuerySchema.parse({ search: "ProDuCe" })).toEqual({
+      search: "ProDuCe",
+      sort: "name",
+      order: "asc",
+      limit: 25,
+      offset: 0,
+    });
+  });
+});
 
 describe("imageUrlSchema", () => {
   // ── valid cases ─────────────────────────────────────────────────────────────

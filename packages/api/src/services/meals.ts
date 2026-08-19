@@ -345,6 +345,13 @@ export async function listMeals(
           },
         },
       },
+      {
+        ingredients: {
+          some: {
+            category: { contains: search, mode: "insensitive" },
+          },
+        },
+      },
     ];
   }
 

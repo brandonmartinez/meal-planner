@@ -56,7 +56,7 @@ beforeEach(() => {
 describe("GET /:familyId/meals (list)", () => {
   const handler = getRouteHandler(mealsRouter, "get", "/:familyId/meals");
 
-  it("200s and returns envelope shape, forwarding the optional search filter", async () => {
+  it("200s and forwards an ingredient-category search through the shared list schema", async () => {
     const envelope = {
       items: [{ id: MEAL_ID, name: "Tacos", _count: { ingredients: 0 }, recentlyScheduled: false, lastScheduledOn: null, lastCookedOn: null }],
       total: 1,
@@ -67,13 +67,13 @@ describe("GET /:familyId/meals (list)", () => {
     vi.mocked(mealService.listMeals).mockResolvedValue(envelope as never);
     const res = buildFullRes();
     await handler(
-      req({ params: { familyId: FAMILY_ID }, query: { search: "taco" } }),
+      req({ params: { familyId: FAMILY_ID }, query: { search: "ProDuCe" } }),
       res,
       buildNext(),
     );
     expect(res.statusCode).toBe(200);
     expect(mealService.listMeals).toHaveBeenCalledWith(FAMILY_ID, {
-      search: "taco",
+      search: "ProDuCe",
       sort: "name",
       order: "asc",
       limit: 25,

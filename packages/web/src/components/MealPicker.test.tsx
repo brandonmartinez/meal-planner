@@ -85,7 +85,7 @@ describe('MealPicker', () => {
         expect(screen.getByLabelText('Difficulty')).toHaveValue('HARD');
     });
 
-    it('uses the name-or-tags search placeholder', async () => {
+    it('describes name, tag, and ingredient-category search', async () => {
         server.use(
             http.get('/api/families/f-1/meals', () => HttpResponse.json(mealsEnvelope(meals))),
         );
@@ -96,7 +96,7 @@ describe('MealPicker', () => {
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
         expect(
-            screen.getByPlaceholderText('Search meals by name or tags…'),
+            screen.getByPlaceholderText('Search meals by name, tag, or category…'),
         ).toBeInTheDocument();
     });
 
@@ -114,6 +114,9 @@ describe('MealPicker', () => {
         // Collapsed by default: the tag facet is not in the DOM yet.
         const toggle = await screen.findByRole('button', { name: /show more filters/i });
         expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        // With tags as the only advanced facet, the whole affordance is
+        // mobile-hidden but retained from sm upward.
+        expect(toggle.parentElement).toHaveClass('hidden', 'sm:block');
         expect(screen.queryByRole('group', { name: /filter by tag/i })).not.toBeInTheDocument();
 
         // Difficulty stays always-visible even while collapsed.
@@ -121,9 +124,8 @@ describe('MealPicker', () => {
 
         await userEvent.click(toggle);
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
-        expect(
-            await screen.findByRole('group', { name: /filter by tag/i }),
-        ).toBeInTheDocument();
+        const tagFacet = await screen.findByRole('group', { name: /filter by tag/i });
+        expect(tagFacet).toHaveClass('hidden', 'sm:flex');
     });
 
     it('invokes onSelect with the chosen meal id', async () => {
@@ -352,9 +354,13 @@ describe('MealPicker tags', () => {
         await waitFor(() => expect(screen.getByText('Tacos')).toBeInTheDocument());
 
         // max=2 → first two tag chips show; the third collapses into +1.
-        expect(screen.getByText('Weeknight')).toBeInTheDocument();
+        const firstPill = screen.getByText('Weeknight');
+        expect(firstPill).toBeInTheDocument();
         expect(screen.getByText('Spicy')).toBeInTheDocument();
         expect(screen.getByLabelText('1 more')).toBeInTheDocument();
+
+        // Keep the desktop pills in the DOM while hiding their wrapper below sm.
+        expect(firstPill.parentElement?.parentElement).toHaveClass('hidden', 'sm:block');
     });
 
     it('row tag pills are non-interactive spans nested in the option button', async () => {
@@ -446,7 +452,10 @@ describe('MealPicker collection filter', () => {
         // Distinct dropdown affordance (not a chip row), rendered once a
         // collection exists for the family. Advanced facets are collapsed by
         // default, so reveal them first (#208).
-        await userEvent.click(screen.getByRole('button', { name: /show more filters/i }));
+        const toggle = screen.getByRole('button', { name: /show more filters/i });
+        // Collections remain reachable on mobile, so their toggle is not hidden.
+        expect(toggle.parentElement).not.toHaveClass('hidden');
+        await userEvent.click(toggle);
         await userEvent.selectOptions(await screen.findByLabelText('Collection'), 'Weeknight');
 
         await waitFor(() =>

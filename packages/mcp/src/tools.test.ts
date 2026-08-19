@@ -42,7 +42,7 @@ function textOf(result: ToolResult): string {
 const FAMILY = "fam-1";
 
 describe("createToolHandlers", () => {
-  it("list_meals forwards the family + opts and returns envelope JSON text", async () => {
+  it("list_meals forwards an ingredient-category search and returns envelope JSON text", async () => {
     const client = stubClient();
     const envelope = {
       items: [
@@ -65,10 +65,10 @@ describe("createToolHandlers", () => {
       FAMILY,
     );
 
-    const result = await handlers.list_meals({ search: "taco" });
+    const result = await handlers.list_meals({ search: "ProDuCe" });
 
     expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
-      search: "taco",
+      search: "ProDuCe",
       difficulty: undefined,
       favorite: undefined,
       minRating: undefined,
@@ -943,7 +943,7 @@ describe("registerTools", () => {
     }
   });
 
-  it("documents the tag filter facets in the list_meals description (#107, parity row 8)", () => {
+  it("documents all search fields and tag filter facets (#227, parity row 8)", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -959,6 +959,9 @@ describe("registerTools", () => {
     // Row 8: the tool description must advertise the filter facets so an
     // agent knows tag filtering exists and how it composes.
     expect(description).toContain("tag filter");
+    expect(description).toContain("case-insensitive substring");
+    expect(description).toContain("ingredient category");
+    expect(description).not.toContain("ingredient name");
     // OR-within-facet / AND-across-facets semantics are documented.
     expect(description).toMatch(/OR'd/);
     expect(description).toMatch(/AND'd/);
@@ -968,6 +971,9 @@ describe("registerTools", () => {
       .inputSchema;
     expect(schema).toHaveProperty("tags");
     expect(schema).not.toHaveProperty("categories");
+    expect(
+      (schema.search as { description?: string }).description,
+    ).toContain("ingredient category");
   });
 
   it("documents instruction replace-all in the update_meal description and schema (#100, parity row 8)", () => {
