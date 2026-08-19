@@ -89,6 +89,13 @@ export const handlers = [
   http.delete("/api/families/:id/images/:assetId", () =>
     new HttpResponse(null, { status: 204 }),
   ),
+  // Resolve suggestion choices (issue #226). Default 200 so tests that render
+  // WeekPlanPage without exercising the choices resolver don't trip
+  // `onUnhandledRequest: "error"`. Tests that assert on the resolve outcome
+  // override per-case via server.use(...).
+  http.patch("/api/families/:id/suggestions/:suggestionId/choices", () =>
+    new HttpResponse(null, { status: 200 }),
+  ),
   // 1x1 transparent PNG so jsdom `<img>` GETs resolve during preview assertions.
   http.get("/api/families/:id/images/:assetId", () =>
     new HttpResponse(
