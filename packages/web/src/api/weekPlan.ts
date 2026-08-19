@@ -2,6 +2,7 @@ import type {
   WeekPlan,
   MealSuggestion,
   RepeatWeekExistingMode,
+  ResolveSuggestionChoiceInputDTO,
 } from "@meal-planner/shared";
 import { request } from "./client";
 
@@ -80,6 +81,20 @@ export async function moveSuggestion(
     {
       method: "PATCH",
       body: JSON.stringify({ dayPlanId }),
+    },
+  );
+}
+
+export async function resolveSuggestionChoices(
+  familyId: string,
+  suggestionId: string,
+  selections: ResolveSuggestionChoiceInputDTO[],
+): Promise<MealSuggestion> {
+  return request<MealSuggestion>(
+    `${BASE}/${familyId}/suggestions/${suggestionId}/choices`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ selections }),
     },
   );
 }
