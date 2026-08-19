@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Difficulty } from "@prisma/client";
 import {
   MEAL_DIFFICULTIES,
+  INSTRUCTION_KINDS,
 } from "@meal-planner/shared";
 import prisma from "../config/database.js";
 import { authenticateAgent, requireScope } from "../middleware/agentAuth.js";
@@ -163,11 +164,24 @@ const ingredientInputSchema = z.object({
   // non-empty free-form string (not a closed enum) so custom categories and any
   // legacy value both pass. The effective pick-list is advisory, not enforced.
   category: z.string().min(1).optional(),
+  // Authored tabular ("Grid") group-pill label (Phase-2, spec P2.4.1). Optional
+  // + omit-defaulting: omitted ⇒ null ⇒ ungrouped/derived. Must match the REST
+  // ingredient shape byte-for-byte (parity #96).
+  groupLabel: z.string().max(60).nullable().optional(),
 });
 
 const instructionInputSchema = z.object({
   text: z.string().min(1),
   timerMinutes: z.number().int().min(0).nullable().optional(),
+  // Authored tabular ("Grid") layout fields (Phase-2, spec P2.4.1). Same shape
+  // as the REST route (parity #96); cross-field invariants are enforced by the
+  // shared validateAuthoredLayout in the service (spec P2.5). All optional +
+  // omit-defaulting — an agent that never sends spans never authors a meal.
+  kind: z.enum(INSTRUCTION_KINDS).optional(),
+  subLabel: z.string().max(80).nullable().optional(),
+  column: z.number().int().min(0).nullable().optional(),
+  spanFrom: z.number().int().min(0).nullable().optional(),
+  spanTo: z.number().int().min(0).nullable().optional(),
 });
 
 const createMealSchema = z.object({
@@ -263,6 +277,19 @@ agentRouter.post(
           .json({ error: "Validation failed", details: error.errors });
         return;
       }
+      if (error instanceof mealService.InvalidLayoutError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.WRITE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [],
+          reason: `invalid_layout:${error.code}`,
+        });
+        res.status(422).json({ error: error.message, code: error.code });
+        return;
+      }
       res.status(500).json({ error: "Failed to create meal" });
     }
   },
@@ -299,6 +326,19 @@ agentRouter.patch(
         return;
       }
       const message = error instanceof Error ? error.message : "";
+      if (error instanceof mealService.InvalidLayoutError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId: agent.familyId,
+          action: AGENT_SCOPES.WRITE,
+          outcome: "denied",
+          targetType: "meal",
+          targetIds: [mealId],
+          reason: `invalid_layout:${error.code}`,
+        });
+        res.status(422).json({ error: error.message, code: error.code });
+        return;
+      }
       if (message === "Meal not found") {
         await safeRecordAgentAudit({
           credentialId: agent.id,

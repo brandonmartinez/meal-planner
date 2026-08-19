@@ -624,13 +624,36 @@ describe("agent routes (end-to-end middleware chain)", () => {
     const arg = prismaMock.meal.create.mock.calls[0][0] as {
       data: {
         instructions?: {
-          create: { text: string; timerMinutes: number | null; position: number }[];
+          create: {
+            text: string;
+            timerMinutes: number | null;
+            position: number;
+          }[];
         };
       };
     };
+    // Omit-defaulting Phase-2 layout fields ride along on every step row.
     expect(arg.data.instructions?.create).toEqual([
-      { text: "Warm the tortillas", timerMinutes: null, position: 0 },
-      { text: "Assemble", timerMinutes: 2, position: 1 },
+      {
+        text: "Warm the tortillas",
+        timerMinutes: null,
+        position: 0,
+        kind: undefined,
+        subLabel: null,
+        column: null,
+        spanFrom: null,
+        spanTo: null,
+      },
+      {
+        text: "Assemble",
+        timerMinutes: 2,
+        position: 1,
+        kind: undefined,
+        subLabel: null,
+        column: null,
+        spanFrom: null,
+        spanTo: null,
+      },
     ]);
   });
 
@@ -698,6 +721,107 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.body).toMatchObject({ error: "Cannot modify placeholder meal" });
     // Guard fires before any instruction write.
     expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("write: POST meals rejects an out-of-range span with 422 and audits the code (Phase-2 P2.5, parity)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      {
+        name: "Bad grid",
+        ingredients: [{ name: "a" }, { name: "b" }],
+        instructions: [
+          { text: "x", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 9 },
+        ],
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ code: "SPAN_OUT_OF_RANGE" });
+    // Reject-before-apply: the validator throws before any row is created.
+    expect(prismaMock.meal.create).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "invalid_layout:SPAN_OUT_OF_RANGE",
+      }),
+    });
+  });
+
+  it("write: POST meals accepts cross-column overlap — the cascade is not a rejection (Phase-2 P2.5)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.create.mockResolvedValue({ id: "meal-1" } as never);
+
+    const handlers = findStack("/meals");
+    const req = agentReq(
+      {},
+      {
+        name: "Cascade",
+        ingredients: [{ name: "a" }, { name: "b" }],
+        instructions: [
+          { text: "c0", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 1 },
+          { text: "c1", kind: "PROCESS", column: 1, spanFrom: 0, spanTo: 1 },
+        ],
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(201);
+    expect(prismaMock.meal.create).toHaveBeenCalled();
+  });
+
+  it("write: PATCH meals rejects an invalid authored layout with 422 and audits the code (Phase-2 P2.5, parity)", async () => {
+    mockCredential(["meal:write"]);
+    prismaMock.$transaction.mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb: any) => Promise.resolve(cb(prismaMock)),
+    );
+    prismaMock.meal.findFirst.mockResolvedValue({
+      id: "meal-1",
+      placeholderKind: null,
+    } as never);
+    // Two same-column PROCESS steps covering overlapping rows ⇒ overlap.
+    prismaMock.mealIngredient.findMany.mockResolvedValue([
+      { groupLabel: null },
+      { groupLabel: null },
+    ] as never);
+
+    const handlers = findStack("/meals/:mealId");
+    const req = agentReq(
+      { mealId: "meal-1" },
+      {
+        instructions: [
+          { text: "1", kind: "PROCESS", column: 0, spanFrom: 0, spanTo: 1 },
+          { text: "2", kind: "PROCESS", column: 0, spanFrom: 1, spanTo: 1 },
+        ],
+      },
+    );
+    const res = buildRes();
+    await runStack(handlers, req, res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ code: "SPAN_COLUMN_OVERLAP" });
+    expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+    expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        outcome: "denied",
+        reason: "invalid_layout:SPAN_COLUMN_OVERLAP",
+      }),
+    });
   });
 
   it("repeat: copies approved source meals into the target week as unapproved (schedule scope)", async () => {

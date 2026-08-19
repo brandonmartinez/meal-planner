@@ -9,73 +9,56 @@
 
 Tester / QA. Owns test coverage across all packages. API tests: `globals: false` + `prismaMock` helper (no real PrismaClient). Web tests: `globals: true` + MSW handlers. Tests colocated with source. The `test-author` agent shares these patterns.
 
-## Recent Updates
+## History Summary (2026-06-30 through 2026-08-03 PM)
 
-📌 Team initialized on 2026-06-30 (Ocean's Eleven cast).
+- **Sprint 2 (2026-06-30):** Team init. Filed and landed test-coverage PRs #20/#45 (component), #18/#46 (route), #19/#48 (page); CI surfaced two bugs fixed by coordinator. MCP bearer auth tests added (#87/#88). Wave 3: PR #129 v0.4.0 test matrix docs.
+- **#218 grocery grouping (2026-07-28):** Audited grouping behavior; added 7 edge-case tests (`5e214ec`); 588 tests PASS.
+- **Grid view Phase-1 AM verification (`e5765fc`, `421c25d`):** Verified three-agent parallel landing. Added regression guards: export ordering, `InstructionKind` enum drift, `useMediaQuery`, pipeline end-to-end test. Found 2 adversarial label defects (it.fails D1 adverbial-opener, D2 seconds/days strip); Linus fixed all. Post-d467f29: found 6 fifth-family defects (prepositional/numeric openers); Linus fixed all. Final AM: 1863 tests PASS, SHIP verdict.
+- **Grid real-data measurement — initial baseline (`19fb67c`):** Ran against Brandon's real 74-meal DB (Postgres via Docker). Finding: 78% of meals have zero instructions (seed problem); of 16 instruction-bearing: 1 clean, 15 over-bracket (94%); 26/61 PROCESS steps over-inclusive (43%). Root cause: shopping-order ingredients. Added `deriveRecipeMatrix.realdata.test.ts` (5 PASS characterization tests). Recommended: SHIP with List as default; route P1-10 (use-ordering) to Livingston.
+- **Grid real-data PM final measurement (`983b21a`, `afe721f`):** After use-ordering + matcher hardening + seed revamp. Cross-validated 0 mismatches on all 94 meals (74 real + 20 seed). Over-bracket steps 26/61 → 9/61 (−65%); clean meals 1/16 → 9/16. Residual 9 over-steps: intrinsic cross-step-reuse DAG-vs-tree; only Phase-2 authored spans close it. `ingredientDisplayOrder` valid permutation on all 94 meals; a11y `headers`/`scope` correct in live browser DOM. 1903 tests PASS. **VERDICT: SHIP Phase 1.**
 
-📌 Recent update (2026-06-30T15:08:40-04:00): Test-coverage review filed #18 (route tests), #19 (page tests), and #20 (component tests).
+## 2026-08-04 — Slice 2b: adversarial suite for `validateAuthoredLayout` (pre-implementation)
 
-📌 Sprint 2 batch (2026-06-30T18:32:22-04:00): Landed all three coverage issues (#20 PR #45, #18 PR #46, #19 PR #48). CI surfaced two real bugs the coordinator fixed. All CLOSED.
+**Task:** Write `packages/shared/src/validateAuthoredLayout.adversarial.test.ts` against the pinned contract `validateAuthoredLayout(ingredients, instructions) → { ok: true } | { ok: false; code; message }`, BEFORE Livingston's Slice-2b implementation landed. My file, mine alone — he was told not to touch it.
 
-📌 Team update (2026-07-01T17-12-00Z): #87/#88 MCP bearer auth tests added. — decided by Yen
+**Approach:** Decoupled from his exact input-type names via `Parameters<typeof validateAuthoredLayout>` + `as unknown as` fixture factories (`ings(n)`, `step(pos, overrides)`). Never hardcoded a `code` value — asserted behaviourally (`ok===false`, non-empty string code + message) and, critically, that semantically different violations yield DIFFERENT codes.
 
-📌 Team update (2026-07-02T19:53:00Z): Wave 3 shipped PR #129 v0.4.0 test matrix docs. — logged by Scribe
+**43 cases, weighted to the two highest-risk invariants:**
+- #5 cross-column overlap MUST be accepted — 5 cases (the cascade; a global overlap check would silently break every authored recipe). Highest-value assertions in the suite.
+- #3 all-or-nothing — 6 cases (SETUP/FINISH null spans don't trip it; partial PROCESS sets reject).
+- #1 range/boundaries 11, #2 pairing 5, #4 per-column non-overlap 7, #6 gaps allowed 3, #7 column int/sparse 3, code-distinctness 3.
 
-📌 Team update (2026-07-05T12:57:39-0400): Livingston picked up #180 MCP meal:image upload. — logged by Scribe
+**Result:** His impl landed during my poll (working-tree `validateAuthoredLayout.ts`, re-exported from `index.ts`, stable `AUTHORED_LAYOUT_CODES`). `pnpm --filter @meal-planner/shared run test` = **118 passed** (my 43 + his 22 + 53 pre-existing), **0 fail**. All 43 adversarial cases green on first run against his code. He correctly accepts cross-column cascades, allows coverage gaps, and emits one distinct code per invariant — the three most-likely-to-be-wrong behaviours are correct.
 
-## Learnings
+**Committed** with explicit pathspec (test file + inbox decision + this history). Reviewer/implementer separation honoured — I did not touch his `validateAuthoredLayout.ts`.
 
-### 2026-07-28T10:15:00-04:00 — #218 grocery grouping coverage audit
+## 2026-08-04 (2) — Slice 2b: lint cleanup + full-branch verification + end-to-end anti-staleness proof
 
-Audited the new grocery grouping behavior for #218, independently re-ran the suite, and added 7 edge-case tests in commit `5e214ec`. Verdict: PASS, with 588 tests passing and no bugs found in the audited grouping coverage.
+**1. Lint self-fix:** removed an unused `Ingredient` type alias I introduced in `validateAuthoredLayout.adversarial.test.ts` (it added a 7th `no-explicit-any`-class warning; branch baseline is 0 errors / 6 pre-existing). shared lint now clean; 43/43 adversarial still pass.
 
-### 2026-08-03 (AM) — Grid view integration verification and adversarial testing (summary)
+**2. Full-branch verify (ran it myself, not trusting the report).** Livingston's impl committed at `e3d93c6`.
+- `pnpm -r build` ✓ (shared→mcp→web→api all Done).
+- `pnpm -r test` = **1982 passed, 0 fail** — shared 118, mcp 124, web 706, api 1034. Confirms Livingston's numbers EXACTLY.
+- `pnpm -r lint` = **0 errors, 6 warnings** — all 6 pre-existing `no-explicit-any` in api (auth.ts, membership.ts, agent.mcp.test.ts×2, agent.test.ts×2). My shared warning is gone. Confirms "0 lint errors".
 
-- **Phase-1 integration verification (`e5765fc`):** verified three-agent parallel landing (Saul schema, Livingston shared/api/mcp, Linus web). Build PASS, lint PASS, tests PASS 1807 (+15 mine). Added regression guards: export ordering, `InstructionKind` enum drift, `useMediaQuery`, and an end-to-end derive→serve→render pipeline test (`TabularRecipeView.pipeline.test.tsx`) using the po'boy fixture.
-- **FINAL verify AM (`421c25d`):** post `07c21b2`/`0a90fdb`/`118370c`. Tests PASS 1840. Confirmed Linus corrected (not weakened) the pipeline test: now asserts `Array(n).fill(null)` groups and NO grocery-aisle pills. **Found 2 adversarial label defects** documented as `it.fails`: D1 (adverbial opener returned as whole label: "Meanwhile, cook the pasta"→"Meanwhile") and D2 (`to/for` strip removing seconds/days that `extractSubLabel` never re-shows).
-- **Post `d467f29`:** confirmed Linus converted both `it.fails` to passing with exact assertions. Tests PASS 1845 (web 670). Found 5th-family defects (prepositional/numeric openers: "In a large bowl," / "For the sauce," / "2 minutes before serving,"). Documented as 6 new `it.fails`. Verdict: SHIP Phase 1.
-- **Post `c46855b`+`c358937` last confirm:** Tests PASS 1863 (web 688). Confirmed Linus converted 6 fifth-family `it.fails` to passing. No genuine eighth family. Verdict: SHIP Phase 1. Captured `final-{desktop,tablet}-light.png`.
+**3. Omit-defaulting anti-staleness — the load-bearing check. VERDICT: CORRECT.**
+- Traced the write path: Zod (`routes/meals.ts`) makes `spanFrom/spanTo/column` `.nullable().optional()` (omitted ⇒ undefined). Service `mapInstructionCreates` (`services/meals.ts:63-74`) maps `step.spanFrom ?? null` etc. Used by createMeal (650), updateMeal (764), import/agent (888/916) — uniform. `matrixSource` = `authored` iff any `spanFrom != null` (`deriveRecipeMatrix.ts:196`).
+- Livingston's cited test (`meals.test.ts:1147`) is a REAL write-path test (input omits spans; asserts captured Prisma create arg `spanFrom:null`) — NOT tautological. But it only covers createMeal at the mock layer, never a real persist→read round-trip.
+- Closed that gap myself: stood up Postgres 16 (Docker `/usr/local/bin/docker`), `prisma migrate deploy` (incl. `add_recipe_matrix_layout`), ran a throwaway tsx script against the REAL service + REAL DB (removed after). Results, all PASS: createMeal w/ instructions & NO spans → `derived`; DB rows spanFrom/spanTo/column all null; **updateMeal w/ instructions & NO spans → `derived`** (the ordinary-edit case Rusty flagged); DB null; CONTROL updateMeal WITH a span → `authored`; CONTROL edit back to NO spans → `derived` (no sticky authoring). The read oracle (`getMealById`→`applyRecipeMatrix`) genuinely flips both ways, so the 'derived' results are meaningful.
+- **No defect.** Ordinary meal edits do NOT flip recipes to authored/frozen — the Phase-1 anti-staleness class is not reintroduced.
 
-### 2026-08-03 — REAL-DATA verdict (first end-to-end pass against Brandon's live dev DB)
+Committed the lint fix with explicit pathspec. Did not touch any Livingston-owned file.
 
-Docker Postgres 16 (`saul-mealdb`, localhost:5432) up with Brandon's actual data: **74 meals / 365 ingredients / 61 instructions**. Real API (tsx :3001) + web (vite :5199); headless Edge over CDP — real network responses.
+## 2026-08-04 (3) — Slice 2b BLOCKER FIX (implementer hat): importMeals dangling-span validation
 
-**Real stack works.** Grid `<table>` renders real meal data; Grid↔List toggle persists to `localStorage` across reload. Loading spinner + 404 error state both observed.
+Rusty REJECTED Slice 2b and named me fix agent (Livingston locked out as author). Blocker: `importMeals` is a third replace-all write path that reached Prisma WITHOUT calling `validateAuthoredLayout`. It deletes ingredients unconditionally but RETAINS instructions when that column is omitted — so importing over a previously-authored meal with fewer/omitted ingredients leaves retained authored spans pointing at rows that no longer exist (dangling span; spec P2.5 Range violation). Narrow (needs a pre-existing authored meal, none exist yet) but real the moment Brandon authors his first recipe.
 
-**THE MEASUREMENT (all 74 meals; replica matcher cross-validated 0 failures vs real `dist/deriveRecipeMatrix.js`):**
-- All 74 meals DERIVED; all `groupLabel` null (categories are grocery aisles).
-- **58/74 meals (78%) have ZERO instructions** → Grid = ingredient column, empty right side.
-- Of 16 instruction-bearing meals: **1 clean (Miso-Glazed Cod), 15 over-bracket (94%).**
-- **61 PROCESS steps → 26 over-inclusive (43%), 3 degenerate full-span.**
-- Severity: 7/15 over-meals bracket >half the list. Worst: Birria 0.63.
+**Fix (services/meals.ts, import replace branch only):** validate the EFFECTIVE resulting pair before any mutation, mirroring updateMeal's precedent. Critical subtlety handled: import wipes ingredients unconditionally, so effective ingredients = the INCOMING list (never persisted); effective instructions = incoming when provided (import steps are always span-free), else the RETAINED rows fetched via `tx.mealInstruction.findMany`. `assertValidLayout` throws `InvalidLayoutError`, which the existing per-row try/catch converts to a row error — the whole import is NOT aborted (fits the per-row model). Mapped incoming arrays to the validator's input shape to avoid weak-type TS errors; guarded the retained findMany with `?? []` (mirrors updateMeal:727) so an omitted-instructions replace never crashes.
 
-**Recommendation:** SHIP Phase 1 with List as the default. Derived Grid is structurally sound but low-value on real data: 78% empty, 94% of the rest over-bracket. Root cause = shopping-order ingredients. Routing to coordinator for product call.
+**Regression test (services/meals.test.ts) — PROVEN to fail without the fix:** author a meal (retained PROCESS span 0..3), import over it with 1 ingredient + omitted instructions; assert the row errors and NOTHING persists (`updated===0`, `errors.length===1`, `meal.update` not called). `git stash`-ed the service fix and ran it against the broken code: FAILED with `expected 1 to be +0` (broken code persists the dangling span, updated=1). Restored fix. Added a companion test proving no over-rejection (retained span 0..1 within a 2-ingredient import still succeeds).
 
-Added `deriveRecipeMatrix.realdata.test.ts` (5 PASSING characterization tests: Birria over-bracket, Miso-Cod clean, no-instruction shape). Commit `19fb67c`.
+**Fallout fixed in-scope:** 4 existing replace-mode import tests omit instructions and don't mock `mealInstruction.findMany`; the `?? []` guard keeps them green without editing them.
 
-Finding: `/api/auth/*` 15-min in-memory rate limit → 429 under reload burst → /login bounce. Not a Grid defect; noted for middleware owner.
+**Full branch (ran myself):** build ✓ all four packages Done. `pnpm -r test` = **1984 passed, 0 fail** (shared 118, mcp 124, web 706, api 1036 = baseline 1982 + my 2). `pnpm -r lint` = **0 errors, 6 pre-existing warnings**. Scope fence honoured: only importMeals + its tests touched.
 
-### 2026-08-03 (PM) — FINAL real-data measurement after use-ordering + matcher hardening
-
-Re-ran the full 74-meal real-DB measurement after: use-ordering (`ad63eb8`/`d325227`), matcher hardening (`a008feb`/`09eb5b4`), seed revamp (`bf9fa90`/`db75522`), boundary-cut labels (`f8a87f3`). Imported the REAL compiled `deriveRecipeMatrix` + a verbatim copy of matcher internals; cross-validated — **0 mismatches on all 94 meals** (74 real + 20 seed).
-
-**Build/test/lint:** `pnpm -r build` ✓. Tests **1903 PASS, 0 fail** (shared 53, mcp 121, web 706, api 1023). Lint 0 errors, 6 pre-existing `no-explicit-any` warnings.
-
-**Over-bracketing delta (directly comparable to the baseline):**
-| metric | baseline | after PM batch | delta |
-|---|---|---|---|
-| Clean instruction-bearing meals | 1/16 | **9/16** | +8 |
-| Over-bracketing meals | 15/16 | **7/16** | −8 |
-| Over-inclusive PROCESS steps | 26/61 | **9/61** | −17 (−65%) |
-
-Use-ordering eliminated the "scattered mise-en-place" over-bracket cause. The 9 residual over-steps are all assembly/serve/fold steps reusing an earlier-used ingredient — the **intrinsic cross-step-reuse / DAG-vs-tree residual**. Only Phase-2 authored spans close it. Max stray 4 ingredients. Birria's braise now strays only **white onion** (baseline swept corn tortillas + oaxaca cheese).
-
-**New seed (20 meals) independently confirmed:** Saul's "11/11 derived clean" cross-validated — 0 over-steps across all derived seed recipes. The 3 authored: identity permutation ✓, all spans in range ✓, render SETUP/PROCESS/FINISH cascades with group pills + timer sub-labels as intended.
-
-**Ordering mechanism audited:** `ingredients` stays canonical position order in API response — only `buildTabularRecipe.ts` walks displayOrder — List/Grocery/checklist/MealDetailModal all read `ingredients`. Authored ⇒ identity permutation. `ingredientDisplayOrder` a valid permutation of `0..n-1` on all 94 meals. a11y: `<th scope=row id=…row-k>` in DISPLAY order; braise `<td headers>` references `row-0..row-4` (contiguous display span) — verified in real browser DOM.
-
-My `deriveRecipeMatrix.realdata.test.ts` (`19fb67c`) was correctly re-baselined by Livingston in `ad63eb8`/`a008feb` — strengthened with exact displayOrder assertions and explicit pinning of the residual as "intrinsic, not a bug".
-
-**6 `decision-*.png` captured** (real app + server + DB, light 1440): Birria after use-ordering (braise strays only onion), Korean over-bracket (serve/assembly residual), no-instruction shape, derived Bolognese (no group pills), partially-authored Chili (derived + authored `groupLabel`), fully-authored Lasagna (the Phase-2 target). Session files dir.
-
-**VERDICT: SHIP.** Derived Grid is now structurally trustworthy for well-formed, use-ordered recipes. Two honest caveats: (1) 78% of the current library has no instructions → empty Grid (a data-entry gap, not a code defect; List is the lossless default). (2) ~15% residual over-bracket on assembly/reuse steps is intrinsic and only Phase-2 authored spans fully close it. Highest-value next investment: Phase-2 authoring editor + encouraging instruction entry — NOT further matcher tuning (hardening impact: 1+0 steps — diminishing returns). Commits `983b21a`, `afe721f`.
+📌 Team update (2026-08-04T10:45:00-04:00): Rusty **APPROVED** Slice 2b after Yen's importMeals fix and independent reproduction of the failure. PR #223 open. **Yen AND Livingston both locked out** of this artifact; any further 2b revision → third api specialist. Phase 1 merged to main as PR #222 (`679be0e`). Double-verification standard (stash proof + independent reviewer revert) recorded in decisions.md as the benchmark for REJECT gate closures. — Scribe cross-cut

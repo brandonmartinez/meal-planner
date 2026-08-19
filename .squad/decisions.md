@@ -10,6 +10,14 @@
 > Inbox merge 2026-08-03T11-00-32-0400: processed 6 entries (rusty-tabular-recipe-view.md, saul-recipe-matrix-schema.md, livingston-derive-recipe-matrix.md, livingston-suppress-derived-groups.md, linus-tabular-recipe-view.md, yen-grid-view-verification.md); 3 durable contracts promoted to ## Standing Policy (HYBRID+naming+anti-staleness consolidated; group pills authored-only; short-label web-only+abbreviate-not-mislead); tabular recipe phase plan added to ## Active Decisions; Phase 1 implementation summary added to ## Historical Record.
 > Archive gate 2026-08-03T16-52-00-0400: archivable_bytes before merge = 7,075 (## Active Decisions 3,974 + ## Historical Record 1,930 + ## Governance 1,171). Well under the 24,576-byte Tier-1 threshold. No archival needed.
 > Inbox merge 2026-08-03T16-52-00-0400: processed 7 entries (saul-recipe-matrix-verified.md, saul-seed-recipe-matrix-revamp.md, saul-restore-natural-ingredient-names.md, livingston-grid-use-ordering.md, livingston-matcher-specificity.md, livingston-matcher-full-consumption.md, yen-grid-view-verification.md); 5 durable contracts promoted to ## Standing Policy (ingredientDisplayOrder use-ordering contract; over-bracket intrinsic floor; matcher specificity + diminishing-returns finding; macOS PATH env fact; self-authored-fixture process lesson); Phase 1 PM batch added to ## Historical Record.
+> Archive gate 2026-08-04T10-45-00-0400: archivable_bytes = 11,589 (## Active Decisions 6,815 + ## Historical Record 3,603 + ## Governance 1,171). Well under the 24,576-byte Tier-1 threshold. No archival needed.
+> Inbox merge 2026-08-04T10-45-00-0400: processed 7 entries (rusty-phase2-authoring-spec.md, rusty-2b-layout-write-review.md, rusty-2b-rereview-approve.md, livingston-2b-layout-write-path.md, yen-2b-validator-adversarial.md, yen-2b-importmeals-fix.md, yen-2b-verification.md); 6 durable contracts promoted to ## Standing Policy; 1 Active Decisions entry added; 2 Historical Record entries added.
+
+### 2026-08-04T10:45:00-04:00: Grid view Phase 2 Slice 2b — authored-layout write path (APPROVED, PR #223)
+
+**By:** Rusty (spec + review gate), Livingston (implementation), Yen (adversarial suite + importMeals fix + verification)
+**What:** Slice 2b builds the authoritative write side of the authored Grid layout on top of the Phase-1 schema. Key outcomes: `validateAuthoredLayout` in `packages/shared` (pure; 5 distinct codes; cross-column overlap required/never rejected); layout fields threaded through REST `routes/meals.ts`, agent `routes/agent.ts`, MCP tools/apiClient — all without a schema change. Service-only authoritative validation (service loads the omitted side in-transaction; Rusty ratified Livingston's deviation and amended spec P2.4.3). Omit-defaulting: omitted fields → null → `derived`; ordinary meal edits do NOT flip to authored (verified end-to-end against real Postgres by Yen). Phase-1 write-side N/A discharged: parity rows 3/4/7/8 in PR #223; scope `meal:write` (no new scope); CSV N/A (layout fields are structured child-relation data, not flat Meal scalars). Reviewer-lockout exercised: Rusty REJECTed on importMeals dangling-span; Yen fixed it as named agent (Livingston locked out); Rusty re-reviewed and APPROVED after independently reproducing the pre-fix failure. 1984 tests pass, 0 fail, 0 lint errors. Yen verdict: **SHIP Slice 2b.** PR #223 open on `phase2-layout-write-path`. Commits: `f0bca40` (Phase 2 spec), `0eb9dd1` (REJECT review), `8e41fc0` (APPROVE re-review), `e3d93c6` (Livingston impl), `ed2f356` (Yen adversarial), `c1a298c` (Yen lint+verify), `a3772aa` (Yen importMeals fix).
+**Why:** Phase 2 Slice 2b closes the write-parity gap, makes authored layout persisted-and-validated, and gates Slice 2c (span editor) on measurement.
 
 ### 2026-08-03T16:52:00-04:00: Grid view Phase 1 — PM finish batch outcome
 
@@ -26,6 +34,42 @@
 ## Standing Policy
 
 > These entries are exempt from age-based archival and must be retained in `decisions.md` regardless of date; archive gates filter by age AND durability.
+
+### 2026-08-04T10:45:00-04:00: Authored-layout validation has ONE authoritative call site: the service, not the routes
+
+**By:** Livingston (flagged deviation), Rusty (ratified + amended spec P2.4.3)
+**What:** `validateAuthoredLayout` (or `assertValidLayout` in the service wrapper) MUST be called from **the service**, not from route handlers. One byte-identical call site covers REST, agent, and MCP. Rationale: `update_meal` is replace-all *per array*; a route-level check would validate spans against an ingredient array that may be absent from the request — the wrong object. The service loads the omitted side inside the transaction and validates the true resulting effective pair before any delete. Spec P2.4.3 was amended to reflect this (RESOLVED note added). The binding restatement: "**every** service replace-all path validates the resulting pair."
+**Why:** Route-level calls produce a false sense of safety on partial-update paths and require hand-maintaining two copies of the same guard. Service-only validation is more parity-correct and structurally enforced.
+
+### 2026-08-04T10:45:00-04:00: All replace-all write paths must validate the effective resulting pair
+
+**By:** Rusty (ruling), Yen (fix + test)
+**What:** The three runtime pair-writers are `createMeal`, `updateMeal`, and `importMeals` (replace branch). All three MUST call `assertValidLayout` on the EFFECTIVE resulting pair before any mutation. **Effective pair construction:** (1) `createMeal` — the full incoming arrays. (2) `updateMeal` — `data.ingredients ?? findMany(persisted)`, `data.instructions ?? findMany(persisted)`. (3) `importMeals` replace branch — effective ingredients = incoming (import always wipes); effective instructions = incoming when provided (always span-free) else retained rows via `tx.mealInstruction.findMany`. `prisma/seed.ts` writes authored spans directly but is dev/build-time, outside the API trust boundary — flagged as optional future hardening, not a runtime defect. There is NO fourth runtime replace-all path. Any future path added to `services/meals.ts` that writes both arrays must add the same guard before landing.
+**Why:** `importMeals` was found unvalidated in Rusty's Slice-2b review: it deletes ingredients unconditionally but retains instructions when that column is omitted, so importing over an authored meal with fewer ingredients persisted a dangling span (spec P2.5 Range violation). Yen fixed it in `a3772aa` under Rusty's naming (Livingston locked out as author). Yen proved genuineness via `git stash` — pre-fix: `expected 1 to be +0`; post-fix: passes.
+
+### 2026-08-04T10:45:00-04:00: Omit-defaulting is load-bearing and verified end-to-end against real Postgres
+
+**By:** Yen (verified), Rusty (reviewed)
+**What:** Layout fields (`spanFrom`, `spanTo`, `column`, `groupLabel`) omit-default to `null` at every write surface (Zod `.nullable().optional()` → service maps `?? null`). An ordinary `update_meal` that never mentions spans MUST NOT flip a meal to authored/frozen. `matrixSource` is `'authored'` iff any `spanFrom != null` — structural, no stored boolean. Verified by Yen against real Postgres 16 with four controls: (1) `createMeal` with instructions and NO spans → `derived`, DB rows null; (2) `updateMeal` with instructions and NO spans → `derived` (the ordinary-edit case); (3) control: `updateMeal` WITH a span → `authored`; (4) edit back to NO spans → `derived` (no sticky authoring). Oracle: `getMealById → applyRecipeMatrix` flips both ways, results are non-tautological. Rusty independently confirmed omit-defaulting proof was non-tautological (real Prisma payload writes nulls; structural `matrixSource`). This is the Phase-1 anti-staleness contract extended into Phase 2.
+**Why:** Mock-layer tests alone cannot prove that real Prisma write paths produce null DB rows. End-to-end verification against the real DB is required for load-bearing omit-default contracts.
+
+### 2026-08-04T10:45:00-04:00: Phase 1 write-side #96 N/A discharged; Phase 2 Slice 2b scope stays `meal:write`
+
+**By:** Rusty (ruling), Livingston (implementation)
+**What:** The Phase-1 write-side N/A for the #96 parity gate is now discharged. Parity rows 3 (REST instruction write fields), 4 (agent route instruction write fields), 7 (MCP Create input fields), and 8 (MCP Update input fields) all landed in PR #223. Scope: `meal:write` — no new scope was needed. CSV export/import parity remains N/A with reason: layout fields are structured child-relation data (`MealIngredient`/`MealInstruction` rows), not flat `Meal` scalars; they are not representable in the existing CSV flat format. There is no obligation to add a new scope or CSV layout column.
+**Why:** The Phase-1 read-only N/A was explicitly bounded as "write parity deferred to Phase 2." That deferral is now cleared. Recording the discharge prevents re-opening the parity gate.
+
+### 2026-08-04T10:45:00-04:00: Slice 2a DROPPED — 78%-empty-Grid finding was a seed-data artifact, not a product gap
+
+**By:** Rusty (investigation + ruling), Brandon Martinez (decision)
+**What:** Phase 2 Slice 2a was proposed as a "bulk instruction paste" flow to address the finding that 78% of meals in the library rendered an empty Grid (zero instructions). Investigation of the real database revealed this is a seed-data artifact: the library contains two clusters — 58 generic sample meals bulk-inserted 2026-07-01 (including `Free Day`/`Leftovers`/`Dining Out` placeholders, none with a `sourceUrl`) and 16 curated real recipes bulk-inserted 2026-07-03. There is no organic user data. **Related correction:** instruction entry was recommended as new work in early Phase-2 planning but **already ships end-to-end** — `MealFormPage` instructions section (web), REST `create_meal`/`update_meal` `instructions[]`, and MCP `create_meal`/`update_meal` tools. It was never missing. Slice 2a is DROPPED. Phase-2 sequence: 2b (write path, done) → measure adoption → 2c (span editor, gated on ROI).
+**Why:** Building a bulk-paste flow to address an imaginary user problem would be waste. Slice 2b already puts the write infrastructure in place; real instruction adoption is observable once real users interact with it.
+
+### 2026-08-04T10:45:00-04:00: Reviewer-rejection lockout was exercised; double-verification is the standard
+
+**By:** Rusty (reviewer + independent reproducer), Yen (fix agent), Livingston (locked out)
+**What:** The reviewer-rejection lockout protocol was exercised this phase. Livingston was locked out of the `importMeals` fix as the original implementation author; Yen was named fix agent and took it. Both Livingston and Yen are now locked out of this artifact; any further revision requires a THIRD api specialist. Additionally: **Rusty independently reproduced the pre-fix failure** by reverting ONLY the service change to `e3d93c6` and running Yen's regression test — confirmed `expected 1 to be +0`. He did not accept Yen's stash-test report alone. This double-verification (fix agent proves failure via git stash; reviewer independently reproduces by reverting) is the standard to hold for REJECT gate closures going forward.
+**Why:** Both parties now have a shared verification record. Yen's stash proof demonstrates the test is genuine; Rusty's independent revert confirms the blocker was real. Trust-the-report shortcuts on REJECT gate closures are a process risk.
 
 ### 2026-07-04: Capture a GitHub issue for all substantial work
 
@@ -195,6 +239,18 @@
 **By:** Rusty (P1-10 ruling), Saul (migration verified + seed + restore names), Livingston (use-ordering + matcher ×2), Linus (boundary labels + web displayOrder), Yen (real-data measurement + final pass)
 **What:** PM finish batch that completed Phase 1. P1-10 (`ingredientDisplayOrder` use-ordering) moved over-inclusive PROCESS steps from 26/61 to 9/61 (−65%) and clean instruction-bearing meals from 1/16 to 9/16 on Brandon's real 74-meal library. Two matcher hardening rounds: phrase-specificity (1 step changed) + full-consumption (0 steps changed) — closed the collision class for future recipes with natural names. Seed revamped to 14 real recipes (11 derived, 3 authored) so the feature exercises the format's ceiling. Short step labels moved from a word cap to structural boundary cuts (cut only at a syntactic subordinator; otherwise full text). Migration verified on the real DB (365 ingredients, 0 mismatches). Yen final: **1903 tests PASS** (shared 53, mcp 121, web 706, api 1023). Commits: `5788d8c` (migration verified), `bf9fa90` (seed), `db75522` (restore names), `bfeabec` (P1-10 ruling), `ad63eb8` (use-ordering shared/api/mcp), `a008feb` (phrase-specificity), `09eb5b4` (full-consumption), `f8a87f3`/`c46855b`/`c358937` (boundary labels), `d325227` (web displayOrder walk), `19fb67c`/`983b21a`/`afe721f` (Yen passes). Yen verdict: **SHIP**.
 **Why:** Real-data measurement was necessary to identify that shopping-order ingredients — not the matcher — were the dominant cause of over-bracketing. Ordering fix had 8× more impact.
+
+### 2026-08-04: Grid view Phase 1 merged to main (PR #222, `679be0e`) — CI green from zero
+
+**By:** Brandon Martinez (merged)
+**What:** PR #222 merged Phase 1 of the tabular Grid recipe view to `main` as commit `679be0e`. CI ran green from zero: all packages built (shared → mcp → web → api), all tests passed, lint 0 errors. The merge includes all Phase-1 work: additive schema migration, `deriveRecipeMatrix`/`applyRecipeMatrix`, web toggle+renderer, ingredient use-ordering (`ingredientDisplayOrder`), matcher hardening, seed revamp, and boundary-cut short step labels. Yen's final Phase-1 count: **1903 tests PASS** (shared 53, mcp 121, web 706, api 1023).
+**Why:** Baseline checkpoint; Phase 2 (write path) branches from this merged state.
+
+### 2026-08-04: Grid view Phase 2 Slice 2b authored write path shipped (PR #223, branch `phase2-layout-write-path`)
+
+**By:** Rusty (spec + review gate), Livingston (implementation `e3d93c6`), Yen (adversarial suite `ed2f356` + lint/verify `c1a298c` + importMeals fix `a3772aa`)
+**What:** Slice 2b is open as PR #223 on branch `phase2-layout-write-path` (off merged Phase-1 main). Ships `validateAuthoredLayout` (shared; pure; 5 codes), layout fields on REST/agent/MCP, service-only authoritative validation, omit-defaulting end-to-end, placeholder-403 parity fix, importMeals effective-pair fix. Phase-1 write-side #96 N/A discharged (parity rows 3/4/7/8). 1984 tests PASS (shared 118, mcp 124, web 706, api 1036), 0 fail, 0 lint errors. Yen verdict: **SHIP Slice 2b**. Reviewer-lockout exercised; Rusty independently reproduced the importMeals failure before accepting the fix.
+**Why:** Phase-2 write path makes authored Grid layout a real persisted capability. Slice 2c (span editor) is gated on measuring adoption after 2b ships.
 
 ## Governance
 

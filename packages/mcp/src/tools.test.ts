@@ -357,6 +357,38 @@ describe("createToolHandlers", () => {
     expect(client.createMeal).toHaveBeenCalledWith(input);
   });
 
+  it("create_meal forwards authored Grid layout fields (Phase-2, parity row 7)", async () => {
+    const client = stubClient();
+    client.createMeal.mockResolvedValue({ id: "meal-new" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const input = {
+      name: "Layered dip",
+      ingredients: [
+        { name: "beans", groupLabel: "Base" },
+        { name: "cheese", groupLabel: "Base" },
+      ],
+      instructions: [
+        {
+          text: "Mash beans with cheese",
+          kind: "PROCESS" as const,
+          subLabel: "mash",
+          column: 0,
+          spanFrom: 0,
+          spanTo: 1,
+        },
+      ],
+    };
+    await handlers.create_meal(input);
+
+    // The handler is a thin pass-through: layout fields reach the client
+    // unchanged so the API's shared validator remains the single trust edge.
+    expect(client.createMeal).toHaveBeenCalledWith(input);
+  });
+
   it("update_meal splits mealId from the patch body", async () => {
     const client = stubClient();
     client.updateMeal.mockResolvedValue({ id: "meal-1" });
@@ -966,6 +998,50 @@ describe("registerTools", () => {
       createMealCall?.[1] as { inputSchema: Record<string, unknown> }
     ).inputSchema;
     expect(createSchema).toHaveProperty("instructions");
+  });
+
+  it("documents Grid layout authoring in the create_meal/update_meal descriptions and step schema (Phase-2, parity row 8)", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    for (const toolName of ["create_meal", "update_meal"]) {
+      const call = registerTool.mock.calls.find((c) => c[0] === toolName);
+      expect(call, `${toolName} registered`).toBeDefined();
+
+      // Human-facing description must explain span semantics + the cascade so a
+      // model understands when it is authoring vs. leaving the layout derived.
+      const description = (call?.[1] as { description: string }).description;
+      expect(description).toContain("span");
+      expect(description).toContain("cascade");
+
+      // The step schema carries the authored layout fields with .describe() copy.
+      const schema = (call?.[1] as { inputSchema: Record<string, unknown> })
+        .inputSchema;
+      const stepShape = (
+        schema.instructions as {
+          _def: { innerType: { element: { shape: Record<string, unknown> } } };
+        }
+      )._def.innerType.element.shape;
+      for (const field of ["kind", "subLabel", "column", "spanFrom", "spanTo"]) {
+        expect(stepShape, `${toolName}.instructions.${field}`).toHaveProperty(
+          field,
+        );
+      }
+
+      // The ingredient schema carries the authored groupLabel field.
+      const ingShape = (
+        schema.ingredients as {
+          _def: { innerType: { element: { shape: Record<string, unknown> } } };
+        }
+      )._def.innerType.element.shape;
+      expect(ingShape).toHaveProperty("groupLabel");
+    }
+
+    // Scope is unchanged — authoring the matrix is still just editing the meal.
+    // (No new scope was introduced; both remain meal:write.)
   });
 
   it("registers list_collections and documents the collection surface (#109, parity row 8)", () => {

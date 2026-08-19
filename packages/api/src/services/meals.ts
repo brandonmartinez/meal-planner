@@ -4,12 +4,16 @@ import {
   MEAL_PLACEHOLDERS,
   PLACEHOLDER_NAMES_LOWER,
   deriveRecipeMatrix,
+  validateAuthoredLayout,
 } from "@meal-planner/shared";
 import type {
   Difficulty,
+  InstructionKind,
   MealListResponseDTO,
   TabularRecipeIngredientDTO,
   TabularRecipeInstructionDTO,
+  AuthoredLayoutIngredientInput,
+  AuthoredLayoutInstructionInput,
 } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
@@ -37,14 +41,36 @@ const MEAL_DETAIL_INCLUDE = {
 
 /** Map ordered instruction inputs to Prisma create rows, assigning a dense,
  *  0-based `position` from array index. Used by every create/replace path so
- *  input order is the persisted order (issue #100). */
+ *  input order is the persisted order (issue #100).
+ *
+ *  Authored layout fields (`kind`/`subLabel`/`column`/`spanFrom`/`spanTo`) are
+ *  threaded through here (Phase-2, spec P2.4). They are OMIT-DEFAULTING: an
+ *  omitted field becomes `null` (⇒ derived at read time) and `kind` falls back
+ *  to the schema default `PROCESS`. A caller that never mentions spans therefore
+ *  never flips a meal to `authored` — the anti-staleness contract. Cross-field
+ *  validity is enforced separately by {@link assertValidLayout}. */
 function mapInstructionCreates(
-  instructions?: { text: string; timerMinutes?: number | null }[],
+  instructions?: {
+    text: string;
+    timerMinutes?: number | null;
+    kind?: InstructionKind;
+    subLabel?: string | null;
+    column?: number | null;
+    spanFrom?: number | null;
+    spanTo?: number | null;
+  }[],
 ) {
   return (instructions ?? []).map((step, i) => ({
     text: step.text,
     timerMinutes: step.timerMinutes ?? null,
     position: i,
+    // Omitted ⇒ undefined ⇒ Prisma applies the schema default (PROCESS).
+    kind: step.kind ?? undefined,
+    // Omitted ⇒ null ⇒ derived at read time (never authored-as-empty).
+    subLabel: step.subLabel ?? null,
+    column: step.column ?? null,
+    spanFrom: step.spanFrom ?? null,
+    spanTo: step.spanTo ?? null,
   }));
 }
 
@@ -52,15 +78,16 @@ function mapInstructionCreates(
  *  0-based `position` from array index — exactly mirroring
  *  {@link mapInstructionCreates}. The tabular Grid view is order-sensitive, so
  *  the input array order (which REST and MCP both already convey) becomes the
- *  durable row order. Per spec §3.2 this needs no new *input* field. Authored
- *  layout columns (`groupLabel`) are never written here — they are Phase-2
- *  editor-only, and `null` means "derive at read time". */
+ *  durable row order. Per spec §3.2 this needs no new *input* field for
+ *  ordering. The authored `groupLabel` column IS threaded through (Phase-2,
+ *  spec P2.4) and is omit-defaulting: omitted ⇒ `null` ⇒ derive at read time. */
 function mapIngredientCreates(
   ingredients?: {
     name: string;
     quantity?: string;
     unit?: string;
     category?: string;
+    groupLabel?: string | null;
   }[],
 ) {
   return (ingredients ?? []).map((ing, i) => ({
@@ -69,7 +96,39 @@ function mapIngredientCreates(
     unit: ing.unit,
     category: ing.category,
     position: i,
+    groupLabel: ing.groupLabel ?? null,
   }));
+}
+
+/**
+ * Thrown when a proposed meal write fails a cross-field authored-layout
+ * invariant (spec P2.5). Carries the shared validator's stable `code` so the
+ * REST route can map it to 400 and the agent route to 422 (each surface's
+ * existing convention) with a specific, distinct error identity. The whole
+ * write is rejected and nothing is applied — mirroring the transactional
+ * replace-all semantics; the server never silently clamps.
+ */
+export class InvalidLayoutError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "InvalidLayoutError";
+    this.code = code;
+  }
+}
+
+/** Run the shared {@link validateAuthoredLayout} against the RESULTING
+ *  (ingredients, instructions) pair of a write and throw {@link
+ *  InvalidLayoutError} on the first violation. Called by every create/replace
+ *  path so REST and the agent surface enforce byte-identical rules from one
+ *  source of truth (spec P2.4.3). Runs on EVERY write — authored or not —
+ *  because replace-all lets a caller desync the pair. */
+function assertValidLayout(
+  ingredients: readonly AuthoredLayoutIngredientInput[],
+  instructions: readonly AuthoredLayoutInstructionInput[],
+) {
+  const result = validateAuthoredLayout(ingredients, instructions);
+  if (!result.ok) throw new InvalidLayoutError(result.code, result.message);
 }
 
 /** The subset of a meal's included join rows this module reads. */
@@ -551,13 +610,25 @@ export async function createMeal(
       quantity?: string;
       unit?: string;
       category?: string;
+      groupLabel?: string | null;
     }[];
-    instructions?: { text: string; timerMinutes?: number | null }[];
+    instructions?: {
+      text: string;
+      timerMinutes?: number | null;
+      kind?: InstructionKind;
+      subLabel?: string | null;
+      column?: number | null;
+      spanFrom?: number | null;
+      spanTo?: number | null;
+    }[];
     tags?: string[];
     collections?: string[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Cross-field authored-layout invariants (spec P2.5). For a create the
+    // RESULTING pair is exactly the input. Runs even when no spans are sent.
+    assertValidLayout(data.ingredients ?? [], data.instructions ?? []);
     const meal = await tx.meal.create({
       data: {
         name: data.name,
@@ -610,8 +681,17 @@ export async function updateMeal(
       quantity?: string;
       unit?: string;
       category?: string;
+      groupLabel?: string | null;
     }[];
-    instructions?: { text: string; timerMinutes?: number | null }[];
+    instructions?: {
+      text: string;
+      timerMinutes?: number | null;
+      kind?: InstructionKind;
+      subLabel?: string | null;
+      column?: number | null;
+      spanFrom?: number | null;
+      spanTo?: number | null;
+    }[];
     tags?: string[];
     collections?: string[];
   },
@@ -625,6 +705,28 @@ export async function updateMeal(
     if (existing.placeholderKind !== null) {
       throw new Error("Cannot modify placeholder meal");
     }
+
+    // Validate the RESULTING (ingredients, instructions) pair (spec P2.5).
+    // Meal writes are replace-all PER ARRAY: an omitted array is left as-is, so
+    // the effective pair mixes the incoming array with the persisted one. A
+    // caller could otherwise shrink the ingredient list while leaving authored
+    // spans that now dangle (or vice-versa) — so we load whichever side is
+    // omitted and validate the merge BEFORE deleting anything.
+    const effectiveIngredients: AuthoredLayoutIngredientInput[] =
+      data.ingredients ??
+      (await tx.mealIngredient.findMany({
+        where: { mealId },
+        select: { groupLabel: true },
+      })) ??
+      [];
+    const effectiveInstructions: AuthoredLayoutInstructionInput[] =
+      data.instructions ??
+      (await tx.mealInstruction.findMany({
+        where: { mealId },
+        select: { kind: true, column: true, spanFrom: true, spanTo: true },
+      })) ??
+      [];
+    assertValidLayout(effectiveIngredients, effectiveInstructions);
 
     // Delete old ingredients and create new ones
     if (data.ingredients !== undefined) {
@@ -755,6 +857,38 @@ export async function importMeals(
             result.skipped++;
             return;
           }
+          // Validate the RESULTING (ingredients, instructions) pair (spec P2.5)
+          // BEFORE mutating anything. Import-replace differs from updateMeal:
+          // ingredients are wiped UNCONDITIONALLY (so the effective ingredient
+          // list is the incoming one, never the persisted rows), but existing
+          // instructions are RETAINED when the column is omitted. Retained
+          // authored spans can therefore point past a new, shorter ingredient
+          // list — a dangling span the Range invariant forbids. Validate the
+          // incoming ingredients against the RETAINED instructions in that case
+          // so the same shared validator guards this third replace-all path.
+          // (Import instructions carry no span fields, so an incoming list is
+          // always span-free; only the retained branch can dangle.)
+          const effectiveIngredients: AuthoredLayoutIngredientInput[] = (
+            data.ingredients ?? []
+          ).map(() => ({ groupLabel: null }));
+          const effectiveInstructions: AuthoredLayoutInstructionInput[] =
+            data.instructions !== undefined
+              ? data.instructions.map(() => ({
+                  spanFrom: null,
+                  spanTo: null,
+                  column: null,
+                }))
+              : (await tx.mealInstruction.findMany({
+                  where: { mealId: existing.id },
+                  select: {
+                    kind: true,
+                    column: true,
+                    spanFrom: true,
+                    spanTo: true,
+                  },
+                })) ?? [];
+          assertValidLayout(effectiveIngredients, effectiveInstructions);
+
           // replace: update description and reset ingredients
           await tx.mealIngredient.deleteMany({
             where: { mealId: existing.id },

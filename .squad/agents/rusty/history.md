@@ -54,3 +54,57 @@ No matrix authoring vector from web confirmed: base `MealIngredient`/`MealInstru
 Measured derived Grid on Brandon's real 74 meals: 78% have zero instructions (seed problem, Saul), and of the rest 94% over-bracket because ingredients are stored in shopping order, not use order. Ruling (option a): derivation emits an explicit `ingredientDisplayOrder: number[]` (permutation into the position-sorted array); `spanFrom/spanTo` index into THAT display order; `meal.ingredients` stays position-ordered and untouched (List/Grocery/MealDetailModal unaffected); authored ⇒ identity permutation so authored spans need zero re-indexing and are never reordered. Sort key = first-matching PROCESS step index (first-use-wins, stable by position); unmatched ingredients parked at the end in position order (the big win — pulls unrelated rows out from between co-used ones). Anti-staleness reaffirmed: computed on read, never persisted, no flag. Parity: read-only field, MCP/REST inherit via TabularRecipeMealDTO, no write obligation. Rejected (b) web-side sort (duplicates shared derivation) and (c) reorder meal.ingredients (breaks List + Grocery). UX: Grid≠List order is acceptable and correct (different visualization); caption notes use-order. Honest expectation logged: fixes the majority (intervening/unmatched ingredients) but NOT cross-step reuse (intrinsic DAG-vs-tree limit → Phase-2 authored spans), and nothing for the 78% empty grids (seed). Owners: Livingston (shared `deriveRecipeMatrix` + DTO + api), Linus (buildTabularRecipe iterate ingredientDisplayOrder, no re-sort). = P1-10, alongside P1-9 (groups) in the pre-demo finish batch.
 
 📌 Team update (2026-08-03T16:52:00-04:00): Yen's **SHIP** verdict (PM final pass): 1903 tests PASS (shared 53, mcp 121, web 706, api 1023); over-bracket steps 26/61 → 9/61 (−65%); clean meals 1/16 → 9/16. Phase 1 fully complete. Residual 9 over-steps are intrinsic cross-step-reuse (DAG-vs-tree); only Phase-2 authored spans close them. Matcher hardening impact measured as 1+0 steps vs 17 for use-ordering — diminishing returns finding recorded to decisions.md. — decided by Yen, Rusty
+
+### 2026-08-04T10:38:39-04:00 — Slice 2b review gate: REJECT (importMeals unvalidated); service-only deviation RATIFIED
+
+Reviewed branch `phase2-layout-write-path` (`ed2f356` Yen suite + `e3d93c6` Livingston impl).
+**Verdict: REJECT** on ONE blocker; everything else ratified. **Ratified Livingston's
+deviation from my spec P2.4.3:** authoritative validation belongs in the **service**
+(one byte-identical `assertValidLayout` → typed `InvalidLayoutError`, routes map to
+400/422+audit), NOT two route-level calls. His DB-read argument holds: update is
+replace-all *per array*, so a route-level check would validate spans against an absent
+ingredient array (wrong object); the service loads the omitted side in-txn and validates
+the true resulting pair before any delete. Amended P2.4.3 in the spec to match, and
+reframed the binding rule as "**every** service replace-all path validates the resulting
+pair." **Blocker:** `importMeals` is a THIRD replace-all path with NO validator call —
+its replace branch deletes ingredients unconditionally but retains instructions, so
+import-replacing a previously-authored meal with fewer/omitted ingredients persists a
+DANGLING span (spec P2.5 forbids categorically). Import can't itself author (no layout
+fields in its Zod), so create-branch is safe; the hole is retained-authored-spans over a
+shrunk ingredient list. Fix (small): validate the effective pair in importMeals replace,
+error the row on failure (fits import's per-row try/catch); regression test. Fix agent =
+**Yen** (NOT Livingston per lockout; Yen owns the invariant suite, not the impl).
+**Verified PASS:** status mapping 400/422 + audit; omit-defaulting PROVEN non-tautological
+(real Prisma payload writes nulls; structural matrixSource ⇒ stays derived); no schema
+change / no stored boolean / no persisted permutation (anti-staleness intact); placeholder
+403 now identical on REST PUT (was 500) + agent PATCH — genuine parity §4 fix, not creep;
+#96 rows 3/4/7/8 all landed, scope stayed meal:write, no new scope, CSV/scope-metadata N/A.
+Baseline VERIFIED not assumed: build green; 1982 pass / 0 fail (shared 118, mcp 124, web
+706, api 1034); lint 0 errors / 6 pre-existing warnings. Decision →
+`.squad/decisions/inbox/rusty-2b-layout-write-review.md`.
+
+### 2026-08-04T11:00:00-04:00 — Slice 2b re-review: APPROVE (importMeals blocker closed by Yen `a3772aa`)
+
+Scoped re-review of `a3772aa` (importMeals + tests only; rest of e3d93c6 already ratified).
+**Verdict: APPROVE — Slice 2b goes to PR.** Yen validated the effective resulting pair in
+the import-replace branch before mutating (incoming ingredients vs RETAINED instructions
+when the steps column is omitted), throwing InvalidLayoutError into the existing per-row
+error model. **Q1:** "import steps are span-free" is SAFE — enforced at both the Zod
+boundary (import uses `baseInstructionInputSchema`, no span/groupLabel keys; default
+`.strip()`) and the param type; no import shape can carry spans. Effective-pair
+construction correct. **Q2:** per-row error path correct — validate-before-mutate inside
+the per-meal try/$transaction; failing row rolls back + is reported, batch continues,
+`skipped` untouched. **Q3:** importMeals is the LAST runtime replace-all path — the only
+pair writers are mapIngredient/InstructionCreates, callers = create/update/import(replace)
+all validated + import-create (span-free, can't dangle). NO fourth. One non-service writer
+flagged: `prisma/seed.ts` writes authored spans from static DEMO_RECIPES — dev/build-time,
+outside the API trust boundary, NOT a blocker (optional: validate DEMO_RECIPES in seed).
+**Independently proved genuineness:** reverted ONLY the service to pre-fix (e3d93c6),
+reproduced Yen's exact failure `expected 1 to be +0`; restored → passes. Companion test
+guards over-rejection. **Numbers verified myself:** build ✓; 1984 pass / 0 fail (shared
+118, mcp 124, web 706, api 1036); lint 0 err / 6 pre-existing warn. matrixSource still
+structural, no schema change, scope stayed meal:write. Amended spec P2.4.3 with a RESOLVED
+note. Livingston AND Yen now both locked out of this artifact; any further revision → a
+third api specialist. Decision → `.squad/decisions/inbox/rusty-2b-rereview-approve.md`.
+
+📌 Team update (2026-08-04T10:45:00-04:00): **Phase 1 merged to main** as PR #222 (`679be0e`), CI green from zero. **Phase 2 spec produced** (`f0bca40`): sequencing ruling — Slice 2a DROPPED (78%-empty-Grid finding was a seed-data artifact, not a product gap; instruction entry already ships end-to-end); sequence is 2b write path → measure → 2c span editor (gated on ROI). **Slice 2b APPROVED** after Yen's importMeals fix (`a3772aa`); PR #223 open on `phase2-layout-write-path`. Livingston AND Yen both locked out of further 2b revision. — Scribe cross-cut
