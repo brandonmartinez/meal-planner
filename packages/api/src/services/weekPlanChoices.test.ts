@@ -60,6 +60,10 @@ function stubTransaction() {
 beforeEach(() => {
   vi.clearAllMocks();
   stubTransaction();
+  // Default: TOCTOU guard sees unapproved (tests that simulate races override this).
+  prismaMock.mealSuggestion.findUnique.mockResolvedValue({
+    approved: false,
+  } as never);
   // Default: re-fetch returns the suggestion (tests that care override this).
   prismaMock.mealSuggestion.findUniqueOrThrow.mockResolvedValue({
     id: SUGGESTION_ID,
