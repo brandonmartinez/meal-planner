@@ -165,6 +165,11 @@ export async function generateGroceryList(
       meal: {
         include: { ingredients: true },
       },
+      choices: {
+        include: {
+          ingredients: true,
+        },
+      },
     },
   });
 
@@ -173,7 +178,10 @@ export async function generateGroceryList(
   for (const suggestion of suggestions) {
     const planDate = suggestion.dayPlan?.date;
     const day = planDate ? weekdayOffset(new Date(planDate)) : null;
-    for (const ing of suggestion.meal.ingredients) {
+    const additiveIngredients = (suggestion.choices ?? []).flatMap(
+      (choice) => choice.ingredients ?? [],
+    );
+    for (const ing of [...suggestion.meal.ingredients, ...additiveIngredients]) {
       const key = groceryKey(ing.name, ing.unit ?? undefined);
       const existing = computedMap.get(key);
       if (existing) {

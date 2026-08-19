@@ -19,6 +19,7 @@ function stubClient() {
     getPreviousWeekPlans: vi.fn(),
     scheduleMeal: vi.fn(),
     repeatWeek: vi.fn(),
+    resolveSuggestionChoices: vi.fn(),
     approveSuggestion: vi.fn(),
     unapproveSuggestion: vi.fn(),
     createMeal: vi.fn(),
@@ -245,6 +246,24 @@ describe("createToolHandlers", () => {
       "2026-06-29",
       undefined,
     );
+  });
+
+  it("resolve_suggestion_choices forwards suggestion id + slot selections", async () => {
+    const client = stubClient();
+    client.resolveSuggestionChoices.mockResolvedValue({ id: "s-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.resolve_suggestion_choices({
+      suggestionId: "s-1",
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
+
+    expect(client.resolveSuggestionChoices).toHaveBeenCalledWith(FAMILY, "s-1", {
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
   });
 
   it("approve_suggestion forwards the suggestionId", async () => {
@@ -927,6 +946,7 @@ describe("registerTools", () => {
       "schedule_meal",
       "schedule_random_meal",
       "repeat_week",
+      "resolve_suggestion_choices",
       "apply_template",
       "fill_week",
       "approve_suggestion",
@@ -1090,6 +1110,7 @@ describe("registerTools", () => {
       createMealCall?.[1] as { inputSchema: Record<string, unknown> }
     ).inputSchema;
     expect(createSchema).toHaveProperty("collections");
+    expect(createSchema).toHaveProperty("choiceSlots");
     const updateMealCall = registerTool.mock.calls.find(
       (c) => c[0] === "update_meal",
     );
@@ -1097,6 +1118,7 @@ describe("registerTools", () => {
       updateMealCall?.[1] as { inputSchema: Record<string, unknown> }
     ).inputSchema;
     expect(updateSchema).toHaveProperty("collections");
+    expect(updateSchema).toHaveProperty("choiceSlots");
   });
 
   it("documents repeat_week policy + exposes its schema (#114, parity row 8)", () => {
@@ -1124,6 +1146,27 @@ describe("registerTools", () => {
     expect(schema).toHaveProperty("targetWeekStart");
     expect(schema).toHaveProperty("sourceWeekStart");
     expect(schema).toHaveProperty("existingMode");
+  });
+
+  it("registers resolve_suggestion_choices with schedule scope semantics", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const resolveCall = registerTool.mock.calls.find(
+      (c) => c[0] === "resolve_suggestion_choices",
+    );
+    expect(resolveCall).toBeDefined();
+    const description = (resolveCall?.[1] as { description: string }).description;
+    expect(description).toContain("immutable scheduling snapshots");
+    expect(description).toContain("meal_plan:schedule");
+    const schema = (
+      resolveCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(schema).toHaveProperty("suggestionId");
+    expect(schema).toHaveProperty("selections");
   });
 
   it("documents the planning-template tools + exposes their schemas (#116, parity row 8)", () => {
@@ -1226,6 +1269,7 @@ describe("TOOL_SCOPES", () => {
       schedule_meal: "meal_plan:schedule",
       schedule_random_meal: "meal_plan:schedule",
       repeat_week: "meal_plan:schedule",
+      resolve_suggestion_choices: "meal_plan:schedule",
       apply_template: "meal_plan:schedule",
       fill_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",

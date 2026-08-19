@@ -220,6 +220,22 @@ describe("MealPlannerApiClient", () => {
     expect(url.pathname).toBe("/api/agent/fam-1/weeks/a%2Fb/repeat");
   });
 
+  it("resolveSuggestionChoices PATCHes the suggestion choices endpoint", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "s-1" }));
+    await client.resolveSuggestionChoices("fam-1", "s-1", {
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("PATCH");
+    expect(url.pathname).toBe("/api/agent/fam-1/suggestions/s-1/choices");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
+  });
+
   it("listTemplates GETs the family templates and unwraps the envelope (#116)", async () => {
     const templates = [
       {

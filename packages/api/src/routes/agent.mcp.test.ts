@@ -29,6 +29,7 @@ vi.mock("../services/weekPlan.js", () => {
     getWeekPlan: vi.fn(),
     addSuggestion: vi.fn(),
     approveSuggestion: vi.fn(),
+    resolveSuggestionChoices: vi.fn(),
     getCurrentWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMealByDate: vi.fn(),

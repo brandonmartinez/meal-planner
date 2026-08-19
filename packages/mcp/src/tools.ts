@@ -160,6 +160,41 @@ const instructionSchema = z.object({
     ),
 });
 
+const choiceSlotOptionIngredientSchema = z.object({
+  name: z.string().min(1).describe("Additive ingredient name."),
+  quantity: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Optional amount as free text, e.g. '1' or '1/2'."),
+  unit: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Optional unit for the quantity, e.g. 'cups' or 'tbsp'."),
+  category: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Optional grocery aisle/category label."),
+});
+
+const choiceSlotOptionSchema = z.object({
+  name: z.string().min(1).describe("Option label, e.g. 'Chicken' or 'Tofu'."),
+  ingredients: z
+    .array(choiceSlotOptionIngredientSchema)
+    .optional()
+    .describe("Optional additive ingredients contributed by this option."),
+});
+
+const choiceSlotSchema = z.object({
+  name: z.string().min(1).describe("Choice-slot label, e.g. 'Protein'."),
+  options: z
+    .array(choiceSlotOptionSchema)
+    .min(1)
+    .describe("Selectable options for this slot (single-choice in v1)."),
+});
+
 /**
  * Pure, testable tool handlers bound to a client + family. Each returns an MCP
  * {@link ToolResult}. Kept separate from {@link registerTools} so unit tests
@@ -262,6 +297,16 @@ export function createToolHandlers(
         ),
       ),
 
+    resolve_suggestion_choices: (args: {
+      suggestionId: string;
+      selections: Array<{ slotId: string; optionId: string }>;
+    }): Promise<ToolResult> =>
+      run(() =>
+        client.resolveSuggestionChoices(familyId, args.suggestionId, {
+          selections: args.selections,
+        }),
+      ),
+
     approve_suggestion: (args: {
       suggestionId: string;
     }): Promise<ToolResult> =>
@@ -332,6 +377,18 @@ export function createToolHandlers(
         spanFrom?: number | null;
         spanTo?: number | null;
       }[];
+      choiceSlots?: {
+        name: string;
+        options: {
+          name: string;
+          ingredients?: {
+            name: string;
+            quantity?: string;
+            unit?: string;
+            category?: string;
+          }[];
+        }[];
+      }[];
     }): Promise<ToolResult> => run(() => client.createMeal(args)),
 
     update_meal: (args: {
@@ -364,6 +421,18 @@ export function createToolHandlers(
         column?: number | null;
         spanFrom?: number | null;
         spanTo?: number | null;
+      }[];
+      choiceSlots?: {
+        name: string;
+        options: {
+          name: string;
+          ingredients?: {
+            name: string;
+            quantity?: string;
+            unit?: string;
+            category?: string;
+          }[];
+        }[];
       }[];
     }): Promise<ToolResult> => {
       const { mealId, ...rest } = args;
@@ -417,6 +486,7 @@ export const TOOL_SCOPES: Record<keyof ToolHandlers, string> = {
   schedule_meal: "meal_plan:schedule",
   schedule_random_meal: "meal_plan:schedule",
   repeat_week: "meal_plan:schedule",
+  resolve_suggestion_choices: "meal_plan:schedule",
   apply_template: "meal_plan:schedule",
   fill_week: "meal_plan:schedule",
   approve_suggestion: "meal_plan:approve",
@@ -787,6 +857,40 @@ export function registerTools(
   );
 
   server.registerTool(
+    "resolve_suggestion_choices",
+    {
+      title: "Resolve suggestion choices",
+      description:
+        "Resolve every required choice slot on an unapproved meal suggestion " +
+        "by selecting exactly one option per slot. Selections are stored as " +
+        "immutable scheduling snapshots (including additive ingredients) so " +
+        "later recipe edits do not rewrite history. Re-running while the " +
+        "suggestion is still unapproved replaces prior selections " +
+        "transactionally. Requires the meal_plan:schedule scope.",
+      inputSchema: {
+        suggestionId: z
+          .string()
+          .min(1)
+          .describe("The id of the suggestion whose choices to resolve."),
+        selections: z
+          .array(
+            z.object({
+              slotId: z.string().min(1).describe("Meal slot id to resolve."),
+              optionId: z
+                .string()
+                .min(1)
+                .describe("Selected option id for that slot."),
+            }),
+          )
+          .describe(
+            "Exactly one selection for every slot on the suggestion's current meal definition.",
+          ),
+      },
+    },
+    (args) => handlers.resolve_suggestion_choices(args),
+  );
+
+  server.registerTool(
     "apply_template",
     {
       title: "Apply a planning template",
@@ -929,7 +1033,9 @@ export function registerTools(
         "parsed (from a CSV, a photo/scan, or pasted text — you do the " +
         "parsing/OCR; this tool only stores the structured result). Provide a " +
         "name and, optionally, a description, a difficulty (EASY/MEDIUM/HARD), " +
-        "and a list of ingredients. Requires the meal:write scope. The created " +
+        "and a list of ingredients. Optional `choiceSlots` define configurable " +
+        "single-choice slots (v1) whose options add ingredients when selected. " +
+        "Requires the meal:write scope. The created " +
         "meal is returned with its tabular \"Grid\" recipe view fields " +
         "(matrixSource, ingredientDisplayOrder, plus per-ingredient " +
         "position/groupLabel and per-instruction kind/subLabel/spanFrom/spanTo). " +
@@ -1021,6 +1127,13 @@ export function registerTools(
           .describe(
             "Optional ordered list of preparation steps. Order is preserved.",
           ),
+        choiceSlots: z
+          .array(choiceSlotSchema)
+          .optional()
+          .describe(
+            "Optional configurable choice slots for this meal. Each slot " +
+              "requires one option to be selected when scheduling.",
+          ),
       },
     },
     (args) => handlers.create_meal(args),
@@ -1035,6 +1148,7 @@ export function registerTools(
         "its id (use list_meals to find it) and provide only the fields to " +
         "change. Passing `ingredients` REPLACES the meal's ingredient list. " +
         "Passing `instructions` REPLACES the meal's instruction list. " +
+        "Passing `choiceSlots` REPLACES the meal's choice-slot definitions. " +
         "Placeholder meals (e.g. Free Day, Leftovers) cannot be edited. " +
         "Requires the meal:write scope. The updated meal is returned with its " +
         "tabular \"Grid\" recipe view fields (matrixSource, " +
@@ -1135,6 +1249,13 @@ export function registerTools(
           .describe(
             "Replacement ordered list of preparation steps (replaces all " +
               "existing; order is preserved). Pass [] to clear.",
+          ),
+        choiceSlots: z
+          .array(choiceSlotSchema)
+          .optional()
+          .describe(
+            "Replacement configurable choice-slot definitions (replaces all " +
+              "existing slots and options). Pass [] to clear.",
           ),
       },
     },

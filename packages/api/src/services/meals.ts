@@ -14,6 +14,7 @@ import type {
   TabularRecipeInstructionDTO,
   AuthoredLayoutIngredientInput,
   AuthoredLayoutInstructionInput,
+  MealChoiceSlotInputDTO,
 } from "@meal-planner/shared";
 import type { Prisma } from "@prisma/client";
 import { getCurrentWeekStart, getMondayOfWeek } from "./weekPlan.js";
@@ -36,6 +37,17 @@ const MEAL_TAXONOMY_INCLUDE = {
 const MEAL_DETAIL_INCLUDE = {
   ingredients: { orderBy: { position: "asc" } },
   instructions: { orderBy: { position: "asc" } },
+  slots: {
+    orderBy: { position: "asc" },
+    include: {
+      options: {
+        orderBy: { position: "asc" },
+        include: {
+          ingredients: { orderBy: { position: "asc" } },
+        },
+      },
+    },
+  },
   ...MEAL_TAXONOMY_INCLUDE,
 } satisfies Prisma.MealInclude;
 
@@ -97,6 +109,30 @@ function mapIngredientCreates(
     category: ing.category,
     position: i,
     groupLabel: ing.groupLabel ?? null,
+  }));
+}
+
+function mapSlotCreates(choiceSlots?: MealChoiceSlotInputDTO[]) {
+  return (choiceSlots ?? []).map((slot, slotIndex) => ({
+    name: slot.name,
+    position: slotIndex,
+    options: {
+      create: slot.options.map((option, optionIndex) => ({
+        name: option.name,
+        position: optionIndex,
+        ingredients: option.ingredients?.length
+          ? {
+              create: option.ingredients.map((ingredient, ingredientIndex) => ({
+                name: ingredient.name,
+                quantity: ingredient.quantity ?? null,
+                unit: ingredient.unit ?? null,
+                category: ingredient.category ?? null,
+                position: ingredientIndex,
+              })),
+            }
+          : undefined,
+      })),
+    },
   }));
 }
 
@@ -630,6 +666,7 @@ export async function createMeal(
     }[];
     tags?: string[];
     collections?: string[];
+    choiceSlots?: MealChoiceSlotInputDTO[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -656,6 +693,10 @@ export async function createMeal(
         instructions: data.instructions?.length
           ? { create: mapInstructionCreates(data.instructions) }
           : undefined,
+        slots:
+          data.choiceSlots !== undefined
+            ? { create: mapSlotCreates(data.choiceSlots) }
+            : undefined,
       },
     });
     await syncMealTaxonomy(tx, familyId, meal.id, data.tags);
@@ -701,6 +742,7 @@ export async function updateMeal(
     }[];
     tags?: string[];
     collections?: string[];
+    choiceSlots?: MealChoiceSlotInputDTO[];
   },
 ) {
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -747,6 +789,9 @@ export async function updateMeal(
     if (data.instructions !== undefined) {
       await tx.mealInstruction.deleteMany({ where: { mealId } });
     }
+    if (data.choiceSlots !== undefined) {
+      await tx.mealSlot.deleteMany({ where: { mealId } });
+    }
 
     await tx.meal.update({
       where: { id: mealId },
@@ -769,6 +814,10 @@ export async function updateMeal(
         instructions:
           data.instructions !== undefined
             ? { create: mapInstructionCreates(data.instructions) }
+            : undefined,
+        slots:
+          data.choiceSlots !== undefined
+            ? { create: mapSlotCreates(data.choiceSlots) }
             : undefined,
       },
     });

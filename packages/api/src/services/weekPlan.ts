@@ -1,18 +1,41 @@
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import prisma from "../config/database.js";
 import { DAYS_OF_WEEK, type DayOfWeek } from "@meal-planner/shared";
+
+const suggestionInclude = Prisma.validator<Prisma.MealSuggestionInclude>()({
+  meal: {
+    include: {
+      slots: {
+        orderBy: { position: "asc" },
+        include: {
+          options: {
+            orderBy: { position: "asc" },
+            include: {
+              ingredients: { orderBy: { position: "asc" } },
+            },
+          },
+        },
+      },
+    },
+  },
+  suggestedBy: {
+    select: { id: true, name: true, email: true, avatarUrl: true },
+  },
+  choices: {
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    include: {
+      ingredients: { orderBy: { position: "asc" } },
+    },
+  },
+});
 
 const weekPlanInclude = Prisma.validator<Prisma.WeekPlanInclude>()({
   days: {
     orderBy: { date: "asc" },
     include: {
       suggestions: {
-        include: {
-          meal: true,
-          suggestedBy: {
-            select: { id: true, name: true, email: true, avatarUrl: true },
-          },
-        },
+        include: suggestionInclude,
       },
     },
   },
@@ -216,13 +239,6 @@ export async function getWeekPlan(familyId: string, weekStart: Date) {
   });
 }
 
-const suggestionInclude = Prisma.validator<Prisma.MealSuggestionInclude>()({
-  meal: true,
-  suggestedBy: {
-    select: { id: true, name: true, email: true, avatarUrl: true },
-  },
-});
-
 /**
  * Domain error for suggestion mutations. Carries an HTTP status so routes can
  * map known failures (not-found / forbidden / bad-input) to the right code
@@ -284,6 +300,141 @@ export async function addSuggestion(
   });
 }
 
+export async function resolveSuggestionChoices(
+  familyId: string,
+  suggestionId: string,
+  selections: Array<{ slotId: string; optionId: string }>,
+  actor: { id: string; isParent: boolean },
+) {
+  const suggestion = await prisma.mealSuggestion.findFirst({
+    where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
+    select: {
+      id: true,
+      userId: true,
+      approved: true,
+      meal: {
+        select: {
+          slots: {
+            orderBy: { position: "asc" },
+            select: {
+              id: true,
+              name: true,
+              options: {
+                orderBy: { position: "asc" },
+                select: {
+                  id: true,
+                  name: true,
+                  ingredients: {
+                    orderBy: { position: "asc" },
+                    select: {
+                      name: true,
+                      quantity: true,
+                      unit: true,
+                      category: true,
+                      position: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!suggestion) {
+    throw new SuggestionError(404, "Suggestion not found");
+  }
+  if (suggestion.approved) {
+    throw new SuggestionError(
+      409,
+      "Cannot resolve choices for an approved suggestion",
+    );
+  }
+  if (!actor.isParent && suggestion.userId !== actor.id) {
+    throw new SuggestionError(
+      403,
+      "Only the suggester or a parent can resolve suggestion choices",
+    );
+  }
+
+  const slots = suggestion.meal.slots;
+  if (slots.length === 0 && selections.length > 0) {
+    throw new SuggestionError(422, "Meal has no choice slots to resolve");
+  }
+  if (selections.length !== slots.length) {
+    throw new SuggestionError(
+      422,
+      "Selections must include exactly one option for every slot",
+    );
+  }
+
+  const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+  const selectedSlotIds = new Set<string>();
+  const choiceRows: Prisma.SuggestionChoiceSnapshotCreateManyInput[] = [];
+  const ingredientRows: Prisma.SuggestionChoiceIngredientSnapshotCreateManyInput[] =
+    [];
+
+  for (const selection of selections) {
+    const slot = slotById.get(selection.slotId);
+    if (!slot) {
+      throw new SuggestionError(422, "Selection contains an unknown slot");
+    }
+    if (selectedSlotIds.has(slot.id)) {
+      throw new SuggestionError(
+        422,
+        "Selections must include each slot exactly once",
+      );
+    }
+    selectedSlotIds.add(slot.id);
+
+    const option = slot.options.find((candidate) => candidate.id === selection.optionId);
+    if (!option) {
+      throw new SuggestionError(
+        422,
+        "Selection contains an option that does not belong to its slot",
+      );
+    }
+
+    const choiceId = randomUUID();
+    choiceRows.push({
+      id: choiceId,
+      suggestionId,
+      slotId: slot.id,
+      optionId: option.id,
+      slotName: slot.name,
+      optionName: option.name,
+    });
+    for (const ingredient of option.ingredients) {
+      ingredientRows.push({
+        id: randomUUID(),
+        choiceId,
+        name: ingredient.name,
+        quantity: ingredient.quantity ?? null,
+        unit: ingredient.unit ?? null,
+        category: ingredient.category ?? null,
+        position: ingredient.position,
+      });
+    }
+  }
+
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.suggestionChoiceSnapshot.deleteMany({ where: { suggestionId } });
+    if (choiceRows.length > 0) {
+      await tx.suggestionChoiceSnapshot.createMany({ data: choiceRows });
+    }
+    if (ingredientRows.length > 0) {
+      await tx.suggestionChoiceIngredientSnapshot.createMany({
+        data: ingredientRows,
+      });
+    }
+    return tx.mealSuggestion.findUniqueOrThrow({
+      where: { id: suggestionId },
+      include: suggestionInclude,
+    });
+  });
+}
+
 /**
  * Approves a suggestion, enforcing that it belongs to `familyId` via
  * dayPlan.weekPlan.familyId before mutating. A suggestion owned by another
@@ -300,10 +451,31 @@ export async function approveSuggestion(
 ) {
   const owned = await prisma.mealSuggestion.findFirst({
     where: { id: suggestionId, dayPlan: { weekPlan: { familyId } } },
-    select: { id: true },
+    select: {
+      id: true,
+      meal: { select: { slots: { select: { id: true } } } },
+      choices: { select: { slotId: true } },
+    },
   });
   if (!owned) {
     throw new SuggestionError(404, "Suggestion not found");
+  }
+
+  const requiredSlotIds = owned.meal?.slots?.map((slot) => slot.id) ?? [];
+  if (requiredSlotIds.length > 0) {
+    const selectedSlotIds = (owned.choices ?? []).map((choice) => choice.slotId);
+    const selectedSet = new Set(
+      selectedSlotIds.filter((slotId): slotId is string => Boolean(slotId)),
+    );
+    const hasEverySlot = requiredSlotIds.every((slotId) => selectedSet.has(slotId));
+    const hasExactCount = selectedSlotIds.length === requiredSlotIds.length;
+    const hasNoDuplicates = selectedSet.size === requiredSlotIds.length;
+    if (!hasEverySlot || !hasExactCount || !hasNoDuplicates) {
+      throw new SuggestionError(
+        409,
+        "All required meal choices must be resolved before approval",
+      );
+    }
   }
 
   return prisma.mealSuggestion.update({
@@ -760,19 +932,53 @@ export async function repeatWeek(params: RepeatWeekParams) {
   // familyId, so a cross-family target is impossible.
   const targetWeek = await getOrCreateWeekPlan(familyId, target);
 
-  // Collect approved source meal ids grouped by day offset from the source
-  // Monday (0 = Mon .. 6 = Sun).
-  const approvedByOffset = new Map<number, string[]>();
+  // Collect approved source suggestions grouped by day offset from the source
+  // Monday (0 = Mon .. 6 = Sun), including immutable choice snapshots so repeat
+  // copies prior selections exactly instead of re-resolving live options.
+  const approvedByOffset = new Map<
+    number,
+    Array<{
+      mealId: string;
+      choices: Array<{
+        slotId: string | null;
+        optionId: string | null;
+        slotName: string;
+        optionName: string;
+        ingredients: Array<{
+          name: string;
+          quantity: string | null;
+          unit: string | null;
+          category: string | null;
+          position: number;
+        }>;
+      }>;
+    }>
+  >();
   if (sourceWeek) {
     for (const day of sourceWeek.days) {
       const dayDate = new Date(day.date);
       dayDate.setUTCHours(0, 0, 0, 0);
       const offset = Math.round((dayDate.getTime() - source.getTime()) / MS_PER_DAY);
-      const mealIds = day.suggestions
-        .filter((s) => s.approved)
-        .map((s) => s.mealId);
-      if (mealIds.length > 0) {
-        approvedByOffset.set(offset, mealIds);
+      const suggestions = day.suggestions
+        .filter((suggestion) => suggestion.approved)
+        .map((suggestion) => ({
+          mealId: suggestion.mealId,
+          choices: (suggestion.choices ?? []).map((choice) => ({
+            slotId: choice.slotId ?? null,
+            optionId: choice.optionId ?? null,
+            slotName: choice.slotName,
+            optionName: choice.optionName,
+            ingredients: (choice.ingredients ?? []).map((ingredient) => ({
+              name: ingredient.name,
+              quantity: ingredient.quantity ?? null,
+              unit: ingredient.unit ?? null,
+              category: ingredient.category ?? null,
+              position: ingredient.position,
+            })),
+          })),
+        }));
+      if (suggestions.length > 0) {
+        approvedByOffset.set(offset, suggestions);
       }
     }
   }
@@ -801,15 +1007,39 @@ export async function repeatWeek(params: RepeatWeekParams) {
     );
   }
 
-  const rows: Prisma.MealSuggestionCreateManyInput[] = [];
-  for (const [offset, mealIds] of approvedByOffset) {
+  const rows: Array<{
+    id: string;
+    dayPlanId: string;
+    mealId: string;
+    userId: string;
+    choices: Array<{
+      slotId: string | null;
+      optionId: string | null;
+      slotName: string;
+      optionName: string;
+      ingredients: Array<{
+        name: string;
+        quantity: string | null;
+        unit: string | null;
+        category: string | null;
+        position: number;
+      }>;
+    }>;
+  }> = [];
+  for (const [offset, suggestions] of approvedByOffset) {
     const targetDay = targetDayByOffset.get(offset);
     if (!targetDay) continue; // defensive: offsets 0..6 always exist
     if (existingMode === "skip" && targetDay.suggestions.length > 0) {
       continue;
     }
-    for (const mealId of mealIds) {
-      rows.push({ dayPlanId: targetDay.id, mealId, userId, approved: false });
+    for (const suggestion of suggestions) {
+      rows.push({
+        id: randomUUID(),
+        dayPlanId: targetDay.id,
+        mealId: suggestion.mealId,
+        userId,
+        choices: suggestion.choices,
+      });
     }
   }
 
@@ -822,7 +1052,51 @@ export async function repeatWeek(params: RepeatWeekParams) {
       });
     }
     if (rows.length > 0) {
-      await tx.mealSuggestion.createMany({ data: rows });
+      await tx.mealSuggestion.createMany({
+        data: rows.map((row) => ({
+          id: row.id,
+          dayPlanId: row.dayPlanId,
+          mealId: row.mealId,
+          userId: row.userId,
+          approved: false,
+        })),
+      });
+
+      const choiceRows: Prisma.SuggestionChoiceSnapshotCreateManyInput[] = [];
+      const ingredientRows: Prisma.SuggestionChoiceIngredientSnapshotCreateManyInput[] =
+        [];
+      for (const row of rows) {
+        for (const choice of row.choices) {
+          const choiceId = randomUUID();
+          choiceRows.push({
+            id: choiceId,
+            suggestionId: row.id,
+            slotId: choice.slotId ?? null,
+            optionId: choice.optionId ?? null,
+            slotName: choice.slotName,
+            optionName: choice.optionName,
+          });
+          for (const ingredient of choice.ingredients) {
+            ingredientRows.push({
+              id: randomUUID(),
+              choiceId,
+              name: ingredient.name,
+              quantity: ingredient.quantity ?? null,
+              unit: ingredient.unit ?? null,
+              category: ingredient.category ?? null,
+              position: ingredient.position,
+            });
+          }
+        }
+      }
+      if (choiceRows.length > 0) {
+        await tx.suggestionChoiceSnapshot.createMany({ data: choiceRows });
+      }
+      if (ingredientRows.length > 0) {
+        await tx.suggestionChoiceIngredientSnapshot.createMany({
+          data: ingredientRows,
+        });
+      }
     }
   });
 
