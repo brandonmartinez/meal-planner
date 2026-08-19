@@ -419,6 +419,23 @@ export async function resolveSuggestionChoices(
   }
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // TOCTOU guard: re-read approval state inside the transaction so a
+    // concurrent approval between the pre-check above and this write cannot
+    // silently mutate snapshots on an already-approved suggestion (#226).
+    const live = await tx.mealSuggestion.findUnique({
+      where: { id: suggestionId },
+      select: { approved: true },
+    });
+    if (!live) {
+      throw new SuggestionError(404, "Suggestion not found");
+    }
+    if (live.approved) {
+      throw new SuggestionError(
+        409,
+        "Cannot resolve choices for an approved suggestion",
+      );
+    }
+
     await tx.suggestionChoiceSnapshot.deleteMany({ where: { suggestionId } });
     if (choiceRows.length > 0) {
       await tx.suggestionChoiceSnapshot.createMany({ data: choiceRows });

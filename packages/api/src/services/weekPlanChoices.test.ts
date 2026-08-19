@@ -464,4 +464,137 @@ describe("resolveSuggestionChoices", () => {
       ).rejects.toMatchObject({ status: 422 });
     });
   });
+
+  /**
+   * TOCTOU regression — issue #226
+   *
+   * The pre-check on `suggestion.approved` (outside the transaction) cannot
+   * prevent a concurrent approval from racing in between the check and the
+   * snapshot writes. The transactional re-read inside `$transaction` must
+   * catch this and throw 409 without touching the snapshots.
+   */
+  describe("TOCTOU guard — transactional approval recheck (#226)", () => {
+    it("throws 409 inside the transaction when the suggestion was approved concurrently", async () => {
+      // Pre-check sees unapproved — passes through to the transaction.
+      prismaMock.mealSuggestion.findFirst.mockResolvedValue(
+        buildSuggestion({
+          approved: false,
+          slots: [
+            {
+              id: SLOT_ID,
+              name: "Protein",
+              options: [{ id: OPTION_ID, name: "Chicken", ingredients: [] }],
+            },
+          ],
+        }) as never,
+      );
+
+      // Concurrent approval races in: the live re-read inside the tx sees approved=true.
+      prismaMock.mealSuggestion.findUnique.mockResolvedValue({
+        approved: true,
+      } as never);
+
+      await expect(
+        resolveSuggestionChoices(
+          FAMILY_ID,
+          SUGGESTION_ID,
+          [{ slotId: SLOT_ID, optionId: OPTION_ID }],
+          { id: "user-1", isParent: false },
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+
+      // No snapshots should be written after the guard fires.
+      expect(
+        prismaMock.suggestionChoiceSnapshot.deleteMany,
+      ).not.toHaveBeenCalled();
+      expect(
+        prismaMock.suggestionChoiceSnapshot.createMany,
+      ).not.toHaveBeenCalled();
+      expect(
+        prismaMock.suggestionChoiceIngredientSnapshot.createMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("throws 409 as a SuggestionError instance when the concurrent-approval guard fires", async () => {
+      prismaMock.mealSuggestion.findFirst.mockResolvedValue(
+        buildSuggestion({ approved: false, slots: [] }) as never,
+      );
+      prismaMock.mealSuggestion.findUnique.mockResolvedValue({
+        approved: true,
+      } as never);
+
+      await expect(
+        resolveSuggestionChoices(FAMILY_ID, SUGGESTION_ID, [], {
+          id: "user-1",
+          isParent: false,
+        }),
+      ).rejects.toBeInstanceOf(SuggestionError);
+    });
+
+    it("throws 404 inside the transaction when the suggestion was deleted concurrently", async () => {
+      prismaMock.mealSuggestion.findFirst.mockResolvedValue(
+        buildSuggestion({
+          approved: false,
+          slots: [
+            {
+              id: SLOT_ID,
+              name: "Protein",
+              options: [{ id: OPTION_ID, name: "Chicken", ingredients: [] }],
+            },
+          ],
+        }) as never,
+      );
+
+      // Suggestion deleted between the pre-check and the tx re-read.
+      prismaMock.mealSuggestion.findUnique.mockResolvedValue(null);
+
+      await expect(
+        resolveSuggestionChoices(
+          FAMILY_ID,
+          SUGGESTION_ID,
+          [{ slotId: SLOT_ID, optionId: OPTION_ID }],
+          { id: "user-1", isParent: false },
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(
+        prismaMock.suggestionChoiceSnapshot.deleteMany,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("still creates snapshots when the transactional recheck confirms unapproved (happy path integrity)", async () => {
+      prismaMock.mealSuggestion.findFirst.mockResolvedValue(
+        buildSuggestion({
+          approved: false,
+          slots: [
+            {
+              id: SLOT_ID,
+              name: "Protein",
+              options: [{ id: OPTION_ID, name: "Chicken", ingredients: [] }],
+            },
+          ],
+        }) as never,
+      );
+
+      // Re-read inside tx also returns unapproved — no race.
+      prismaMock.mealSuggestion.findUnique.mockResolvedValue({
+        approved: false,
+      } as never);
+
+      const result = await resolveSuggestionChoices(
+        FAMILY_ID,
+        SUGGESTION_ID,
+        [{ slotId: SLOT_ID, optionId: OPTION_ID }],
+        { id: "user-1", isParent: false },
+      );
+
+      expect(result).toEqual({ id: SUGGESTION_ID });
+      expect(
+        prismaMock.suggestionChoiceSnapshot.deleteMany,
+      ).toHaveBeenCalledOnce();
+      expect(
+        prismaMock.suggestionChoiceSnapshot.createMany,
+      ).toHaveBeenCalledOnce();
+    });
+  });
 });
