@@ -54,6 +54,9 @@ export interface Meal {
   tags?: Tag[];
   instructions?: MealInstruction[];
   collections?: RecipeCollection[];
+  /** Configurable choice slots on this meal. Only present when the API includes
+   *  them in the response (e.g. detail views). */
+  slots?: MealSlot[];
 }
 
 export interface MealIngredient {
@@ -175,6 +178,73 @@ export interface MealSuggestion {
   approved: boolean;
   meal?: Meal;
   suggestedBy?: User;
+  /** Immutable slot choice snapshots recorded when options were selected.
+   *  Only present when the API includes them in the response. */
+  choices?: SuggestionChoiceSnapshot[];
+}
+
+/** A configurable choice point on a meal (e.g. "Protein", "Sauce"). All slots
+ *  on a meal must be resolved before a suggestion can be approved (v1:
+ *  single-choice, required). `position` is 0-based ordering within the meal. */
+export interface MealSlot {
+  id: string;
+  mealId: string;
+  name: string;
+  position: number;
+  options?: MealSlotOption[];
+}
+
+/** One selectable option within a {@link MealSlot}. Options contribute
+ *  additive ingredients only in v1. `position` is 0-based ordering within
+ *  the slot. */
+export interface MealSlotOption {
+  id: string;
+  slotId: string;
+  name: string;
+  position: number;
+  ingredients?: MealSlotOptionIngredient[];
+}
+
+/** An additive ingredient contributed by a {@link MealSlotOption}. Mirrors
+ *  {@link MealIngredient} field shape; `position` is 0-based row order. */
+export interface MealSlotOptionIngredient {
+  id: string;
+  optionId: string;
+  name: string;
+  quantity?: string | null;
+  unit?: string | null;
+  category?: string | null;
+  position: number;
+}
+
+/** Immutable snapshot of the option chosen for one slot when a
+ *  {@link MealSuggestion} was scheduled. Display data (`slotName`,
+ *  `optionName`) and additive ingredients are captured at choice time and
+ *  never mutated so later recipe edits cannot rewrite history. `slotId` /
+ *  `optionId` are optional source-traceability identifiers — they are NOT
+ *  foreign keys and may reference deleted rows. */
+export interface SuggestionChoiceSnapshot {
+  id: string;
+  suggestionId: string;
+  slotId?: string | null;
+  optionId?: string | null;
+  slotName: string;
+  optionName: string;
+  createdAt: string;
+  ingredients?: SuggestionChoiceIngredientSnapshot[];
+}
+
+/** Immutable snapshot of one additive ingredient within a
+ *  {@link SuggestionChoiceSnapshot}. Mirrors {@link MealSlotOptionIngredient}
+ *  field shape. */
+export interface SuggestionChoiceIngredientSnapshot {
+  id: string;
+  choiceId: string;
+  name: string;
+  quantity?: string | null;
+  unit?: string | null;
+  category?: string | null;
+  position: number;
 }
 
 export interface GroceryList {

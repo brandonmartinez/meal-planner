@@ -78,6 +78,7 @@ model Meal {
   imageAssets          ImageAsset[]
   collections          MealRecipeCollection[]
   planningTemplateEntries PlanningTemplateEntry[]
+  slots                MealSlot[]
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -293,6 +294,7 @@ model MealSuggestion {
   approvedById        String?
   approvedAt          DateTime?
   createdAt DateTime @default(now())
+  choices   SuggestionChoiceSnapshot[]
 
   @@index([mealId, approved])
 }
@@ -496,6 +498,108 @@ model PantryStaple {
 
   @@unique([familyId, nameNormalized])
   @@index([familyId])
+}
+
+/// A configurable choice point on a meal (e.g. "Protein", "Sauce"). Slots are
+/// ordered (position) within the meal and owned exclusively by it — they
+/// cascade-delete with the meal. All slots on a meal must be resolved to a
+/// SuggestionChoiceSnapshot before a MealSuggestion can be approved (enforced
+/// in the service layer; no redundant boolean is stored here). v1 is
+/// single-choice and required; no defaults or multi-select.
+model MealSlot {
+  id        String           @id @default(uuid())
+  meal      Meal             @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  mealId    String
+  /// Display label shown to the user, e.g. "Protein" or "Sauce".
+  name      String
+  /// Dense 0-based ordering within the meal, maintained at write time.
+  position  Int              @default(0)
+  options   MealSlotOption[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([mealId])
+}
+
+/// One selectable choice within a MealSlot. v1: single-choice, no defaults.
+/// Options contribute additive ingredients only — they do not override the
+/// meal's base ingredient list. At least one option per slot is required but
+/// enforced in the service layer, not the DB schema.
+model MealSlotOption {
+  id          String                     @id @default(uuid())
+  slot        MealSlot                   @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  slotId      String
+  /// Display label shown to the user, e.g. "Chicken" or "Tofu".
+  name        String
+  /// Dense 0-based ordering within the slot, maintained at write time.
+  position    Int                        @default(0)
+  ingredients MealSlotOptionIngredient[]
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@index([slotId])
+}
+
+/// Additive ingredient contributed by a MealSlotOption. Mirrors MealIngredient
+/// field shape (name, quantity, unit, category, position) but belongs to an
+/// option, not the base meal. Cascade-deleted with its option.
+model MealSlotOptionIngredient {
+  id       String         @id @default(uuid())
+  option   MealSlotOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId String
+  name     String
+  quantity String?
+  unit     String?
+  category String?
+  /// Dense 0-based row order within the option, matching the input array index.
+  position Int            @default(0)
+
+  @@index([optionId])
+}
+
+/// Immutable scheduling snapshot of the option chosen for one MealSlot when a
+/// MealSuggestion was scheduled. Created at choice time, never mutated.
+/// Stores display data (slotName, optionName) and additive ingredient data
+/// independently of live MealSlot / MealSlotOption rows so that later recipe
+/// edits cannot rewrite planning history. Source ids (slotId, optionId) are
+/// retained as plain nullable strings — NOT foreign keys — so deleting or
+/// editing a slot or option cannot cascade into or invalidate history rows.
+/// Copying a week's suggestions copies these rows verbatim (same immutability
+/// guarantee applies to the copy).
+model SuggestionChoiceSnapshot {
+  id           String                              @id @default(uuid())
+  suggestion   MealSuggestion                      @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  suggestionId String
+  /// Source traceability only — plain strings, no FK constraint. May be null
+  /// if the originating slot or option has been deleted since scheduling.
+  slotId       String?
+  optionId     String?
+  /// Captured display data — immutable after insert.
+  slotName     String
+  optionName   String
+  ingredients  SuggestionChoiceIngredientSnapshot[]
+  createdAt    DateTime                            @default(now())
+
+  @@index([suggestionId])
+}
+
+/// Immutable snapshot of one additive ingredient within a
+/// SuggestionChoiceSnapshot. Mirrors MealSlotOptionIngredient field shape.
+/// Cascade-deleted with its parent snapshot (which cascade-deletes with the
+/// MealSuggestion), so no orphan rows survive suggestion deletion.
+model SuggestionChoiceIngredientSnapshot {
+  id       String                   @id @default(uuid())
+  choice   SuggestionChoiceSnapshot @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  choiceId String
+  name     String
+  quantity String?
+  unit     String?
+  category String?
+  /// Dense 0-based row order within the snapshot, matching the source option's
+  /// ingredient position at the time of scheduling.
+  position Int                      @default(0)
+
+  @@index([choiceId])
 }
 
 /// A single (dayOfWeek -> meal) slot within a PlanningTemplate. `dayOfWeek` is a
