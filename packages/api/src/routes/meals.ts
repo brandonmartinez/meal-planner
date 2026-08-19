@@ -55,6 +55,23 @@ const ingredientInputSchema = z.object({
   groupLabel: z.string().max(60).nullable().optional(),
 });
 
+const choiceSlotOptionIngredientInputSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.string().optional(),
+  unit: z.string().optional(),
+  category: z.string().optional(),
+});
+
+const choiceSlotOptionInputSchema = z.object({
+  name: z.string().min(1),
+  ingredients: z.array(choiceSlotOptionIngredientInputSchema).optional(),
+});
+
+const choiceSlotInputSchema = z.object({
+  name: z.string().min(1),
+  options: z.array(choiceSlotOptionInputSchema).min(1),
+});
+
 export const createMealSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -71,6 +88,7 @@ export const createMealSchema = z.object({
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
+  choiceSlots: z.array(choiceSlotInputSchema).optional(),
 });
 
 export const updateMealSchema = z.object({
@@ -89,6 +107,7 @@ export const updateMealSchema = z.object({
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
+  choiceSlots: z.array(choiceSlotInputSchema).optional(),
 });
 
 const importMealsSchema = z.object({

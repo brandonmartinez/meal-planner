@@ -51,16 +51,16 @@ describe("MealPlannerApiClient", () => {
     expect(url.toString()).not.toContain(AGENT_KEY);
   });
 
-  it("listMeals GETs the agent meals endpoint with a search query and returns the envelope", async () => {
+  it("listMeals forwards an ingredient-category search to the agent endpoint", async () => {
     const envelope = { items: [{ id: "meal-1" }], total: 1, limit: 25, offset: 0, hasMore: false };
     const { client, fetchFn } = makeClient(jsonResponse(envelope));
 
-    const result = await client.listMeals("fam-1", { search: "taco" });
+    const result = await client.listMeals("fam-1", { search: "ProDuCe" });
 
     const { url, init } = lastCall(fetchFn);
     expect(init.method).toBe("GET");
     expect(url.pathname).toBe("/api/agent/fam-1/meals");
-    expect(url.searchParams.get("search")).toBe("taco");
+    expect(url.searchParams.get("search")).toBe("ProDuCe");
     expect(result).toEqual(envelope);
   });
 
@@ -218,6 +218,22 @@ describe("MealPlannerApiClient", () => {
     await client.repeatWeek("fam-1", "a/b", "2026-06-29");
     const { url } = lastCall(fetchFn);
     expect(url.pathname).toBe("/api/agent/fam-1/weeks/a%2Fb/repeat");
+  });
+
+  it("resolveSuggestionChoices PATCHes the suggestion choices endpoint", async () => {
+    const { client, fetchFn } = makeClient(jsonResponse({ id: "s-1" }));
+    await client.resolveSuggestionChoices("fam-1", "s-1", {
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
+
+    const { url, init } = lastCall(fetchFn);
+    expect(init.method).toBe("PATCH");
+    expect(url.pathname).toBe("/api/agent/fam-1/suggestions/s-1/choices");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual({
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
   });
 
   it("listTemplates GETs the family templates and unwraps the envelope (#116)", async () => {

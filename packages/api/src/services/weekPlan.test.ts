@@ -642,6 +642,19 @@ describe("repeatWeek", () => {
   interface Sug {
     mealId: string;
     approved: boolean;
+    choices?: Array<{
+      slotId?: string | null;
+      optionId?: string | null;
+      slotName: string;
+      optionName: string;
+      ingredients?: Array<{
+        name: string;
+        quantity?: string | null;
+        unit?: string | null;
+        category?: string | null;
+        position: number;
+      }>;
+    }>;
   }
 
   // Build a week fixture with 7 days (offset 0 = Mon .. 6 = Sun). suggestions
@@ -659,6 +672,7 @@ describe("repeatWeek", () => {
         id: `${id}-s-${i}-${j}`,
         mealId: s.mealId,
         approved: s.approved,
+        choices: s.choices ?? [],
       }));
       return { id: `${id}-day-${i}`, date, suggestions };
     });
@@ -857,6 +871,92 @@ describe("repeatWeek", () => {
       data: { dayPlanId: string }[];
     };
     expect(arg.data[0].dayPlanId).toBe("tgt-day-6");
+  });
+
+  it("copies immutable choice snapshots from approved source suggestions", async () => {
+    const source = buildWeek("src", SOURCE, {
+      0: [
+        {
+          mealId: "meal-A",
+          approved: true,
+          choices: [
+            {
+              slotId: "slot-1",
+              optionId: "opt-1",
+              slotName: "Protein",
+              optionName: "Chicken",
+              ingredients: [
+                {
+                  name: "Chicken breast",
+                  quantity: "1",
+                  unit: "lb",
+                  category: "meat",
+                  position: 0,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const target = buildWeek("tgt", TARGET);
+    routeWeeks(source, target);
+    stubTransaction();
+
+    await repeatWeek({
+      familyId: "fam-1",
+      sourceWeekStart: new Date(`${SOURCE}T00:00:00Z`),
+      targetWeekStart: new Date(`${TARGET}T00:00:00Z`),
+      userId: "user-1",
+    });
+
+    const suggestionCreateArg = prismaMock.mealSuggestion.createMany.mock
+      .calls[0][0] as {
+      data: { id: string; mealId: string; dayPlanId: string }[];
+    };
+    const copiedSuggestion = suggestionCreateArg.data[0];
+    expect(copiedSuggestion.mealId).toBe("meal-A");
+    expect(copiedSuggestion.dayPlanId).toBe("tgt-day-0");
+
+    const choiceCreateArg = prismaMock.suggestionChoiceSnapshot.createMany.mock
+      .calls[0][0] as {
+      data: {
+        suggestionId: string;
+        slotId: string | null;
+        optionId: string | null;
+        slotName: string;
+        optionName: string;
+      }[];
+    };
+    expect(choiceCreateArg.data).toEqual([
+      expect.objectContaining({
+        suggestionId: copiedSuggestion.id,
+        slotId: "slot-1",
+        optionId: "opt-1",
+        slotName: "Protein",
+        optionName: "Chicken",
+      }),
+    ]);
+
+    const ingredientCreateArg =
+      prismaMock.suggestionChoiceIngredientSnapshot.createMany.mock.calls[0][0] as {
+        data: {
+          name: string;
+          quantity: string | null;
+          unit: string | null;
+          category: string | null;
+          position: number;
+        }[];
+      };
+    expect(ingredientCreateArg.data).toEqual([
+      expect.objectContaining({
+        name: "Chicken breast",
+        quantity: "1",
+        unit: "lb",
+        category: "meat",
+        position: 0,
+      }),
+    ]);
   });
 
   it("default 'error' mode throws 409 and writes nothing when the target is populated", async () => {

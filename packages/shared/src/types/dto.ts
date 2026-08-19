@@ -17,7 +17,7 @@
  * shapes happens at the Express `res.json()` boundary.
  */
 
-import type { Meal } from "./index.js";
+import type { Meal, SuggestionChoiceSnapshot } from "./index.js";
 import type { AgentScope, Difficulty, InstructionKind } from "../constants/index.js";
 import type { MatrixSource } from "./tabularRecipe.js";
 
@@ -240,6 +240,7 @@ export interface MealSuggestionDTO {
   createdAt: string;
   meal: Meal;
   suggestedBy: SuggestedByDTO;
+  choices?: SuggestionChoiceSnapshot[];
 }
 
 /** A single day within a week plan, with its ordered suggestions. `date` is an
@@ -328,6 +329,37 @@ export interface FillWeekRequestDTO {
   avoidRecentDays?: number;
   existingMode?: RepeatWeekExistingMode;
   allowPartial?: boolean;
+}
+
+/** Additive ingredient input for a selectable meal choice option. */
+export interface MealChoiceOptionIngredientInputDTO {
+  name: string;
+  quantity?: string;
+  unit?: string;
+  category?: string;
+}
+
+/** One option within a meal choice slot. */
+export interface MealChoiceOptionInputDTO {
+  name: string;
+  ingredients?: MealChoiceOptionIngredientInputDTO[];
+}
+
+/** One configurable choice slot definition authored on a meal. */
+export interface MealChoiceSlotInputDTO {
+  name: string;
+  options: MealChoiceOptionInputDTO[];
+}
+
+/** One slot→option selection for resolving a meal suggestion's choices. */
+export interface ResolveSuggestionChoiceInputDTO {
+  slotId: string;
+  optionId: string;
+}
+
+/** Request body for resolving all choice slots on a suggestion. */
+export interface ResolveSuggestionChoicesRequestDTO {
+  selections: ResolveSuggestionChoiceInputDTO[];
 }
 
 /* -------------------------------------------------------------------------- */

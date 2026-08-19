@@ -6,6 +6,7 @@ import type {
   ExportMealsResponseDTO,
   Difficulty,
   TabularRecipeMealDTO,
+  MealChoiceSlotInputDTO,
 } from "@meal-planner/shared";
 import { request } from "./client";
 
@@ -20,6 +21,25 @@ export type {
 } from "@meal-planner/shared";
 
 const BASE = "/api/families";
+
+type MealWritePayload = {
+  name: string;
+  description?: string;
+  imageUrl?: string | null;
+  difficulty?: Difficulty | null;
+  prepTimeMinutes?: number | null;
+  cookTimeMinutes?: number | null;
+  servings?: number | null;
+  sourceUrl?: string | null;
+  notes?: string | null;
+  favorite?: boolean;
+  rating?: number | null;
+  ingredients?: Omit<MealIngredient, "id" | "mealId">[];
+  instructions?: { text: string; timerMinutes?: number | null }[];
+  tags?: string[];
+  collections?: string[];
+  choiceSlots?: MealChoiceSlotInputDTO[];
+};
 
 export async function listMeals(
   familyId: string,
@@ -96,23 +116,7 @@ export async function getTabularMeal(
 
 export async function createMeal(
   familyId: string,
-  data: {
-    name: string;
-    description?: string;
-    imageUrl?: string | null;
-    difficulty?: Difficulty | null;
-    prepTimeMinutes?: number | null;
-    cookTimeMinutes?: number | null;
-    servings?: number | null;
-    sourceUrl?: string | null;
-    notes?: string | null;
-    favorite?: boolean;
-    rating?: number | null;
-    ingredients?: Omit<MealIngredient, "id" | "mealId">[];
-    instructions?: { text: string; timerMinutes?: number | null }[];
-    tags?: string[];
-    collections?: string[];
-  },
+  data: MealWritePayload,
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals`, {
     method: "POST",
@@ -123,23 +127,7 @@ export async function createMeal(
 export async function updateMeal(
   familyId: string,
   mealId: string,
-  data: {
-    name: string;
-    description?: string;
-    imageUrl?: string | null;
-    difficulty?: Difficulty | null;
-    prepTimeMinutes?: number | null;
-    cookTimeMinutes?: number | null;
-    servings?: number | null;
-    sourceUrl?: string | null;
-    notes?: string | null;
-    favorite?: boolean;
-    rating?: number | null;
-    ingredients?: Omit<MealIngredient, "id" | "mealId">[];
-    instructions?: { text: string; timerMinutes?: number | null }[];
-    tags?: string[];
-    collections?: string[];
-  },
+  data: MealWritePayload,
 ): Promise<Meal> {
   return request<Meal>(`${BASE}/${familyId}/meals/${mealId}`, {
     method: "PUT",

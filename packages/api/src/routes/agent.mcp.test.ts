@@ -29,6 +29,7 @@ vi.mock("../services/weekPlan.js", () => {
     getWeekPlan: vi.fn(),
     addSuggestion: vi.fn(),
     approveSuggestion: vi.fn(),
+    resolveSuggestionChoices: vi.fn(),
     getCurrentWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMealByDate: vi.fn(),
@@ -124,7 +125,7 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
     vi.clearAllMocks();
   });
 
-  it("list_meals: GET /meals returns the envelope and audits an allowed read", async () => {
+  it("list_meals: forwards an ingredient-category search with REST-equivalent defaults", async () => {
     mockCredential(["meal_plan:read"]);
     vi.mocked(mealService.listMeals).mockResolvedValue({
       items: [
@@ -138,13 +139,13 @@ describe("agent MCP routes (meals / current / previous / schedule-by-date)", () 
     } as never);
 
     const handlers = findStack("/:familyId/meals");
-    const req = agentReq({ familyId: "fam-1" }, { query: { search: "taco" } });
+    const req = agentReq({ familyId: "fam-1" }, { query: { search: "ProDuCe" } });
     const res = buildRes();
     await runStack(handlers, req, res);
 
     expect(res.statusCode).toBe(200);
     expect(mealService.listMeals).toHaveBeenCalledWith("fam-1", {
-      search: "taco",
+      search: "ProDuCe",
       sort: "name",
       order: "asc",
       limit: 25,

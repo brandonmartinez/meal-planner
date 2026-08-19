@@ -18,7 +18,9 @@ function stubClient() {
     getWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMeal: vi.fn(),
+    scheduleRandomMeal: vi.fn(),
     repeatWeek: vi.fn(),
+    resolveSuggestionChoices: vi.fn(),
     approveSuggestion: vi.fn(),
     unapproveSuggestion: vi.fn(),
     createMeal: vi.fn(),
@@ -42,7 +44,7 @@ function textOf(result: ToolResult): string {
 const FAMILY = "fam-1";
 
 describe("createToolHandlers", () => {
-  it("list_meals forwards the family + opts and returns envelope JSON text", async () => {
+  it("list_meals forwards an ingredient-category search and returns envelope JSON text", async () => {
     const client = stubClient();
     const envelope = {
       items: [
@@ -65,10 +67,10 @@ describe("createToolHandlers", () => {
       FAMILY,
     );
 
-    const result = await handlers.list_meals({ search: "taco" });
+    const result = await handlers.list_meals({ search: "ProDuCe" });
 
     expect(client.listMeals).toHaveBeenCalledWith(FAMILY, {
-      search: "taco",
+      search: "ProDuCe",
       difficulty: undefined,
       favorite: undefined,
       minRating: undefined,
@@ -175,6 +177,34 @@ describe("createToolHandlers", () => {
     expect(client.getCurrentWeekPlan).toHaveBeenCalledWith(FAMILY);
   });
 
+  it("get_week_plan forwards the weekStart and returns the plan JSON", async () => {
+    const client = stubClient();
+    client.getWeekPlan.mockResolvedValue({ id: "wp-1", weekStart: "2026-06-29" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.get_week_plan({ weekStart: "2026-06-29" });
+    expect(client.getWeekPlan).toHaveBeenCalledWith(FAMILY, "2026-06-29");
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain("wp-1");
+  });
+
+  it("get_week_plan surfaces an API error (e.g. 404) as an isError result", async () => {
+    const client = stubClient();
+    client.getWeekPlan.mockRejectedValue(new ApiError(404, "Week plan not found"));
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.get_week_plan({ weekStart: "2099-01-01" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("404");
+    expect(textOf(result)).toContain("Week plan not found");
+  });
+
   it("get_previous_week_plans passes before + limit through", async () => {
     const client = stubClient();
     client.getPreviousWeekPlans.mockResolvedValue({ weeks: [] });
@@ -203,6 +233,66 @@ describe("createToolHandlers", () => {
       mealId: "meal-1",
       date: "2026-06-30",
     });
+  });
+
+  it("schedule_random_meal forwards date + optional filters to the client (#113, parity row 7)", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockResolvedValue({ id: "sug-rnd" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.schedule_random_meal({
+      date: "2026-07-01",
+      tags: ["quick"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 7,
+    });
+    expect(client.scheduleRandomMeal).toHaveBeenCalledWith(FAMILY, {
+      date: "2026-07-01",
+      tags: ["quick"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 7,
+    });
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain("sug-rnd");
+  });
+
+  it("schedule_random_meal forwards only the date when no filters are provided", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockResolvedValue({ id: "sug-2" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.schedule_random_meal({ date: "2026-07-02" });
+    expect(client.scheduleRandomMeal).toHaveBeenCalledWith(FAMILY, {
+      date: "2026-07-02",
+      tags: undefined,
+      difficulty: undefined,
+      favorite: undefined,
+      avoidRecentDays: undefined,
+    });
+  });
+
+  it("schedule_random_meal surfaces a 422 (no eligible meals) as an isError result", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockRejectedValue(
+      new ApiError(422, "No eligible meals match the given filters"),
+    );
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.schedule_random_meal({ date: "2026-07-02" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("422");
+    expect(textOf(result)).toContain("No eligible meals");
   });
 
   it("repeat_week forwards target/source week starts + existingMode (row 7/8)", async () => {
@@ -245,6 +335,24 @@ describe("createToolHandlers", () => {
       "2026-06-29",
       undefined,
     );
+  });
+
+  it("resolve_suggestion_choices forwards suggestion id + slot selections", async () => {
+    const client = stubClient();
+    client.resolveSuggestionChoices.mockResolvedValue({ id: "s-1" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.resolve_suggestion_choices({
+      suggestionId: "s-1",
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
+
+    expect(client.resolveSuggestionChoices).toHaveBeenCalledWith(FAMILY, "s-1", {
+      selections: [{ slotId: "slot-1", optionId: "opt-1" }],
+    });
   });
 
   it("approve_suggestion forwards the suggestionId", async () => {
@@ -927,6 +1035,7 @@ describe("registerTools", () => {
       "schedule_meal",
       "schedule_random_meal",
       "repeat_week",
+      "resolve_suggestion_choices",
       "apply_template",
       "fill_week",
       "approve_suggestion",
@@ -943,7 +1052,7 @@ describe("registerTools", () => {
     }
   });
 
-  it("documents the tag filter facets in the list_meals description (#107, parity row 8)", () => {
+  it("documents all search fields and tag filter facets (#227, parity row 8)", () => {
     const registerTool = vi.fn();
     const fakeServer = { registerTool } as unknown as McpServer;
     const client = stubClient();
@@ -959,6 +1068,9 @@ describe("registerTools", () => {
     // Row 8: the tool description must advertise the filter facets so an
     // agent knows tag filtering exists and how it composes.
     expect(description).toContain("tag filter");
+    expect(description).toContain("case-insensitive substring");
+    expect(description).toContain("ingredient category");
+    expect(description).not.toContain("ingredient name");
     // OR-within-facet / AND-across-facets semantics are documented.
     expect(description).toMatch(/OR'd/);
     expect(description).toMatch(/AND'd/);
@@ -968,6 +1080,9 @@ describe("registerTools", () => {
       .inputSchema;
     expect(schema).toHaveProperty("tags");
     expect(schema).not.toHaveProperty("categories");
+    expect(
+      (schema.search as { description?: string }).description,
+    ).toContain("ingredient category");
   });
 
   it("documents instruction replace-all in the update_meal description and schema (#100, parity row 8)", () => {
@@ -1084,6 +1199,7 @@ describe("registerTools", () => {
       createMealCall?.[1] as { inputSchema: Record<string, unknown> }
     ).inputSchema;
     expect(createSchema).toHaveProperty("collections");
+    expect(createSchema).toHaveProperty("choiceSlots");
     const updateMealCall = registerTool.mock.calls.find(
       (c) => c[0] === "update_meal",
     );
@@ -1091,6 +1207,7 @@ describe("registerTools", () => {
       updateMealCall?.[1] as { inputSchema: Record<string, unknown> }
     ).inputSchema;
     expect(updateSchema).toHaveProperty("collections");
+    expect(updateSchema).toHaveProperty("choiceSlots");
   });
 
   it("documents repeat_week policy + exposes its schema (#114, parity row 8)", () => {
@@ -1118,6 +1235,27 @@ describe("registerTools", () => {
     expect(schema).toHaveProperty("targetWeekStart");
     expect(schema).toHaveProperty("sourceWeekStart");
     expect(schema).toHaveProperty("existingMode");
+  });
+
+  it("registers resolve_suggestion_choices with schedule scope semantics", () => {
+    const registerTool = vi.fn();
+    const fakeServer = { registerTool } as unknown as McpServer;
+    const client = stubClient();
+
+    registerTools(fakeServer, client as unknown as MealPlannerApiClient, FAMILY);
+
+    const resolveCall = registerTool.mock.calls.find(
+      (c) => c[0] === "resolve_suggestion_choices",
+    );
+    expect(resolveCall).toBeDefined();
+    const description = (resolveCall?.[1] as { description: string }).description;
+    expect(description).toContain("immutable scheduling snapshots");
+    expect(description).toContain("meal_plan:schedule");
+    const schema = (
+      resolveCall?.[1] as { inputSchema: Record<string, unknown> }
+    ).inputSchema;
+    expect(schema).toHaveProperty("suggestionId");
+    expect(schema).toHaveProperty("selections");
   });
 
   it("documents the planning-template tools + exposes their schemas (#116, parity row 8)", () => {
@@ -1220,6 +1358,7 @@ describe("TOOL_SCOPES", () => {
       schedule_meal: "meal_plan:schedule",
       schedule_random_meal: "meal_plan:schedule",
       repeat_week: "meal_plan:schedule",
+      resolve_suggestion_choices: "meal_plan:schedule",
       apply_template: "meal_plan:schedule",
       fill_week: "meal_plan:schedule",
       approve_suggestion: "meal_plan:approve",

@@ -867,9 +867,23 @@ describe("agent routes (end-to-end middleware chain)", () => {
     expect(res.statusCode).toBe(201);
     // Only the approved meal is copied, as a new unapproved suggestion.
     const createArg = prismaMock.mealSuggestion.createMany.mock
-      .calls[0][0] as { data: { mealId: string; approved: boolean; userId: string }[] };
+      .calls[0][0] as {
+        data: {
+          id: string;
+          dayPlanId: string;
+          mealId: string;
+          approved: boolean;
+          userId: string;
+        }[];
+      };
     expect(createArg.data).toEqual([
-      { dayPlanId: "t-mon", mealId: "meal-A", userId: "parent-1", approved: false },
+      expect.objectContaining({
+        id: expect.any(String),
+        dayPlanId: "t-mon",
+        mealId: "meal-A",
+        userId: "parent-1",
+        approved: false,
+      }),
     ]);
     expect(prismaMock.agentAuditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

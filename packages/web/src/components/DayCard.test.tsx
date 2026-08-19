@@ -420,3 +420,399 @@ describe('DayCard — meal detail modal', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 });
+
+// ---------------------------------------------------------------------------
+// Configurable meal choice resolution (#226)
+// ---------------------------------------------------------------------------
+
+const slotWithOptions = {
+  id: 'slot-1',
+  mealId: 'm-1',
+  name: 'Protein',
+  position: 0,
+  options: [
+    { id: 'opt-chicken', slotId: 'slot-1', name: 'Chicken', position: 0, ingredients: [] },
+    { id: 'opt-tofu', slotId: 'slot-1', name: 'Tofu', position: 1, ingredients: [] },
+  ],
+};
+
+const suggestionWithSlots = {
+  ...baseSuggestion,
+  meal: {
+    ...baseSuggestion.meal,
+    slots: [slotWithOptions],
+  },
+  choices: [],
+};
+
+const suggestionWithResolvedChoices = {
+  ...baseSuggestion,
+  meal: {
+    ...baseSuggestion.meal,
+    slots: [slotWithOptions],
+  },
+  choices: [
+    {
+      id: 'choice-1',
+      suggestionId: 's-1',
+      slotId: 'slot-1',
+      optionId: 'opt-chicken',
+      slotName: 'Protein',
+      optionName: 'Chicken',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      ingredients: [],
+    },
+  ],
+};
+
+// The draggable chip <div> receives role="button" from @dnd-kit and its
+// accessible name is the full chip text, which includes "Resolve choices".
+// The real toggle button is distinguished by its aria-expanded attribute
+// (the chip div never has that). Use { expanded: false/true } to target it
+// uniquely, and queryByRole with expanded to check absence.
+function getResolveBtn() {
+  return screen.getByRole('button', { name: /resolve choices/i, expanded: false });
+}
+function queryResolveBtn() {
+  return screen.queryByRole('button', { name: /resolve choices/i, expanded: false });
+}
+
+describe('DayCard — configurable choice resolution (#226)', () => {
+  it('shows unresolved warning and disables approve when choices are unresolved', () => {
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    expect(screen.getByText(/unresolved choices/i)).toBeInTheDocument();
+    const approveBtn = screen.getByRole('button', {
+      name: /resolve required meal choices before approving/i,
+    });
+    expect(approveBtn).toBeDisabled();
+  });
+
+  it('shows the "Resolve choices" button for the owner of the suggestion', () => {
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent={false}
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    expect(getResolveBtn()).toBeInTheDocument();
+  });
+
+  it('shows the "Resolve choices" button for a parent on any suggestion', () => {
+    const otherSuggestion = { ...suggestionWithSlots, userId: 'other-user' };
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [otherSuggestion] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    expect(getResolveBtn()).toBeInTheDocument();
+  });
+
+  it('does NOT show the "Resolve choices" button for a non-owner child', () => {
+    const otherSuggestion = { ...suggestionWithSlots, userId: 'other-user' };
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [otherSuggestion] as DayPlan['suggestions'] })}
+        isParent={false}
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    expect(queryResolveBtn()).toBeNull();
+  });
+
+  it('toggles the resolver form open and closed', async () => {
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+
+    const toggleBtn = getResolveBtn();
+    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggleBtn);
+    // After opening, the button text changes and aria-expanded becomes true
+    expect(screen.getByRole('button', { name: /hide choices/i, expanded: true })).toBeInTheDocument();
+
+    // The slot legend and radio options are rendered
+    expect(screen.getByText('Protein')).toBeInTheDocument();
+    const radioChicken = screen.getByRole('radio', { name: /chicken/i });
+    expect(radioChicken).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /tofu/i })).toBeInTheDocument();
+
+    // Close it again
+    await userEvent.click(screen.getByRole('button', { name: /hide choices/i, expanded: true }));
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+
+  it('renders safely when a slot response omits its options relation', async () => {
+    const suggestionWithoutOptions = {
+      ...suggestionWithSlots,
+      meal: {
+        ...suggestionWithSlots.meal,
+        slots: [{ ...slotWithOptions, options: undefined }],
+      },
+    };
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithoutOptions] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+
+    expect(screen.getByText('Protein')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save choices/i })).toBeDisabled();
+  });
+
+  it('disables the "Save choices" button when not all slots are selected', async () => {
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+        onResolveChoices={() => Promise.resolve()}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+    // No radio selected → Save button should be disabled
+    const saveBtn = screen.getByRole('button', { name: /save choices/i });
+    expect(saveBtn).toBeDisabled();
+
+    // After selecting a radio, Save becomes enabled
+    await userEvent.click(screen.getByRole('radio', { name: /chicken/i }));
+    expect(screen.getByRole('button', { name: /save choices/i })).not.toBeDisabled();
+  });
+
+  it('calls onResolveChoices with slotId/optionId selections when submitted', async () => {
+    const onResolveChoices = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+        onResolveChoices={onResolveChoices}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+    await userEvent.click(screen.getByRole('radio', { name: /chicken/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save choices/i }));
+
+    await waitFor(() => expect(onResolveChoices).toHaveBeenCalledTimes(1));
+    expect(onResolveChoices).toHaveBeenCalledWith('s-1', [
+      { slotId: 'slot-1', optionId: 'opt-chicken' },
+    ]);
+  });
+
+  it('shows the resolver error message when onResolveChoices rejects', async () => {
+    const onResolveChoices = vi
+      .fn()
+      .mockRejectedValue(new Error('Network error'));
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+        onResolveChoices={onResolveChoices}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+    await userEvent.click(screen.getByRole('radio', { name: /chicken/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save choices/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/network error/i);
+  });
+
+  it('disables "Save choices" while submission is in flight', async () => {
+    let resolve: () => void;
+    const onResolveChoices = vi.fn(
+      () => new Promise<void>(r => { resolve = r; }),
+    );
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [suggestionWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+        onResolveChoices={onResolveChoices}
+      />,
+    );
+
+    await userEvent.click(getResolveBtn());
+    await userEvent.click(screen.getByRole('radio', { name: /chicken/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save choices/i }));
+
+    // While resolving, the button shows "Saving…" and is disabled
+    const savingBtn = await screen.findByRole('button', { name: /saving/i });
+    expect(savingBtn).toBeDisabled();
+    resolve!();
+  });
+
+  it('shows choice summary pills for a suggestion with resolved (snapshotted) choices', () => {
+    renderWithProviders(
+      <DayCard
+        day={
+          makeDay({
+            suggestions: [suggestionWithResolvedChoices] as DayPlan['suggestions'],
+          })
+        }
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+
+    // The choice summary container has aria-label="Selected meal choices"
+    const summary = screen.getByLabelText(/selected meal choices/i);
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent('Protein: Chicken');
+  });
+
+  it('does NOT show the resolver button for an approved suggestion with slots', () => {
+    const approvedWithSlots = {
+      ...suggestionWithResolvedChoices,
+      approved: true,
+    };
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [approvedWithSlots] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    expect(queryResolveBtn()).toBeNull();
+  });
+
+  it('does NOT block approval for a meal with no slots (non-configurable)', () => {
+    renderWithProviders(
+      <DayCard
+        day={makeDay({ suggestions: [baseSuggestion] as DayPlan['suggestions'] })}
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+    // baseSuggestion has no slots → approval should not be disabled
+    const approveBtn = screen.getByRole('button', { name: 'Approve suggestion' });
+    expect(approveBtn).not.toBeDisabled();
+  });
+
+  it('shows additive ingredient summary in the resolver when an option has ingredients', async () => {
+    const slotWithIngredient = {
+      ...slotWithOptions,
+      options: [
+        {
+          id: 'opt-chicken',
+          slotId: 'slot-1',
+          name: 'Chicken',
+          position: 0,
+          ingredients: [
+            {
+              id: 'oi-1',
+              optionId: 'opt-chicken',
+              name: 'chicken breast',
+              quantity: '200',
+              unit: 'g',
+              category: null,
+              position: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const suggestionWithIngredients = {
+      ...baseSuggestion,
+      meal: {
+        ...baseSuggestion.meal,
+        slots: [slotWithIngredient],
+      },
+      choices: [],
+    };
+
+    renderWithProviders(
+      <DayCard
+        day={
+          makeDay({
+            suggestions: [suggestionWithIngredients] as DayPlan['suggestions'],
+          })
+        }
+        isParent
+        currentUserId="user-1"
+        onAddMeal={() => {}}
+        onApprove={() => {}}
+        onRemove={() => {}}
+        onUnapprove={() => {}}
+      />,
+    );
+
+    // Open the resolver so the ingredient summary is visible
+    await userEvent.click(getResolveBtn());
+    // The additive summary "Adds: 200 g chicken breast" is shown under the option label
+    expect(await screen.findByText(/adds: 200 g chicken breast/i)).toBeInTheDocument();
+  });
+});

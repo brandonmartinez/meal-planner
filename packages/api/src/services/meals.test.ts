@@ -109,7 +109,7 @@ describe("meals service", () => {
       expect(result.hasMore).toBe(true);
     });
 
-    it("uses an OR clause covering name, description, tag name, and collection name when search is given", async () => {
+    it("uses an OR clause covering name, description, tag, collection, and ingredient category", async () => {
       prismaMock.meal.findMany.mockResolvedValue([] as never);
       await listMeals("fam-1", { search: "pizza" });
       const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
@@ -131,6 +131,13 @@ describe("meals service", () => {
               recipeCollection: {
                 name: { contains: "pizza", mode: "insensitive" },
               },
+            },
+          },
+        },
+        {
+          ingredients: {
+            some: {
+              category: { contains: "pizza", mode: "insensitive" },
             },
           },
         },
@@ -181,6 +188,23 @@ describe("meals service", () => {
       expect(descArm).toEqual({
         description: { contains: "hearty", mode: "insensitive" },
       });
+    });
+
+    it("search: matches ingredient category case-insensitively without searching ingredient name", async () => {
+      prismaMock.meal.findMany.mockResolvedValue([] as never);
+      await listMeals("fam-1", { search: "ProDuCe" });
+      const arg = prismaMock.meal.findMany.mock.calls[0][0] as {
+        where: { OR?: Array<{ ingredients?: unknown }> };
+      };
+      const ingredientArm = arg.where.OR?.find((c) => "ingredients" in c);
+      expect(ingredientArm).toEqual({
+        ingredients: {
+          some: {
+            category: { contains: "ProDuCe", mode: "insensitive" },
+          },
+        },
+      });
+      expect(ingredientArm).not.toHaveProperty("ingredients.some.name");
     });
 
     it("search: no OR clause when search is absent (name-only regression guard)", async () => {
@@ -1420,6 +1444,108 @@ describe("meals service", () => {
       // No instruction write happened at all (instructions omitted).
       expect(updateArgs).not.toHaveBeenCalled();
     });
+
+    // Issue #226: choiceSlots write path.
+    it("nested-creates choiceSlots with 0-based positions for slots and options", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      await createMeal("fam-1", {
+        name: "Tacos",
+        choiceSlots: [
+          {
+            name: "Protein",
+            options: [
+              { name: "Chicken", ingredients: [] },
+              { name: "Tofu", ingredients: [] },
+            ],
+          },
+          {
+            name: "Side",
+            options: [{ name: "Rice", ingredients: [] }],
+          },
+        ],
+      });
+
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          slots?: {
+            create: Array<{
+              name: string;
+              position: number;
+              options: { create: Array<{ name: string; position: number }> };
+            }>;
+          };
+        };
+      };
+      const slots = arg.data.slots?.create;
+      expect(slots).toHaveLength(2);
+      expect(slots?.[0]).toMatchObject({ name: "Protein", position: 0 });
+      expect(slots?.[1]).toMatchObject({ name: "Side", position: 1 });
+      expect(slots?.[0].options.create).toHaveLength(2);
+      expect(slots?.[0].options.create[0]).toMatchObject({ name: "Chicken", position: 0 });
+      expect(slots?.[0].options.create[1]).toMatchObject({ name: "Tofu", position: 1 });
+      expect(slots?.[1].options.create[0]).toMatchObject({ name: "Rice", position: 0 });
+    });
+
+    it("nested-creates additive ingredients inside choice slot options", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+
+      await createMeal("fam-1", {
+        name: "Tacos",
+        choiceSlots: [
+          {
+            name: "Protein",
+            options: [
+              {
+                name: "Chicken",
+                ingredients: [
+                  { name: "Chicken breast", quantity: "200", unit: "g", category: "Meat" },
+                ],
+              },
+              { name: "Tofu", ingredients: [] },
+            ],
+          },
+        ],
+      });
+
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: {
+          slots?: {
+            create: Array<{
+              options: {
+                create: Array<{
+                  ingredients?: { create: Array<{ name: string; position: number }> };
+                }>;
+              };
+            }>;
+          };
+        };
+      };
+      const chickenOption = arg.data.slots?.create[0].options.create[0];
+      expect(chickenOption?.ingredients?.create).toHaveLength(1);
+      expect(chickenOption?.ingredients?.create[0]).toMatchObject({
+        name: "Chicken breast",
+        quantity: "200",
+        unit: "g",
+        category: "Meat",
+        position: 0,
+      });
+      // Option with no ingredients should not produce an ingredients create clause.
+      const tofuOption = arg.data.slots?.create[0].options.create[1];
+      expect(tofuOption?.ingredients).toBeUndefined();
+    });
+
+    it("omits the slots clause when choiceSlots is not provided", async () => {
+      stubTransaction();
+      prismaMock.meal.create.mockResolvedValue({ id: "m-1" } as never);
+      await createMeal("fam-1", { name: "Plain" });
+      const arg = prismaMock.meal.create.mock.calls[0][0] as {
+        data: { slots?: unknown };
+      };
+      expect(arg.data.slots).toBeUndefined();
+    });
   });
 
   describe("updateMeal", () => {
@@ -1903,6 +2029,80 @@ describe("meals service", () => {
         } as never),
       ).rejects.toThrow(/Meal not found/);
       expect(prismaMock.mealInstruction.deleteMany).not.toHaveBeenCalled();
+    });
+
+    // Issue #226: choiceSlots replace-set in updateMeal.
+    it("replace-sets choiceSlots: deletes all existing slots then recreates", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.mealSlot.deleteMany.mockResolvedValue({ count: 2 } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", {
+        choiceSlots: [
+          {
+            name: "Protein",
+            options: [
+              { name: "Chicken", ingredients: [] },
+              { name: "Tofu", ingredients: [] },
+            ],
+          },
+        ],
+      } as never);
+
+      expect(prismaMock.mealSlot.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: {
+          slots?: { create: Array<{ name: string; position: number }> };
+        };
+      };
+      expect(arg.data.slots?.create).toHaveLength(1);
+      expect(arg.data.slots?.create[0]).toMatchObject({
+        name: "Protein",
+        position: 0,
+      });
+    });
+
+    it("clears all choiceSlots when choiceSlots is an empty array", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.mealSlot.deleteMany.mockResolvedValue({ count: 1 } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { choiceSlots: [] } as never);
+
+      expect(prismaMock.mealSlot.deleteMany).toHaveBeenCalledWith({
+        where: { mealId: "m-1" },
+      });
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { slots?: { create: unknown[] } };
+      };
+      expect(arg.data.slots?.create).toEqual([]);
+    });
+
+    it("leaves choiceSlots untouched when choiceSlots is omitted", async () => {
+      stubTransaction();
+      prismaMock.meal.findFirst.mockResolvedValue({
+        id: "m-1",
+        placeholderKind: null,
+      } as never);
+      prismaMock.meal.update.mockResolvedValue({ id: "m-1" } as never);
+
+      await updateMeal("m-1", "fam-1", { name: "Renamed" });
+
+      expect(prismaMock.mealSlot.deleteMany).not.toHaveBeenCalled();
+      const arg = prismaMock.meal.update.mock.calls[0][0] as {
+        data: { slots?: unknown };
+      };
+      expect(arg.data.slots).toBeUndefined();
     });
   });
 

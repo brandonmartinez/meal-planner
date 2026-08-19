@@ -240,7 +240,11 @@ describe('WeekPlanPage', () => {
 
   it('hides all action buttons when viewing a past week', async () => {
     // Set a clearly past Monday so isPastWeek = true
-    localStorage.setItem('meal-planner-selected-week', '2020-01-06');
+    localStorage.setItem('meal-planner-selected-week', JSON.stringify({
+      version: 1,
+      weekStart: '2020-01-06',
+      selectedAt: Date.now(),
+    }));
     server.use(
       authMe('PARENT'),
       http.post('/api/families/:familyId/weeks/:weekStart', () =>

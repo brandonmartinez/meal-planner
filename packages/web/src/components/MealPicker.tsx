@@ -132,7 +132,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search meals by name or tags…"
+          placeholder="Search meals by name, tag, or category…"
           aria-label="Search meals"
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           data-autofocus
@@ -165,7 +165,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
         </div>
 
         {(tagOptions.length > 0 || collectionOptions.length > 0) && (
-          <div>
+          <div className={collectionOptions.length > 0 ? undefined : 'hidden sm:block'}>
             <button
               type="button"
               onClick={() => setShowFilters(v => !v)}
@@ -182,7 +182,7 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                   <div
                     role="group"
                     aria-label="Filter by tag"
-                    className="flex flex-wrap items-center gap-1.5"
+                    className="hidden sm:flex flex-wrap items-center gap-1.5"
                   >
                     {tagOptions.map(tag => {
                       const active = tagFilter.includes(tag.name);
@@ -297,11 +297,13 @@ export default function MealPicker({ familyId, onSelect, onClose }: MealPickerPr
                     {meal.description && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{meal.description}</div>
                     )}
-                    <MealTagList
-                      tags={meal.tags}
-                      max={2}
-                      className="mt-1"
-                    />
+                    <div className="hidden sm:block">
+                      <MealTagList
+                        tags={meal.tags}
+                        max={2}
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
                 </div>
               </button>

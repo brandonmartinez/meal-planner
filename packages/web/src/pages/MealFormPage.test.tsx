@@ -623,3 +623,284 @@ describe('MealFormPage collections (#110)', () => {
     expect(body.collections).toEqual(['Weeknight Winners']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Choice slot authoring (#226)
+// ---------------------------------------------------------------------------
+
+describe('MealFormPage choice slots (#226)', () => {
+  it('renders no choice slots by default and shows the "Add Slot" button', () => {
+    renderForm('/meals/new');
+    expect(screen.getByRole('button', { name: /add slot/i })).toBeInTheDocument();
+    expect(screen.getByText(/no choice slots yet/i)).toBeInTheDocument();
+  });
+
+  it('adds a slot section with slot name input when "Add Slot" is clicked', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    expect(screen.getByLabelText('Slot name')).toBeInTheDocument();
+    // first slot comes with one option and an Add Option button
+    expect(screen.getByRole('button', { name: /add option/i })).toBeInTheDocument();
+  });
+
+  it('adds a second option when "Add Option" is clicked', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /add option/i }));
+    expect(screen.getAllByLabelText('Option name')).toHaveLength(2);
+  });
+
+  it('removes an option when its Remove button is clicked', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    await userEvent.click(screen.getByRole('button', { name: /add option/i }));
+    expect(screen.getAllByLabelText('Option name')).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Remove option 2' }));
+    expect(screen.getAllByLabelText('Option name')).toHaveLength(1);
+  });
+
+  it('removes the slot when its Remove button is clicked', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    expect(screen.getByLabelText('Slot name')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove slot 1' }));
+    expect(screen.queryByLabelText('Slot name')).toBeNull();
+    expect(screen.getByText(/no choice slots yet/i)).toBeInTheDocument();
+  });
+
+  it('adds an additive ingredient row to an option', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    // There are two "Add Ingredient" buttons: one for the main list, one for the option.
+    // The option's button is always last in the DOM.
+    const addIngBtn = screen.getAllByRole('button', { name: /add ingredient/i }).at(-1)!;
+    await userEvent.click(addIngBtn);
+    expect(screen.getByLabelText('Name for option ingredient 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Quantity for option ingredient 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Unit for option ingredient 1')).toBeInTheDocument();
+  });
+
+  it('removes an additive ingredient row from an option', async () => {
+    renderForm('/meals/new');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    const addIngBtn = screen.getAllByRole('button', { name: /add ingredient/i }).at(-1)!;
+    await userEvent.click(addIngBtn);
+    await userEvent.click(screen.getByRole('button', { name: 'Remove option ingredient 1' }));
+    expect(screen.queryByLabelText('Name for option ingredient 1')).toBeNull();
+    expect(screen.getByText(/no additive ingredients/i)).toBeInTheDocument();
+  });
+
+  it('serializes choiceSlots with options and additive ingredients on create', async () => {
+    let body: { choiceSlots?: unknown } = {};
+    server.use(
+      http.post(`/api/families/${FAMILY_ID}/meals`, async ({ request }) => {
+        body = (await request.json()) as { choiceSlots?: unknown };
+        return HttpResponse.json({ id: 'm-new' });
+      }),
+    );
+
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Pasta');
+
+    // Add a slot named "Protein"
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    await userEvent.type(screen.getByLabelText('Slot name'), 'Protein');
+
+    // Name the first option "Chicken"
+    await userEvent.type(screen.getByLabelText('Option name'), 'Chicken');
+
+    // Add an ingredient to that option
+    const addIngBtn = screen.getAllByRole('button', { name: /add ingredient/i }).at(-1)!;
+    await userEvent.click(addIngBtn);
+    // Type qty/unit before name — typing the name updates the aria-label to use it
+    await userEvent.type(screen.getByLabelText('Quantity for option ingredient 1'), '200');
+    await userEvent.type(screen.getByLabelText('Unit for option ingredient 1'), 'g');
+    await userEvent.type(screen.getByLabelText('Name for option ingredient 1'), 'chicken breast');
+
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+
+    expect(body.choiceSlots).toEqual([
+      {
+        name: 'Protein',
+        options: [
+          {
+            name: 'Chicken',
+            ingredients: [
+              { name: 'chicken breast', quantity: '200', unit: 'g', category: undefined },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('validates that a slot without a name shows an error before submitting', async () => {
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Pasta');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    // leave slot name blank, fill option name
+    await userEvent.type(screen.getByLabelText('Option name'), 'Chicken');
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/choice slot 1 needs a name/i);
+  });
+
+  it('validates that an option without a name shows an error before submitting', async () => {
+    renderForm('/meals/new');
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Name *' }), 'Pasta');
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    await userEvent.type(screen.getByLabelText('Slot name'), 'Protein');
+    // leave option name blank
+    await userEvent.click(screen.getByRole('button', { name: /create meal/i }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/every option in "Protein" needs a name/i);
+  });
+
+  it('hydrates existing choice slots from the API on edit', async () => {
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Pasta',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          familyId: FAMILY_ID,
+          ingredients: [],
+          slots: [
+            {
+              id: 'slot-1',
+              mealId: 'm-1',
+              name: 'Protein',
+              position: 0,
+              options: [
+                {
+                  id: 'opt-1',
+                  slotId: 'slot-1',
+                  name: 'Chicken',
+                  position: 0,
+                  ingredients: [
+                    {
+                      id: 'oi-1',
+                      optionId: 'opt-1',
+                      name: 'chicken breast',
+                      quantity: '200',
+                      unit: 'g',
+                      category: null,
+                      position: 0,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    // Wait for the form to hydrate
+    const slotNameInput = await screen.findByLabelText('Slot name');
+    expect((slotNameInput as HTMLInputElement).value).toBe('Protein');
+
+    const optionNameInput = screen.getByLabelText('Option name');
+    expect((optionNameInput as HTMLInputElement).value).toBe('Chicken');
+
+    // Additive ingredient is hydrated
+    const ingredientNameInput = screen.getByLabelText('Name for chicken breast');
+    expect((ingredientNameInput as HTMLInputElement).value).toBe('chicken breast');
+  });
+
+  it('sends the full choiceSlots array on update (including removals)', async () => {
+    let body: { choiceSlots?: unknown } = {};
+    server.use(
+      http.get(`/api/families/${FAMILY_ID}/meals/m-1`, () =>
+        HttpResponse.json({
+          id: 'm-1',
+          name: 'Pasta',
+          description: '',
+          placeholderKind: null,
+          difficulty: null,
+          familyId: FAMILY_ID,
+          ingredients: [],
+          slots: [
+            {
+              id: 'slot-1',
+              mealId: 'm-1',
+              name: 'Protein',
+              position: 0,
+              options: [
+                {
+                  id: 'opt-1',
+                  slotId: 'slot-1',
+                  name: 'Chicken',
+                  position: 0,
+                  ingredients: [],
+                },
+                {
+                  id: 'opt-2',
+                  slotId: 'slot-1',
+                  name: 'Tofu',
+                  position: 1,
+                  ingredients: [],
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+      http.put(`/api/families/${FAMILY_ID}/meals/m-1`, async ({ request }) => {
+        body = (await request.json()) as { choiceSlots?: unknown };
+        return HttpResponse.json({ id: 'm-1' });
+      }),
+    );
+
+    renderForm('/meals/m-1/edit');
+
+    // Wait for hydration
+    await screen.findByLabelText('Slot name');
+
+    // Remove the second option (Tofu)
+    await userEvent.click(screen.getByRole('button', { name: 'Remove option 2' }));
+    await userEvent.click(screen.getByRole('button', { name: /update meal/i }));
+
+    await waitFor(() => expect(screen.getByText('MEALS LIST')).toBeInTheDocument());
+
+    expect(body.choiceSlots).toEqual([
+      {
+        name: 'Protein',
+        options: [{ name: 'Chicken', ingredients: [] }],
+      },
+    ]);
+  });
+
+  it('moves slots up and down via reorder buttons', async () => {
+    renderForm('/meals/new');
+
+    // Add two slots
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    const slotNames = screen.getAllByLabelText('Slot name');
+    await userEvent.type(slotNames[0], 'Protein');
+
+    await userEvent.click(screen.getByRole('button', { name: /add slot/i }));
+    const slotNames2 = screen.getAllByLabelText('Slot name');
+    await userEvent.type(slotNames2[1], 'Sauce');
+
+    // Slot 1 up arrow disabled, slot 2 down arrow disabled
+    expect(screen.getByRole('button', { name: 'Move slot 1 up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move slot 2 down' })).toBeDisabled();
+
+    // Move slot 2 up → Sauce becomes slot 1
+    await userEvent.click(screen.getByRole('button', { name: 'Move slot 2 up' }));
+    const reorderedInputs = screen.getAllByLabelText('Slot name');
+    expect((reorderedInputs[0] as HTMLInputElement).value).toBe('Sauce');
+    expect((reorderedInputs[1] as HTMLInputElement).value).toBe('Protein');
+  });
+});

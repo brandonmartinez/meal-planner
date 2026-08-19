@@ -26,8 +26,33 @@ interface InstructionRow {
   timerMinutes: string;
 }
 
+interface ChoiceOptionIngredientRow {
+  name: string;
+  quantity: string;
+  unit: string;
+  category: string;
+}
+
+interface ChoiceOptionRow {
+  name: string;
+  ingredients: ChoiceOptionIngredientRow[];
+}
+
+interface ChoiceSlotRow {
+  name: string;
+  options: ChoiceOptionRow[];
+}
+
 const emptyIngredient = (): IngredientRow => ({ name: '', quantity: '', unit: '', category: '' });
 const emptyInstruction = (): InstructionRow => ({ text: '', timerMinutes: '' });
+const emptyChoiceOptionIngredient = (): ChoiceOptionIngredientRow => ({
+  name: '',
+  quantity: '',
+  unit: '',
+  category: '',
+});
+const emptyChoiceOption = (): ChoiceOptionRow => ({ name: '', ingredients: [] });
+const emptyChoiceSlot = (): ChoiceSlotRow => ({ name: '', options: [emptyChoiceOption()] });
 
 export default function MealFormPage() {
   const { mealId } = useParams<{ mealId?: string }>();
@@ -46,6 +71,7 @@ export default function MealFormPage() {
   const notesId = useId();
   const favoriteId = useId();
   const instructionFieldIdPrefix = useId();
+  const choiceSlotFieldIdPrefix = useId();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -60,6 +86,7 @@ export default function MealFormPage() {
   const [rating, setRating] = useState('');
   const [ingredients, setIngredients] = useState<IngredientRow[]>([emptyIngredient()]);
   const [instructions, setInstructions] = useState<InstructionRow[]>([emptyInstruction()]);
+  const [choiceSlots, setChoiceSlots] = useState<ChoiceSlotRow[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [collections, setCollections] = useState<string[]>([]);
   const [collectionSuggestions, setCollectionSuggestions] = useState<string[]>([]);
@@ -98,6 +125,26 @@ export default function MealFormPage() {
                   step.timerMinutes != null ? String(step.timerMinutes) : '',
               }))
             : [emptyInstruction()],
+        );
+        setChoiceSlots(
+          meal.slots?.length
+            ? meal.slots.map(slot => ({
+                name: slot.name,
+                options: slot.options?.length
+                  ? slot.options.map(option => ({
+                      name: option.name,
+                      ingredients: option.ingredients?.length
+                        ? option.ingredients.map(ingredient => ({
+                            name: ingredient.name,
+                            quantity: ingredient.quantity ?? '',
+                            unit: ingredient.unit ?? '',
+                            category: ingredient.category ?? '',
+                          }))
+                        : [],
+                    }))
+                  : [emptyChoiceOption()],
+              }))
+            : [],
         );
         if (meal.ingredients?.length) {
           setIngredients(
@@ -149,6 +196,196 @@ export default function MealFormPage() {
     setInstructions(prev => prev.filter((_, i) => i !== index));
   };
 
+  const moveItem = <T,>(items: T[], fromIndex: number, toIndex: number): T[] => {
+    if (toIndex < 0 || toIndex >= items.length) return items;
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  };
+
+  const addChoiceSlot = () => {
+    setChoiceSlots(prev => [...prev, emptyChoiceSlot()]);
+  };
+
+  const removeChoiceSlot = (slotIndex: number) => {
+    setChoiceSlots(prev => prev.filter((_, i) => i !== slotIndex));
+  };
+
+  const moveChoiceSlot = (slotIndex: number, direction: -1 | 1) => {
+    setChoiceSlots(prev => moveItem(prev, slotIndex, slotIndex + direction));
+  };
+
+  const updateChoiceSlotName = (slotIndex: number, name: string) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) => (i === slotIndex ? { ...slot, name } : slot)),
+    );
+  };
+
+  const addChoiceOption = (slotIndex: number) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? { ...slot, options: [...slot.options, emptyChoiceOption()] }
+          : slot,
+      ),
+    );
+  };
+
+  const removeChoiceOption = (slotIndex: number, optionIndex: number) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.filter((_, j) => j !== optionIndex),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const moveChoiceOption = (
+    slotIndex: number,
+    optionIndex: number,
+    direction: -1 | 1,
+  ) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: moveItem(slot.options, optionIndex, optionIndex + direction),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const updateChoiceOptionName = (
+    slotIndex: number,
+    optionIndex: number,
+    name: string,
+  ) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.map((option, j) =>
+                j === optionIndex ? { ...option, name } : option,
+              ),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const addChoiceOptionIngredient = (slotIndex: number, optionIndex: number) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.map((option, j) =>
+                j === optionIndex
+                  ? {
+                      ...option,
+                      ingredients: [...option.ingredients, emptyChoiceOptionIngredient()],
+                    }
+                  : option,
+              ),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const removeChoiceOptionIngredient = (
+    slotIndex: number,
+    optionIndex: number,
+    ingredientIndex: number,
+  ) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.map((option, j) =>
+                j === optionIndex
+                  ? {
+                      ...option,
+                      ingredients: option.ingredients.filter(
+                        (_, k) => k !== ingredientIndex,
+                      ),
+                    }
+                  : option,
+              ),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const moveChoiceOptionIngredient = (
+    slotIndex: number,
+    optionIndex: number,
+    ingredientIndex: number,
+    direction: -1 | 1,
+  ) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.map((option, j) =>
+                j === optionIndex
+                  ? {
+                      ...option,
+                      ingredients: moveItem(
+                        option.ingredients,
+                        ingredientIndex,
+                        ingredientIndex + direction,
+                      ),
+                    }
+                  : option,
+              ),
+            }
+          : slot,
+      ),
+    );
+  };
+
+  const updateChoiceOptionIngredient = (
+    slotIndex: number,
+    optionIndex: number,
+    ingredientIndex: number,
+    field: keyof ChoiceOptionIngredientRow,
+    value: string,
+  ) => {
+    setChoiceSlots(prev =>
+      prev.map((slot, i) =>
+        i === slotIndex
+          ? {
+              ...slot,
+              options: slot.options.map((option, j) =>
+                j === optionIndex
+                  ? {
+                      ...option,
+                      ingredients: option.ingredients.map((ingredient, k) =>
+                        k === ingredientIndex
+                          ? { ...ingredient, [field]: value }
+                          : ingredient,
+                      ),
+                    }
+                  : option,
+              ),
+            }
+          : slot,
+      ),
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!familyId || !name.trim()) return;
@@ -178,6 +415,41 @@ export default function MealFormPage() {
         timerMinutes: toNum(step.timerMinutes),
       }));
 
+    const normalizedChoiceSlots = choiceSlots.map(slot => ({
+      name: slot.name.trim(),
+      options: slot.options.map(option => ({
+        name: option.name.trim(),
+        ingredients: option.ingredients
+          .filter(ingredient => ingredient.name.trim())
+          .map(ingredient => ({
+            name: ingredient.name.trim(),
+            quantity: ingredient.quantity.trim() || undefined,
+            unit: ingredient.unit.trim() || undefined,
+            category: ingredient.category.trim() || undefined,
+          })),
+      })),
+    }));
+
+    for (let slotIndex = 0; slotIndex < normalizedChoiceSlots.length; slotIndex += 1) {
+      const slot = normalizedChoiceSlots[slotIndex];
+      if (!slot.name) {
+        setError(`Choice slot ${slotIndex + 1} needs a name.`);
+        setSubmitting(false);
+        return;
+      }
+      if (slot.options.length === 0) {
+        setError(`Choice slot "${slot.name}" needs at least one option.`);
+        setSubmitting(false);
+        return;
+      }
+      const emptyOption = slot.options.find(option => !option.name);
+      if (emptyOption) {
+        setError(`Every option in "${slot.name}" needs a name.`);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const data = {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -200,6 +472,11 @@ export default function MealFormPage() {
       // treats the arrays as the full desired set; resolve-or-create by name).
       tags,
       collections,
+      choiceSlots: isEdit
+        ? normalizedChoiceSlots
+        : normalizedChoiceSlots.length
+          ? normalizedChoiceSlots
+          : undefined,
     };
 
     try {
@@ -520,6 +797,325 @@ export default function MealFormPage() {
               );
             })}
           </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Meal choices (optional)
+            </label>
+            <button
+              type="button"
+              onClick={addChoiceSlot}
+              className="text-sm px-3 py-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900/60"
+            >
+              + Add Slot
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Add required single-choice slots (for example, Protein or Sauce). Picked
+            options are snapshotted per suggestion and can add extra ingredients.
+          </p>
+          {choiceSlots.length === 0 && (
+            <p className="text-sm italic text-gray-500 dark:text-gray-400">
+              No choice slots yet.
+            </p>
+          )}
+          {choiceSlots.map((slot, slotIndex) => {
+            const slotNameId = `${choiceSlotFieldIdPrefix}-slot-name-${slotIndex}`;
+            return (
+              <section
+                key={slotNameId}
+                className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 dark:border-indigo-700 dark:bg-indigo-900/20"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                    Slot {slotIndex + 1}
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moveChoiceSlot(slotIndex, -1)}
+                      disabled={slotIndex === 0}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                      aria-label={`Move slot ${slotIndex + 1} up`}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveChoiceSlot(slotIndex, 1)}
+                      disabled={slotIndex === choiceSlots.length - 1}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                      aria-label={`Move slot ${slotIndex + 1} down`}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeChoiceSlot(slotIndex)}
+                      className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                      aria-label={`Remove slot ${slotIndex + 1}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label
+                    htmlFor={slotNameId}
+                    className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Slot name
+                  </label>
+                  <input
+                    id={slotNameId}
+                    type="text"
+                    value={slot.name}
+                    onChange={e => updateChoiceSlotName(slotIndex, e.target.value)}
+                    placeholder="Example: Protein"
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+                  />
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Options
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => addChoiceOption(slotIndex)}
+                      className="rounded bg-green-100 px-2.5 py-1 text-xs text-green-700 hover:bg-green-200 dark:bg-green-900/40 dark:text-green-300 dark:hover:bg-green-900/60"
+                    >
+                      + Add Option
+                    </button>
+                  </div>
+                  {slot.options.map((option, optionIndex) => {
+                    const optionNameId = `${choiceSlotFieldIdPrefix}-slot-${slotIndex}-option-${optionIndex}`;
+                    return (
+                      <div
+                        key={optionNameId}
+                        className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            Option {optionIndex + 1}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => moveChoiceOption(slotIndex, optionIndex, -1)}
+                              disabled={optionIndex === 0}
+                              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                              aria-label={`Move option ${optionIndex + 1} up`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveChoiceOption(slotIndex, optionIndex, 1)}
+                              disabled={optionIndex === slot.options.length - 1}
+                              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                              aria-label={`Move option ${optionIndex + 1} down`}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeChoiceOption(slotIndex, optionIndex)}
+                              className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                              aria-label={`Remove option ${optionIndex + 1}`}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <label
+                            htmlFor={optionNameId}
+                            className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300"
+                          >
+                            Option name
+                          </label>
+                          <input
+                            id={optionNameId}
+                            type="text"
+                            value={option.name}
+                            onChange={e =>
+                              updateChoiceOptionName(
+                                slotIndex,
+                                optionIndex,
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Example: Chicken"
+                            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+                          />
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                              Additive ingredients
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => addChoiceOptionIngredient(slotIndex, optionIndex)}
+                              className="rounded bg-blue-100 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+                            >
+                              + Add Ingredient
+                            </button>
+                          </div>
+                          {option.ingredients.length === 0 && (
+                            <p className="text-xs italic text-gray-500 dark:text-gray-400">
+                              No additive ingredients.
+                            </p>
+                          )}
+                          {option.ingredients.map((ingredient, ingredientIndex) => {
+                            const ingredientLabel =
+                              ingredient.name.trim() ||
+                              `option ingredient ${ingredientIndex + 1}`;
+                            return (
+                              <div
+                                key={`${optionNameId}-ingredient-${ingredientIndex}`}
+                                className="flex flex-wrap items-center gap-2"
+                              >
+                                <input
+                                  type="text"
+                                  value={ingredient.name}
+                                  onChange={e =>
+                                    updateChoiceOptionIngredient(
+                                      slotIndex,
+                                      optionIndex,
+                                      ingredientIndex,
+                                      'name',
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="Name"
+                                  aria-label={`Name for ${ingredientLabel}`}
+                                  className="min-w-32 flex-1 rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+                                />
+                                <input
+                                  type="text"
+                                  value={ingredient.quantity}
+                                  onChange={e =>
+                                    updateChoiceOptionIngredient(
+                                      slotIndex,
+                                      optionIndex,
+                                      ingredientIndex,
+                                      'quantity',
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="Qty"
+                                  aria-label={`Quantity for ${ingredientLabel}`}
+                                  className="w-16 rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+                                />
+                                <input
+                                  type="text"
+                                  value={ingredient.unit}
+                                  onChange={e =>
+                                    updateChoiceOptionIngredient(
+                                      slotIndex,
+                                      optionIndex,
+                                      ingredientIndex,
+                                      'unit',
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="Unit"
+                                  aria-label={`Unit for ${ingredientLabel}`}
+                                  className="w-20 rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 placeholder-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+                                />
+                                <Select
+                                  selectSize="sm"
+                                  value={ingredient.category}
+                                  onChange={e =>
+                                    updateChoiceOptionIngredient(
+                                      slotIndex,
+                                      optionIndex,
+                                      ingredientIndex,
+                                      'category',
+                                      e.target.value,
+                                    )
+                                  }
+                                  aria-label={`Category for ${ingredientLabel}`}
+                                  className="w-32"
+                                >
+                                  <option value="">Category</option>
+                                  {(ingredient.category &&
+                                  !groceryCategoryOptions.includes(ingredient.category)
+                                    ? [ingredient.category, ...groceryCategoryOptions]
+                                    : groceryCategoryOptions
+                                  ).map(category => (
+                                    <option key={category} value={category}>
+                                      {category}
+                                    </option>
+                                  ))}
+                                </Select>
+                                <div className="ml-auto flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      moveChoiceOptionIngredient(
+                                        slotIndex,
+                                        optionIndex,
+                                        ingredientIndex,
+                                        -1,
+                                      )
+                                    }
+                                    disabled={ingredientIndex === 0}
+                                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                                    aria-label={`Move ${ingredientLabel} up`}
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      moveChoiceOptionIngredient(
+                                        slotIndex,
+                                        optionIndex,
+                                        ingredientIndex,
+                                        1,
+                                      )
+                                    }
+                                    disabled={
+                                      ingredientIndex === option.ingredients.length - 1
+                                    }
+                                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800"
+                                    aria-label={`Move ${ingredientLabel} down`}
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeChoiceOptionIngredient(
+                                        slotIndex,
+                                        optionIndex,
+                                        ingredientIndex,
+                                      )
+                                    }
+                                    className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50"
+                                    aria-label={`Remove ${ingredientLabel}`}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">

@@ -185,3 +185,49 @@ describe("meals api client", () => {
     expect(body.tags).toEqual([]);
   });
 });
+
+  it("createMeal sends choiceSlots array in the body", async () => {
+    let body: { choiceSlots?: unknown } = {};
+    server.use(
+      http.post("/api/families/f-1/meals", async ({ request }) => {
+        body = (await request.json()) as { choiceSlots?: unknown };
+        return HttpResponse.json({ id: "m-1" });
+      }),
+    );
+    await mealsApi.createMeal("f-1", {
+      name: "Pasta",
+      choiceSlots: [
+        {
+          name: "Protein",
+          options: [
+            { name: "Chicken", ingredients: [] },
+            { name: "Tofu", ingredients: [] },
+          ],
+        },
+      ],
+    });
+    expect(body.choiceSlots).toEqual([
+      {
+        name: "Protein",
+        options: [
+          { name: "Chicken", ingredients: [] },
+          { name: "Tofu", ingredients: [] },
+        ],
+      },
+    ]);
+  });
+
+  it("updateMeal sends an empty choiceSlots array to clear all slots", async () => {
+    let body: { choiceSlots?: unknown } = {};
+    server.use(
+      http.put("/api/families/f-1/meals/m-1", async ({ request }) => {
+        body = (await request.json()) as { choiceSlots?: unknown };
+        return HttpResponse.json({ id: "m-1" });
+      }),
+    );
+    await mealsApi.updateMeal("f-1", "m-1", {
+      name: "Pasta",
+      choiceSlots: [],
+    });
+    expect(body.choiceSlots).toEqual([]);
+  });

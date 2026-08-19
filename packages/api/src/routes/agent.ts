@@ -26,6 +26,7 @@ import {
   MAX_IMAGE_BYTES,
 } from "../services/imageStorage.js";
 import { imageUrlSchema, listMealsQuerySchema } from "../schemas/meals.js";
+import { resolveSuggestionChoicesSchema } from "../schemas/mealChoices.js";
 
 /**
  * MCP agent surface. Mounted at `/api/agent` (NOT `/api/families`) so it has
@@ -170,6 +171,23 @@ const ingredientInputSchema = z.object({
   groupLabel: z.string().max(60).nullable().optional(),
 });
 
+const choiceSlotOptionIngredientInputSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.string().optional(),
+  unit: z.string().optional(),
+  category: z.string().optional(),
+});
+
+const choiceSlotOptionInputSchema = z.object({
+  name: z.string().min(1),
+  ingredients: z.array(choiceSlotOptionIngredientInputSchema).optional(),
+});
+
+const choiceSlotInputSchema = z.object({
+  name: z.string().min(1),
+  options: z.array(choiceSlotOptionInputSchema).min(1),
+});
+
 const instructionInputSchema = z.object({
   text: z.string().min(1),
   timerMinutes: z.number().int().min(0).nullable().optional(),
@@ -200,6 +218,7 @@ const createMealSchema = z.object({
   tags: z.array(z.string()).optional(),
   collections: z.array(z.string()).optional(),
   instructions: z.array(instructionInputSchema).optional(),
+  choiceSlots: z.array(choiceSlotInputSchema).optional(),
 });
 
 const updateMealSchema = z
@@ -219,6 +238,7 @@ const updateMealSchema = z
     tags: z.array(z.string()).optional(),
     collections: z.array(z.string()).optional(),
     instructions: z.array(instructionInputSchema).optional(),
+    choiceSlots: z.array(choiceSlotInputSchema).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field must be provided",
@@ -1224,6 +1244,59 @@ agentRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to add suggestion" });
+    }
+  },
+);
+
+// PATCH /api/agent/:familyId/suggestions/:suggestionId/choices — scope: meal_plan:schedule
+// Resolve all required choice slots for a suggestion while it is still
+// unapproved. Uses the same schedule scope as other suggestion mutations.
+agentRouter.patch(
+  "/:familyId/suggestions/:suggestionId/choices",
+  authenticateAgent,
+  requireScope(AGENT_SCOPES.SCHEDULE),
+  async (req: Request, res: Response) => {
+    const agent = req.agent!;
+    const familyId = paramStr(req.params.familyId);
+    const suggestionId = paramStr(req.params.suggestionId);
+    try {
+      const { selections } = resolveSuggestionChoicesSchema.parse(req.body);
+      const suggestion = await weekPlanService.resolveSuggestionChoices(
+        familyId,
+        suggestionId,
+        selections,
+        { id: agent.createdBy, isParent: true },
+      );
+      await safeRecordAgentAudit({
+        credentialId: agent.id,
+        familyId,
+        action: AGENT_SCOPES.SCHEDULE,
+        outcome: "allowed",
+        targetType: "mealSuggestion",
+        targetIds: [suggestionId],
+      });
+      res.json(suggestion);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        await safeRecordAgentAudit({
+          credentialId: agent.id,
+          familyId,
+          action: AGENT_SCOPES.SCHEDULE,
+          outcome: "denied",
+          targetType: "mealSuggestion",
+          targetIds: [suggestionId],
+          reason: `error_${error.status}`,
+        });
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to resolve suggestion choices" });
     }
   },
 );

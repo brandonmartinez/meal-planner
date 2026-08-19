@@ -12,6 +12,8 @@ import type {
   RecipeCollection,
   PlanningTemplate,
   TabularRecipeMealDTO,
+  MealChoiceSlotInputDTO,
+  ResolveSuggestionChoicesRequestDTO,
 } from "@meal-planner/shared";
 import { ApiError, ApiTransportError } from "./errors.js";
 
@@ -75,6 +77,7 @@ export interface CreateMealInput {
     spanFrom?: number | null;
     spanTo?: number | null;
   }[];
+  choiceSlots?: MealChoiceSlotInputDTO[];
 }
 
 /** The 201 response returned when a binary meal image is uploaded on the agent
@@ -135,6 +138,7 @@ export interface UpdateMealInput {
     spanFrom?: number | null;
     spanTo?: number | null;
   }[];
+  choiceSlots?: MealChoiceSlotInputDTO[];
 }
 
 /**
@@ -169,7 +173,9 @@ export class MealPlannerApiClient {
     return this.request<AgentIdentityDTO>("GET", `/api/agent/me`);
   }
 
-  /** List the family's meals, including search, filter, sort, and pagination. */
+  /** List the family's meals, including case-insensitive substring search across
+   *  meal name, description, tag name, collection name, and ingredient category,
+   *  plus filters, sorting, and pagination. */
   listMeals(
     familyId: string,
     opts?: {
@@ -307,6 +313,21 @@ export class MealPlannerApiClient {
         targetWeekStart,
       )}/repeat`,
       { body: { sourceWeekStart, existingMode } },
+    );
+  }
+
+  /** Resolve all required choice slots on a suggestion while it is unapproved. */
+  resolveSuggestionChoices(
+    familyId: string,
+    suggestionId: string,
+    input: ResolveSuggestionChoicesRequestDTO,
+  ): Promise<MealSuggestionDTO> {
+    return this.request<MealSuggestionDTO>(
+      "PATCH",
+      `/api/agent/${encodeURIComponent(familyId)}/suggestions/${encodeURIComponent(
+        suggestionId,
+      )}/choices`,
+      { body: input },
     );
   }
 

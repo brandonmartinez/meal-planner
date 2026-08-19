@@ -20,6 +20,7 @@ import {
     unapproveSuggestion,
     removeSuggestion,
     moveSuggestion,
+    resolveSuggestionChoices,
 } from '../api/weekPlan';
 import { formatWeekRange, getCurrentWeekStart } from '../utils/date';
 import DayCard from '../components/DayCard';
@@ -27,7 +28,12 @@ import MealPicker from '../components/MealPicker';
 import ApplyTemplateModal from '../components/ApplyTemplateModal';
 import RepeatWeekModal from '../components/RepeatWeekModal';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { WeekPlan, DayPlan, MealSuggestion } from '@meal-planner/shared';
+import type {
+    WeekPlan,
+    DayPlan,
+    MealSuggestion,
+    ResolveSuggestionChoiceInputDTO,
+} from '@meal-planner/shared';
 import { RealtimeEvent } from '@meal-planner/shared';
 
 export default function WeekPlanPage() {
@@ -96,6 +102,24 @@ export default function WeekPlanPage() {
             await loadWeekPlan();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to approve suggestion');
+        }
+    };
+
+    const handleResolveChoices = async (
+        suggestionId: string,
+        selections: ResolveSuggestionChoiceInputDTO[],
+    ) => {
+        if (!familyId) return;
+        try {
+            await resolveSuggestionChoices(familyId, suggestionId, selections);
+            await loadWeekPlan();
+        } catch (err) {
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Failed to resolve meal choices',
+            );
+            throw err;
         }
     };
 
@@ -225,6 +249,7 @@ export default function WeekPlanPage() {
                             onApprove={handleApprove}
                             onUnapprove={handleUnapprove}
                             onRemove={handleRemove}
+                            onResolveChoices={handleResolveChoices}
                         />
                     ))}
                 </div>

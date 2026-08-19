@@ -6,6 +6,7 @@ import { requireMembership } from "../middleware/membership.js";
 import * as weekPlanService from "../services/weekPlan.js";
 import * as randomPlanService from "../services/randomPlan.js";
 import * as weekFillService from "../services/weekFill.js";
+import { resolveSuggestionChoicesSchema } from "../schemas/mealChoices.js";
 import {
   emitWeekPlanChanged,
   emitSuggestionChanged,
@@ -383,6 +384,41 @@ weekPlanRouter.post(
         return;
       }
       res.status(500).json({ error: "Failed to add suggestion" });
+    }
+  },
+);
+
+// PATCH /api/families/:familyId/suggestions/:suggestionId/choices
+weekPlanRouter.patch(
+  "/:familyId/suggestions/:suggestionId/choices",
+  authenticateJWT,
+  requireMembership,
+  async (req: Request, res: Response) => {
+    try {
+      const familyId = paramStr(req.params.familyId);
+      const suggestionId = paramStr(req.params.suggestionId);
+      const { selections } = resolveSuggestionChoicesSchema.parse(req.body);
+      const user = req.user as { id: string };
+      const suggestion = await weekPlanService.resolveSuggestionChoices(
+        familyId,
+        suggestionId,
+        selections,
+        { id: user.id, isParent: isParentReq(req) },
+      );
+      emitSuggestionChanged(familyId);
+      res.json(suggestion);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res
+          .status(400)
+          .json({ error: "Validation failed", details: error.errors });
+        return;
+      }
+      if (error instanceof weekPlanService.SuggestionError) {
+        res.status(error.status).json({ error: error.message });
+        return;
+      }
+      res.status(500).json({ error: "Failed to resolve suggestion choices" });
     }
   },
 );
