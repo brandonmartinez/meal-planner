@@ -657,3 +657,163 @@ describe("PATCH /:familyId/suggestions/:suggestionId/move", () => {
     expect(res.statusCode).toBe(500);
   });
 });
+
+// Issue #226: PATCH /:familyId/suggestions/:suggestionId/choices
+describe("PATCH /:familyId/suggestions/:suggestionId/choices", () => {
+  const handler = getRouteHandler(
+    weekPlanRouter,
+    "patch",
+    "/:familyId/suggestions/:suggestionId/choices",
+  );
+
+  const params = { familyId: FAMILY_ID, suggestionId: "sug-1" };
+
+  it("200s with the suggestion and forwards isParent from membership to the service", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockResolvedValue({
+      id: "sug-1",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("PARENT", {
+        params,
+        body: { selections: [{ slotId: "slot-1", optionId: "opt-1" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(weekPlanService.resolveSuggestionChoices).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "sug-1",
+      [{ slotId: "slot-1", optionId: "opt-1" }],
+      { id: USER_ID, isParent: true },
+    );
+  });
+
+  it("passes isParent=false for a CHILD member", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockResolvedValue({
+      id: "sug-1",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", {
+        params,
+        body: { selections: [{ slotId: "slot-1", optionId: "opt-1" }] },
+      }),
+      res,
+      buildNext(),
+    );
+    expect(weekPlanService.resolveSuggestionChoices).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "sug-1",
+      [{ slotId: "slot-1", optionId: "opt-1" }],
+      { id: USER_ID, isParent: false },
+    );
+  });
+
+  it("accepts an empty selections array (meal has no choice slots)", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockResolvedValue({
+      id: "sug-1",
+    } as never);
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(weekPlanService.resolveSuggestionChoices).toHaveBeenCalledWith(
+      FAMILY_ID,
+      "sug-1",
+      [],
+      { id: USER_ID, isParent: false },
+    );
+  });
+
+  it("400s when the body is missing the selections array", async () => {
+    const res = buildFullRes();
+    await handler(req("CHILD", { params, body: {} }), res, buildNext());
+    expect(res.statusCode).toBe(400);
+    expect(weekPlanService.resolveSuggestionChoices).not.toHaveBeenCalled();
+  });
+
+  it("400s when a selection is missing a required field", async () => {
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", {
+        params,
+        body: { selections: [{ slotId: "slot-1" }] }, // optionId missing
+      }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(400);
+    expect(weekPlanService.resolveSuggestionChoices).not.toHaveBeenCalled();
+  });
+
+  it("maps a 404 SuggestionError to its status code (suggestion not found)", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockRejectedValue(
+      new SuggestionError(404, "Suggestion not found"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "Suggestion not found" });
+  });
+
+  it("maps a 409 SuggestionError (approved suggestion) to its status code", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockRejectedValue(
+      new SuggestionError(409, "Cannot resolve choices for an approved suggestion"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("maps a 403 SuggestionError (unauthorized actor) to its status code", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockRejectedValue(
+      new SuggestionError(403, "Only the suggester or a parent can resolve suggestion choices"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("maps a 422 SuggestionError (slot mismatch) to its status code", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockRejectedValue(
+      new SuggestionError(422, "Selections must include exactly one option for every slot"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [{ slotId: "s", optionId: "o" }] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(422);
+  });
+
+  it("500s on an unexpected error", async () => {
+    vi.mocked(weekPlanService.resolveSuggestionChoices).mockRejectedValue(
+      new Error("db"),
+    );
+    const res = buildFullRes();
+    await handler(
+      req("CHILD", { params, body: { selections: [] } }),
+      res,
+      buildNext(),
+    );
+    expect(res.statusCode).toBe(500);
+  });
+});

@@ -18,6 +18,7 @@ function stubClient() {
     getWeekPlan: vi.fn(),
     getPreviousWeekPlans: vi.fn(),
     scheduleMeal: vi.fn(),
+    scheduleRandomMeal: vi.fn(),
     repeatWeek: vi.fn(),
     resolveSuggestionChoices: vi.fn(),
     approveSuggestion: vi.fn(),
@@ -176,6 +177,34 @@ describe("createToolHandlers", () => {
     expect(client.getCurrentWeekPlan).toHaveBeenCalledWith(FAMILY);
   });
 
+  it("get_week_plan forwards the weekStart and returns the plan JSON", async () => {
+    const client = stubClient();
+    client.getWeekPlan.mockResolvedValue({ id: "wp-1", weekStart: "2026-06-29" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.get_week_plan({ weekStart: "2026-06-29" });
+    expect(client.getWeekPlan).toHaveBeenCalledWith(FAMILY, "2026-06-29");
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain("wp-1");
+  });
+
+  it("get_week_plan surfaces an API error (e.g. 404) as an isError result", async () => {
+    const client = stubClient();
+    client.getWeekPlan.mockRejectedValue(new ApiError(404, "Week plan not found"));
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.get_week_plan({ weekStart: "2099-01-01" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("404");
+    expect(textOf(result)).toContain("Week plan not found");
+  });
+
   it("get_previous_week_plans passes before + limit through", async () => {
     const client = stubClient();
     client.getPreviousWeekPlans.mockResolvedValue({ weeks: [] });
@@ -204,6 +233,66 @@ describe("createToolHandlers", () => {
       mealId: "meal-1",
       date: "2026-06-30",
     });
+  });
+
+  it("schedule_random_meal forwards date + optional filters to the client (#113, parity row 7)", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockResolvedValue({ id: "sug-rnd" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.schedule_random_meal({
+      date: "2026-07-01",
+      tags: ["quick"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 7,
+    });
+    expect(client.scheduleRandomMeal).toHaveBeenCalledWith(FAMILY, {
+      date: "2026-07-01",
+      tags: ["quick"],
+      difficulty: ["EASY"],
+      favorite: true,
+      avoidRecentDays: 7,
+    });
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain("sug-rnd");
+  });
+
+  it("schedule_random_meal forwards only the date when no filters are provided", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockResolvedValue({ id: "sug-2" });
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    await handlers.schedule_random_meal({ date: "2026-07-02" });
+    expect(client.scheduleRandomMeal).toHaveBeenCalledWith(FAMILY, {
+      date: "2026-07-02",
+      tags: undefined,
+      difficulty: undefined,
+      favorite: undefined,
+      avoidRecentDays: undefined,
+    });
+  });
+
+  it("schedule_random_meal surfaces a 422 (no eligible meals) as an isError result", async () => {
+    const client = stubClient();
+    client.scheduleRandomMeal.mockRejectedValue(
+      new ApiError(422, "No eligible meals match the given filters"),
+    );
+    const handlers = createToolHandlers(
+      client as unknown as MealPlannerApiClient,
+      FAMILY,
+    );
+
+    const result = await handlers.schedule_random_meal({ date: "2026-07-02" });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("422");
+    expect(textOf(result)).toContain("No eligible meals");
   });
 
   it("repeat_week forwards target/source week starts + existingMode (row 7/8)", async () => {
